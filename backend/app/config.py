@@ -1,19 +1,18 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://app:password@localhost:5432/video_workflow"
-    database_sync_url: str = "postgresql+psycopg2://app:password@localhost:5432/video_workflow"
-    temporal_address: str = "localhost:7233"
-    temporal_task_queue: str = "video-production"
-    api_key: str = "dev-api-key-change-in-prod"
-    minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
-    anthropic_api_key: str = ""
+    DATABASE_URL: str = "postgresql+asyncpg://app:password@localhost:5432/video_workflow"
+    DATABASE_SYNC_URL: str = "postgresql+psycopg2://app:password@localhost:5432/video_workflow"
+    TEMPORAL_ADDRESS: str = "localhost:7233"
+    TEMPORAL_TASK_QUEUE: str = "video-production"
+    API_KEY: str = "dev-api-key-change-in-prod"
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    ANTHROPIC_API_KEY: str = ""
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()

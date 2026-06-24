@@ -1,0 +1,24 @@
+# backend/tests/test_health.py
+import pytest
+from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_health_no_auth_required():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.xfail(reason="/api/topics route not registered until Task 7; expect 404 not 401")
+def test_protected_endpoint_without_key_returns_401(client):
+    response = client.get("/api/topics")
+    assert response.status_code == 401
+
+
+@pytest.mark.xfail(reason="/api/topics route not registered until Task 7; expect 404 not 401")
+def test_protected_endpoint_with_wrong_key_returns_401(client):
+    response = client.get("/api/topics", headers={"X-API-Key": "wrong-key"})
+    assert response.status_code == 401

@@ -66,38 +66,53 @@ class BaseWorker:
     async def _process_task(self, task: Any):
         db = get_sync_session()
         try:
-            output = await self._execute(task)
-            task.status = "completed"
-            task.output_payload = output
-            task.completed_at = datetime.now(timezone.utc)
-            db.merge(task)
+            from app.models.worker_task import WorkerTask
+            # Load the actual ORM instance from DB (task may be an immutable Row)
+            task_id = task.id
+            orm_task = db.get(WorkerTask, task_id)
+            if orm_task is None:
+                return  # task disappeared, skip
+
+            output = await self._execute(orm_task)
+            orm_task.status = "completed"
+            orm_task.output_payload = output
+            orm_task.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-            await self._send_signal(task, {
-                "task_id": str(task.id),
+            await self._send_signal(orm_task, {
+                "task_id": str(orm_task.id),
                 "success": True,
                 **output,
             })
 
         except Exception as e:
-            if task.retry_count < task.max_retries:
-                task.status = "pending"
-                task.retry_count += 1
-                task.worker_id = None
-                task.started_at = None
-                task.completed_at = None
-                db.merge(task)
+            db.rollback()
+            from app.models.worker_task import WorkerTask
+            task_id = task.id
+            try:
+                orm_task = db.get(WorkerTask, task_id)
+            except Exception:
+                orm_task = None
+
+            if orm_task is None:
+                return
+
+            if orm_task.retry_count < orm_task.max_retries:
+                orm_task.status = "pending"
+                orm_task.retry_count += 1
+                orm_task.worker_id = None
+                orm_task.started_at = None
+                orm_task.completed_at = None
                 db.commit()
                 return
 
-            task.status = "failed"
-            task.output_payload = {"error_message": str(e)}
-            task.completed_at = datetime.now(timezone.utc)
-            db.merge(task)
+            orm_task.status = "failed"
+            orm_task.output_payload = {"error_message": str(e)}
+            orm_task.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-            await self._send_signal(task, {
-                "task_id": str(task.id),
+            await self._send_signal(orm_task, {
+                "task_id": str(orm_task.id),
                 "success": False,
                 "error": str(e),
             })

@@ -13,6 +13,5 @@ export function useWorkerTasks(projectId?: string) {
       api.get<WorkerTaskListResponse>(
         `/api/worker-tasks${projectId ? `?project_id=${projectId}` : ""}`
       ),
-    refetchInterval: 3000,
   });
 }

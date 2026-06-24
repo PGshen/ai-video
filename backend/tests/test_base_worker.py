@@ -49,6 +49,7 @@ def mock_task():
 async def test_process_task_success_sends_signal(worker, mock_task, mock_temporal_client):
     with patch("app.workers.base.get_sync_session") as mock_session_fn:
         mock_db = MagicMock()
+        mock_db.get.return_value = mock_task
         mock_session_fn.return_value = mock_db
 
         await worker._process_task(mock_task)
@@ -79,6 +80,7 @@ async def test_process_task_failure_retries_without_signal(worker, mock_task, mo
 
     with patch("app.workers.base.get_sync_session") as mock_session_fn:
         mock_db = MagicMock()
+        mock_db.get.return_value = mock_task
         mock_session_fn.return_value = mock_db
         await failing_worker._process_task(mock_task)
 
@@ -104,6 +106,7 @@ async def test_process_task_failure_at_max_retries_sends_failure_signal(worker, 
 
     with patch("app.workers.base.get_sync_session") as mock_session_fn:
         mock_db = MagicMock()
+        mock_db.get.return_value = mock_task
         mock_session_fn.return_value = mock_db
         await failing_worker._process_task(mock_task)
 

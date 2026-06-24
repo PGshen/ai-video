@@ -38,15 +38,27 @@ class TopicResponse(BaseModel):
     description: Optional[str]
     source: str
     status: str
-    scores: TopicScores
+    score_counterintuitive: Optional[int] = None
+    score_defensibility: Optional[int] = None
+    score_visual: Optional[int] = None
+    score_freshness: Optional[int] = None
     composite_score: Optional[float]
     performance_score: Optional[float]
-    tags: list[str]
+    tags: list[str] = []
     needs_recheck: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @property
+    def scores(self) -> TopicScores:
+        return TopicScores(
+            counterintuitive=self.score_counterintuitive,
+            defensibility=self.score_defensibility,
+            visual=self.score_visual,
+            freshness=self.score_freshness,
+        )
 
 
 class TopicListResponse(BaseModel):

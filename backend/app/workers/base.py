@@ -105,7 +105,7 @@ class BaseWorker:
             db.close()
 
     async def _send_signal(self, task: Any, payload: dict):
-        handle = await self.temporal_client.get_workflow_handle(task.temporal_workflow_id)
+        handle = self.temporal_client.get_workflow_handle(task.temporal_workflow_id)
         await handle.signal(task.signal_name, payload)
 
     async def _execute(self, task: Any) -> dict:

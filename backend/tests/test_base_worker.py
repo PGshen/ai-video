@@ -13,9 +13,9 @@ class ConcreteWorker(BaseWorker):
 
 @pytest.fixture
 def mock_temporal_client():
-    client = AsyncMock()
+    client = MagicMock()
     handle = AsyncMock()
-    client.get_workflow_handle.return_value = handle
+    client.get_workflow_handle = MagicMock(return_value=handle)
     return client
 
 

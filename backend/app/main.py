@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api import topics, projects, reviews, worker_tasks
 
 app = FastAPI(title="AI Video Workflow Platform", version="0.1.0")
 
@@ -17,4 +18,7 @@ async def health():
     return {"status": "ok"}
 
 
-# Routers are registered in Task 7
+app.include_router(topics.router)
+app.include_router(projects.router)
+app.include_router(reviews.router)
+app.include_router(worker_tasks.router)

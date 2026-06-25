@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from pydantic.alias_generators import to_camel
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -33,6 +34,12 @@ class TopicUpdate(BaseModel):
 
 
 class TopicResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
+
     id: UUID
     title: str
     description: Optional[str]
@@ -42,26 +49,16 @@ class TopicResponse(BaseModel):
     score_defensibility: Optional[int] = None
     score_visual: Optional[int] = None
     score_freshness: Optional[int] = None
-    composite_score: Optional[float]
-    performance_score: Optional[float]
+    composite_score: Optional[float] = None
+    performance_score: Optional[float] = None
     tags: list[str] = []
     needs_recheck: bool
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
-
-    @property
-    def scores(self) -> TopicScores:
-        return TopicScores(
-            counterintuitive=self.score_counterintuitive,
-            defensibility=self.score_defensibility,
-            visual=self.score_visual,
-            freshness=self.score_freshness,
-        )
-
 
 class TopicListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
     items: list[TopicResponse]
     total: int
 
@@ -72,4 +69,5 @@ class BrainstormRequest(BaseModel):
 
 
 class BrainstormResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
     candidates: list[dict]

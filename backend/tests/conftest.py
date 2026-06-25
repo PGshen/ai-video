@@ -1,17 +1,34 @@
 import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock
-from app.main import app
+from fastapi.testclient import TestClient
+from app.main import app, get_temporal_client
 from app.db import get_async_session
 from app.config import settings
 
 
 @pytest.fixture
-def client():
-    async def mock_session():
-        yield MagicMock()
+def mock_db():
+    db = AsyncMock()
+    db.execute.return_value.scalars.return_value.all.return_value = []
+    db.get = AsyncMock(return_value=None)
+    return db
 
-    app.dependency_overrides[get_async_session] = mock_session
+
+@pytest.fixture
+def mock_temporal():
+    return AsyncMock()
+
+
+@pytest.fixture
+def client(mock_db, mock_temporal):
+    async def override_db():
+        yield mock_db
+
+    def override_temporal():
+        return mock_temporal
+
+    app.dependency_overrides[get_async_session] = override_db
+    app.dependency_overrides[get_temporal_client] = override_temporal
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -33,6 +34,12 @@ class FactCheckItemSchema(BaseModel):
 
 
 class ScriptVersionSchema(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
+
     id: UUID
     project_id: UUID
     version_number: int
@@ -42,10 +49,14 @@ class ScriptVersionSchema(BaseModel):
     ai_model: Optional[str]
     created_at: datetime
 
-    model_config = {"from_attributes": True}
-
 
 class VideoAssetSchema(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
+
     id: UUID
     project_id: UUID
     video_file_key: Optional[str]
@@ -53,12 +64,16 @@ class VideoAssetSchema(BaseModel):
     resolution: Optional[str]
     status: str
 
-    model_config = {"from_attributes": True}
-
 
 class ProjectResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
     id: UUID
     topic_id: UUID
+    topic_title: str = ""
     status: str
     render_engine: str
     tts_voice: str
@@ -67,8 +82,6 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
-
 
 class ProjectDetailResponse(ProjectResponse):
     current_script_version: Optional[ScriptVersionSchema]
@@ -76,15 +89,22 @@ class ProjectDetailResponse(ProjectResponse):
 
 
 class ProjectListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
     items: list[ProjectResponse]
     total: int
 
 
 class ScriptVersionListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
     items: list[ScriptVersionSchema]
 
 
 class EventSchema(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
     id: int
     project_id: UUID
     event_type: str
@@ -94,10 +114,9 @@ class EventSchema(BaseModel):
     payload: Optional[dict]
     created_at: datetime
 
-    model_config = {"from_attributes": True}
-
 
 class EventListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
     items: list[EventSchema]
 
 
@@ -112,6 +131,11 @@ class PerformanceCreate(BaseModel):
 
 
 class PerformanceResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
     id: UUID
     project_id: UUID
     platform: str
@@ -122,9 +146,8 @@ class PerformanceResponse(BaseModel):
     comment_tags: list[str]
     comment_summary: Optional[str]
 
-    model_config = {"from_attributes": True}
-
 
 class PreviewUrlResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
     url: str
     expires_in_seconds: int

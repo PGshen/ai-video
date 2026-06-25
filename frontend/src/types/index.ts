@@ -1,19 +1,22 @@
 // ═══ 选题 ═══
 export interface TopicScores {
-  counterintuitive: number;
-  defensibility: number;
-  visual: number;
-  freshness: number;
+  counterintuitive?: number;
+  defensibility?: number;
+  visual?: number;
+  freshness?: number;
 }
 
 export interface Topic {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   source: "manual" | "ai_brainstorm" | "audience" | "competitor";
   status: "pending" | "stocked" | "in_production" | "used" | "abandoned";
-  scores: TopicScores;
-  compositeScore: number;
+  scoreCounterIntuitive: number | null;
+  scoreDefensibility: number | null;
+  scoreVisual: number | null;
+  scoreFreshness: number | null;
+  compositeScore: number | null;
   performanceScore: number | null;
   tags: string[];
   needsRecheck: boolean;
@@ -36,6 +39,7 @@ export type ProjectStatus =
 export interface VideoProject {
   id: string;
   topicId: string;
+  topicTitle: string;
   status: ProjectStatus;
   renderEngine: "manim" | "remotion";
   ttsVoice: string;

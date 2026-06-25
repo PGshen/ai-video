@@ -1,10 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { VideoProject } from "@/types";
+import type { VideoProject, ProjectEvent, ReviewRequest } from "@/types";
 
 interface ProjectListResponse {
   items: VideoProject[];
   total: number;
+}
+
+interface EventListResponse {
+  items: ProjectEvent[];
 }
 
 export function useProjects(status?: string) {
@@ -22,5 +26,48 @@ export function useProject(id: string) {
     queryKey: ["projects", id],
     queryFn: () => api.get<VideoProject>(`/api/projects/${id}`),
     enabled: !!id,
+  });
+}
+
+export function useProjectEvents(projectId: string) {
+  return useQuery<EventListResponse>({
+    queryKey: ["projects", projectId, "events"],
+    queryFn: () =>
+      api.get<EventListResponse>(`/api/projects/${projectId}/events`),
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      topicId: string;
+      renderEngine: string;
+      ttsVoice: string;
+      aspectRatio: string;
+    }) =>
+      api.post<VideoProject>("/api/projects", {
+        topic_id: data.topicId,
+        render_engine: data.renderEngine,
+        tts_voice: data.ttsVoice,
+        aspect_ratio: data.aspectRatio,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+export function useSubmitReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      ...body
+    }: ReviewRequest & { projectId: string }) =>
+      api.post(`/api/projects/${projectId}/review`, body),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["projects", vars.projectId] });
+    },
   });
 }

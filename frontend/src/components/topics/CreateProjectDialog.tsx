@@ -13,6 +13,24 @@ interface Props {
   onClose: () => void;
 }
 
+const RENDER_ENGINE_LABELS: Record<string, string> = {
+  manim: "Manim",
+  remotion: "Remotion",
+};
+
+const TTS_VOICE_LABELS: Record<string, string> = {
+  alloy: "Alloy",
+  echo: "Echo",
+  fable: "Fable",
+  onyx: "Onyx",
+  nova: "Nova",
+};
+
+const ASPECT_RATIO_LABELS: Record<string, string> = {
+  landscape: "横屏 16:9",
+  portrait: "竖屏 9:16",
+};
+
 export function CreateProjectDialog({ topic, open, onClose }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
   const [ttsVoice, setTtsVoice] = useState("alloy");
@@ -45,7 +63,7 @@ export function CreateProjectDialog({ topic, open, onClose }: Props) {
           <div className="space-y-1.5">
             <Label>渲染引擎</Label>
             <Select value={renderEngine} onValueChange={(v) => v && setRenderEngine(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue>{RENDER_ENGINE_LABELS[renderEngine]}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="manim">Manim</SelectItem>
                 <SelectItem value="remotion">Remotion</SelectItem>
@@ -55,7 +73,7 @@ export function CreateProjectDialog({ topic, open, onClose }: Props) {
           <div className="space-y-1.5">
             <Label>TTS 声音</Label>
             <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue>{TTS_VOICE_LABELS[ttsVoice]}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="alloy">Alloy</SelectItem>
                 <SelectItem value="echo">Echo</SelectItem>
@@ -68,7 +86,7 @@ export function CreateProjectDialog({ topic, open, onClose }: Props) {
           <div className="space-y-1.5">
             <Label>画幅比例</Label>
             <Select value={aspectRatio} onValueChange={(v) => v && setAspectRatio(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue>{ASPECT_RATIO_LABELS[aspectRatio]}</SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="landscape">横屏 16:9</SelectItem>
                 <SelectItem value="portrait">竖屏 9:16</SelectItem>

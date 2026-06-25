@@ -23,7 +23,7 @@ export default function ProjectsPage() {
         <h1 className="text-2xl font-semibold">视频项目</h1>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
           <SelectTrigger className="w-36">
-            <SelectValue />
+            <SelectValue>{statusFilter === "all" ? "全部状态" : PROJECT_STATUS_LABELS[statusFilter]}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部状态</SelectItem>

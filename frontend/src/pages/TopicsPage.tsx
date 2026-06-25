@@ -43,7 +43,7 @@ export default function TopicsPage() {
         <div className="flex items-center gap-3">
           <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
             <SelectTrigger className="w-32">
-              <SelectValue />
+              <SelectValue>{statusFilter === "all" ? "全部状态" : TOPIC_STATUS_LABELS[statusFilter]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部状态</SelectItem>

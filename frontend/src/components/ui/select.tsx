@@ -18,11 +18,20 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   )
 }
 
-function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
+function SelectValue({ className, children, placeholder, ...props }: SelectPrimitive.Value.Props & { children?: React.ReactNode }) {
+  // base-ui Value doesn't auto-resolve ItemText labels; if caller passes children use them directly
+  if (children) {
+    return (
+      <span data-slot="select-value" className={cn("flex flex-1 text-left", className)}>
+        {children}
+      </span>
+    )
+  }
   return (
     <SelectPrimitive.Value
       data-slot="select-value"
       className={cn("flex flex-1 text-left", className)}
+      placeholder={placeholder}
       {...props}
     />
   )

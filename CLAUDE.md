@@ -81,16 +81,32 @@ frontend/         React + Vite 前端
 后端从 `backend/.env` 读取（参考 `backend/.env.example`）。
 前端从 `frontend/.env` 读取（参考 `frontend/.env.example`）。
 
+## 命令行工具路径（沙箱环境）
+
+Claude Code 沙箱的 `PATH` 不包含 `~/.local/bin` 和 nvm shims，必须使用绝对路径：
+
+```bash
+# Python / uv
+/Users/peng/.local/bin/uv run pytest tests/ -v
+/Users/peng/.local/bin/uv run python ...
+
+# Node / pnpm（需先把 node 加入 PATH）
+PATH="/Users/peng/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm build
+PATH="/Users/peng/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm install
+```
+
+不要使用裸命令 `uv` / `pnpm` / `npm`，会返回 "command not found"。
+
 ## 测试
 
 ```bash
 cd backend
-uv run pytest tests/ -v
+/Users/peng/.local/bin/uv run pytest tests/ -v
 ```
 
 ## 当前 Sprint 状态
 
 - **Sprint 0（已完成）**：基础设施骨架，所有 API 返回 stub
-- **Sprint 1**：选题池 + 项目状态机（Temporal Workflow 空壳跑通）
+- **Sprint 1（已完成）**：选题池 + 项目状态机（Temporal Workflow 空壳跑通）
 - **Sprint 2**：脚本生成 + 内容审核
 - **Sprint 3**：视频生成 + 视频审核

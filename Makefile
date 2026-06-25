@@ -16,4 +16,4 @@ dev-worker:
 	cd backend && uv run python -m app.workers.combined_worker
 
 dev-frontend:
-	cd frontend && npm run dev
+	cd frontend && pnpm dev

@@ -17,7 +17,7 @@ interface Props {
 }
 
 const SCORE_DIMENSIONS: { key: keyof TopicScores; label: string; topicKey: keyof Topic }[] = [
-  { key: "counterintuitive", label: "反直觉度", topicKey: "scoreCounterIntuitive" },
+  { key: "counterintuitive", label: "反直觉度", topicKey: "scoreCounterintuitive" },
   { key: "defensibility", label: "可论证性", topicKey: "scoreDefensibility" },
   { key: "visual", label: "可视化性", topicKey: "scoreVisual" },
   { key: "freshness", label: "新鲜度", topicKey: "scoreFreshness" },
@@ -33,7 +33,7 @@ export function TopicSheet({ topic, onClose }: Props) {
   useEffect(() => {
     if (topic) {
       setScores({
-        counterintuitive: topic.scoreCounterIntuitive ?? undefined,
+        counterintuitive: topic.scoreCounterintuitive ?? undefined,
         defensibility: topic.scoreDefensibility ?? undefined,
         visual: topic.scoreVisual ?? undefined,
         freshness: topic.scoreFreshness ?? undefined,

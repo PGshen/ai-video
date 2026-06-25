@@ -1,7 +1,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
-from app.main import app, get_temporal_client
+from app.main import app
+from app.deps import get_temporal_client
 from app.db import get_async_session
 from app.config import settings
 

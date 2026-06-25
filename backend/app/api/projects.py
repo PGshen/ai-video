@@ -83,33 +83,31 @@ async def create_project(
     temporal: TemporalClient = Depends(get_temporal_client),
     _=Depends(verify_api_key),
 ):
+    import uuid as _uuid
+    project_id = _uuid.uuid4()
+    workflow_id = f"video-production-{project_id}"
+
     orm_project = VideoProject(
         topic_id=body.topic_id,
         status="draft",
         render_engine=body.render_engine,
         tts_voice=body.tts_voice,
         aspect_ratio=body.aspect_ratio,
+        temporal_workflow_id=workflow_id,
     )
+    orm_project.id = project_id
     db.add(orm_project)
     await db.commit()
 
-    # Re-fetch to get the DB-generated id
-    project = await db.get(VideoProject, orm_project.id)
-
-    workflow_id = f"video-production-{project.id}"
     await temporal.start_workflow(
         VideoProductionWorkflow.run,
-        str(project.id),
+        str(project_id),
         id=workflow_id,
         task_queue=settings.TEMPORAL_TASK_QUEUE,
     )
 
-    project.temporal_workflow_id = workflow_id
-    await db.commit()
-
-    topic = await db.get(Topic, project.topic_id)
-    response = _project_to_response(project, topic)
-    return response
+    topic = await db.get(Topic, orm_project.topic_id)
+    return _project_to_response(orm_project, topic)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

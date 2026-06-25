@@ -12,7 +12,7 @@ export interface Topic {
   description: string | null;
   source: "manual" | "ai_brainstorm" | "audience" | "competitor";
   status: "pending" | "stocked" | "in_production" | "used" | "abandoned";
-  scoreCounterIntuitive: number | null;
+  scoreCounterintuitive: number | null;
   scoreDefensibility: number | null;
   scoreVisual: number | null;
   scoreFreshness: number | null;

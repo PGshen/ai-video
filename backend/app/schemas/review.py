@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 from typing import Optional
 
 
@@ -9,6 +10,8 @@ class FactCheckVerdict(BaseModel):
 
 
 class ReviewRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
     gate: str
     verdict: str
     rejection_type: Optional[str] = None

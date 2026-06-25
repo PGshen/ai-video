@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
 from datetime import datetime, timezone
+from app.schemas.project import ProjectResponse
 
 
 def make_project(**kwargs):
@@ -37,30 +38,33 @@ def test_list_projects_empty(client, auth_headers, mock_db):
 
 def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temporal):
     topic = make_topic(title="My Topic")
-    project = make_project(topic_id=topic.id)
-
-    call_count = 0
-
-    async def side_effect(model, key):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return project  # first get = project after commit
-        return topic  # second get = topic for title
-
-    mock_db.get.side_effect = side_effect
+    mock_db.get.return_value = topic  # only called once now: for the topic
     mock_temporal.start_workflow = AsyncMock()
 
-    response = client.post(
-        "/api/projects",
-        headers=auth_headers,
-        json={
-            "topic_id": str(topic.id),
-            "render_engine": "manim",
-            "tts_voice": "alloy",
-            "aspect_ratio": "landscape",
-        },
-    )
+    with patch("app.api.projects._project_to_response") as mock_resp:
+        now = datetime.now(timezone.utc)
+        mock_resp.return_value = ProjectResponse(
+            id=uuid4(),
+            topic_id=topic.id,
+            topic_title=topic.title,
+            status="draft",
+            render_engine="manim",
+            tts_voice="alloy",
+            aspect_ratio="landscape",
+            retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        response = client.post(
+            "/api/projects",
+            headers=auth_headers,
+            json={
+                "topic_id": str(topic.id),
+                "render_engine": "manim",
+                "tts_voice": "alloy",
+                "aspect_ratio": "landscape",
+            },
+        )
     assert response.status_code == 201
     mock_temporal.start_workflow.assert_called_once()
 

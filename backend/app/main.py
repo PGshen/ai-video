@@ -4,21 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from temporalio.client import Client as TemporalClient
 from app.api import topics, projects, reviews, worker_tasks
 from app.config import settings
-
-_temporal_client: TemporalClient | None = None
+from app.deps import set_temporal_client, get_temporal_client  # re-export for compat
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _temporal_client
-    _temporal_client = await TemporalClient.connect(settings.TEMPORAL_ADDRESS)
+    client = await TemporalClient.connect(settings.TEMPORAL_ADDRESS)
+    set_temporal_client(client)
     yield
-
-
-def get_temporal_client() -> TemporalClient:
-    if _temporal_client is None:
-        raise RuntimeError("Temporal client not initialized")
-    return _temporal_client
 
 
 app = FastAPI(title="AI Video Workflow Platform", version="0.1.0", lifespan=lifespan)

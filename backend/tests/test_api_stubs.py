@@ -3,9 +3,6 @@ import pytest
 
 
 STUB_ENDPOINTS = [
-    ("GET", "/api/topics"),
-    ("POST", "/api/topics"),
-    ("POST", "/api/topics/brainstorm"),
     ("GET", "/api/projects"),
     ("POST", "/api/projects"),
     ("GET", "/api/worker-tasks"),
@@ -44,13 +41,6 @@ def test_project_stub_endpoint_returns_todo(client, auth_headers, method, path):
     data = response.json()
     assert data["status"] == "TODO"
 
-
-def test_topic_patch_stub(client, auth_headers):
-    response = client.patch(
-        f"/api/topics/{PROJECT_ID}", headers=auth_headers, json={}
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "TODO"
 
 
 def test_protected_endpoints_require_api_key(client):

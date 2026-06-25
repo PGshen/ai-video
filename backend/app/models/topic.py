@@ -12,6 +12,15 @@ def utcnow():
 
 
 class Topic(Base):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("id", uuid.uuid4())
+        kwargs.setdefault("status", "pending")
+        kwargs.setdefault("needs_recheck", False)
+        now = utcnow()
+        kwargs.setdefault("created_at", now)
+        kwargs.setdefault("updated_at", now)
+        super().__init__(**kwargs)
+
     __tablename__ = "topics"
 
     id: Mapped[uuid.UUID] = mapped_column(

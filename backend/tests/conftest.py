@@ -9,7 +9,11 @@ from app.config import settings
 @pytest.fixture
 def mock_db():
     db = AsyncMock()
-    db.execute.return_value.scalars.return_value.all.return_value = []
+    # db.execute is AsyncMock; its return_value must be a plain MagicMock
+    # so that result.scalars() (sync) works correctly.
+    execute_result = MagicMock()
+    execute_result.scalars.return_value.all.return_value = []
+    db.execute.return_value = execute_result
     db.get = AsyncMock(return_value=None)
     return db
 

@@ -7,32 +7,122 @@ from app.engines.ai.base import BrainstormResult, ChatClient, ScriptGenerationRe
 
 class ChatAIProvider:
     _ENGINE_CODE_PROMPTS: dict[str, str] = {
-        "manim": (
-            "- code 字段使用 Python Manim 代码。每个镜头定义一个继承自 Scene 的类，"
-            "在 construct() 方法中编写动画逻辑。\n"
-            "- 在需要音频的位置使用占位符 {{AUDIO_SCENE_N}}（N 为 scene_index），"
-            "例如 {{AUDIO_SCENE_0}}。\n"
-            "- 示例：\n"
-            "  class TitleScene(Scene):\n"
-            "      def construct(self):\n"
-            "          {{AUDIO_SCENE_0}}\n"
-            "          title = Text(\"标题\").scale(1.5)\n"
-            "          self.play(Write(title))"
-        ),
-        "remotion": (
-            "- code 字段使用 React/TypeScript Remotion 组件。每个镜头导出一个函数组件，"
-            "使用 useCurrentFrame 和 useVideoConfig hook。\n"
-            "- 音频通过 <Audio src={audioSrc} /> 组件注入，组件从 props 接收 audioSrc。\n"
-            "- 示例：\n"
-            "  export const TitleScene: React.FC<{audioSrc?: string}> = ({audioSrc}) => {\n"
-            "    const frame = useCurrentFrame();\n"
-            "    return <AbsoluteFill>"
-            "{audioSrc && <Audio src={audioSrc} />}<h1>标题</h1></AbsoluteFill>;\n"
-            "  };"
-        ),
+        "manim": """\
+【Manim 代码规范】
+
+渲染引擎已生成外层结构（from manim import *、Scene 类定义、construct() 等），code 字段只写 construct() 方法体内的代码片段：
+
+      # === 镜头 0 ===
+      <scene 0 的 code>
+      # === 镜头 1 ===
+      <scene 1 的 code>
+      ...
+
+禁止在 code 里写 import 语句、def construct、或结构定义。
+
+【变量生命周期规则】
+- scene 0 声明的变量（如 title = Text("...")）在 scene 1、2... 中仍在作用域内，可直接引用
+- 若下一镜头不再需要某元素，必须在本镜头末尾显式移除：self.play(FadeOut(obj))
+- 若下一镜头复用某元素（变形/移动/替换），用 Transform / ReplacementTransform / .animate，不要重新声明同名变量
+- 禁止在不同镜头中对同一逻辑元素重复声明同名变量
+
+【动画时序规则】
+- 用 self.wait(n) 控制停留时长，单位秒
+- 每个镜头 code 的所有 self.play(run_time=...) 与 self.wait(...) 之和需与该镜头 estimated_duration_seconds 匹配（误差 ±1s 可接受）
+- 镜头之间用 FadeOut/FadeIn 或 Transform 做过渡，避免画面突然硬切
+
+【视觉优先】
+- 多用 Circle、Square、Arrow、NumberLine、Axes、Graph、VGroup 等几何图形构建图示
+- 公式用 MathTex，避免用 Text 堆砌大段说明文字
+- 画面文字只保留关键词、数字、公式、简短标注，每帧不超过 15 个汉字
+- 善用 Create、Write、GrowArrow、DrawBorderThenFill、Transform 等动效让图形活起来
+
+【典型跨镜头示例】
+# === 镜头 0（标题引入）===
+title = Text("为什么天空是蓝色的？").scale(1.2)
+self.play(Write(title), run_time=2)
+self.wait(1)
+
+# === 镜头 1（标题缩小，引入图示）===
+self.play(title.animate.scale(0.5).to_edge(UP), run_time=1)
+sun = Circle(radius=0.5, color=YELLOW).shift(LEFT * 4)
+earth = Circle(radius=0.3, color=BLUE).shift(RIGHT * 3)
+light_ray = Arrow(sun.get_right(), earth.get_left(), color=WHITE)
+self.play(Create(sun), Create(earth), GrowArrow(light_ray), run_time=2)
+self.wait(2)
+self.play(FadeOut(light_ray), FadeOut(earth))
+""",
+        "remotion": """\
+【Remotion 代码规范】
+
+渲染引擎已生成外层结构，code 字段只写放入 <Sequence> 内部的 JSX 片段：
+
+  export const VideoScene: React.FC = () => {
+    const { fps } = useVideoConfig();
+    return (
+      <>
+        {/* === 镜头 0 === */}
+        <Sequence from={0} durationInFrames={scene0Frames}>
+          <scene 0 的 code>
+        </Sequence>
+        {/* === 镜头 1 === */}
+        <Sequence from={scene1StartFrame} durationInFrames={scene1Frames}>
+          <scene 1 的 code>
+        </Sequence>
+      </>
+    );
+  };
+
+禁止在 code 里写 export const VideoScene 外层定义。
+
+【帧与时序规则】
+- 在 code 片段内用 useCurrentFrame() 获取当前 <Sequence> 内的相对帧（从 0 开始）
+- 动画用 interpolate(frame, [inputRange], [outputRange]) 或 spring({ frame, fps }) 驱动
+- estimated_duration_seconds × fps（默认 30）= 该镜头 durationInFrames，渲染引擎自动计算，code 里不要硬编码绝对帧数
+- 镜头间过渡用 interpolate + opacity 实现淡入淡出，或用 spring() 做弹性动效
+
+【跨镜头共享元素】
+- 跨多个镜头持续存在的元素（如背景、顶部标题栏）用 <Sequence from={0} durationInFrames={totalFrames}> 包裹，放在最外层
+- 每个镜头的 code 只负责该镜头独有的内容
+
+【视觉优先】
+- 用 SVG 路径、几何图形、CSS animation/transform 构建图示，避免大段文字
+- 文字只用于关键词、数字、公式标注，每帧不超过 15 个汉字
+- 善用 spring() 做元素入场动效，interpolate 做连续属性变化（位置、缩放、透明度）
+
+【典型示例】
+// 镜头 0：标题淡入
+const frame = useCurrentFrame();
+const { fps } = useVideoConfig();
+const opacity = interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" });
+return (
+  <AbsoluteFill style={{ background: "#0a0a0a", justifyContent: "center", alignItems: "center" }}>
+    <div style={{ opacity, fontSize: 56, color: "white", fontWeight: "bold" }}>
+      为什么天空是蓝色的？
+    </div>
+  </AbsoluteFill>
+);
+
+// 镜头 1：散射图示动画
+const frame = useCurrentFrame();
+const { fps } = useVideoConfig();
+const progress = spring({ frame, fps, config: { stiffness: 60, damping: 12 } });
+const rayWidth = interpolate(progress, [0, 1], [0, 300]);
+return (
+  <AbsoluteFill style={{ background: "#0a0a0a" }}>
+    <svg width="100%" height="100%" viewBox="0 0 1280 720">
+      <circle cx={200} cy={360} r={60} fill="#FFD700" />
+      <line x1={260} y1={360} x2={260 + rayWidth} y2={360}
+            stroke="white" strokeWidth={3} />
+    </svg>
+  </AbsoluteFill>
+);
+""",
     }
     _ENGINE_CODE_PROMPT_FALLBACK = (
-        "- code 字段填写适合所选渲染引擎的代码，在需要音频处使用 {{AUDIO_SCENE_N}} 占位符。"
+        "- code 字段填写适合所选渲染引擎的代码片段（非完整文件），"
+        "所有镜头的 code 将被顺序拼合为单个执行单元。"
+        "不处理音频，渲染引擎自动注入。"
     )
 
     def __init__(
@@ -73,7 +163,7 @@ JSON 格式示例：
       "scene_index": 0,
       "narration": "旁白文稿",
       "description": "画面描述",
-      "code": "渲染代码",
+      "code": "渲染代码片段",
       "estimated_duration_seconds": 12.5
     }}
   ],
@@ -95,6 +185,11 @@ JSON 格式示例：
 
 渲染引擎：{render_engine}
 {engine_hint}
+
+【代码拼合规则】
+所有镜头的 code 字段将被渲染引擎按 scene_index 顺序拼合为单个执行单元，每段之间插入注释分隔符。
+code 字段只写代码片段，不写外层结构（详见各引擎规范）。
+音频由渲染引擎在每个镜头开始时自动注入，code 里不处理音频。
 
 要求：
 - scenes 是镜头数组，scene_index 从 0 连续递增。

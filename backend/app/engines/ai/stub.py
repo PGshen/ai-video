@@ -1,6 +1,7 @@
 import asyncio
+import json
 
-from app.engines.ai.base import BrainstormResult, ScriptGenerationResult
+from app.engines.ai.base import BrainstormResult, ScriptGenerationResult, ChatClient
 
 
 class StubProvider:
@@ -51,3 +52,37 @@ class StubProvider:
         for chunk in chunks:
             await asyncio.sleep(0)
             yield chunk
+
+
+class StubChatClient:
+    """Stub implementation of ChatClient protocol for testing."""
+
+    @property
+    def engine_name(self) -> str:
+        return "stub"
+
+    @property
+    def model_name(self) -> str:
+        return "stub-model"
+
+    async def create_chat_completion(
+        self,
+        messages: list[dict],
+        response_format: dict | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Return a stub JSON response with empty scenes and fact_checks."""
+        await asyncio.sleep(0)
+        response = {
+            "scenes": [],
+            "fact_checks": [],
+        }
+        return json.dumps(response, ensure_ascii=False)
+
+    async def stream_chat_completion(
+        self,
+        messages: list[dict],
+    ):
+        """Stub streaming - yields empty chunks."""
+        await asyncio.sleep(0)
+        yield ""

@@ -104,7 +104,6 @@ return (
 );
 
 // 镜头 1：散射图示动画
-const frame = useCurrentFrame();
 const { fps } = useVideoConfig();
 const progress = spring({ frame, fps, config: { stiffness: 60, damping: 12 } });
 const rayWidth = interpolate(progress, [0, 1], [0, 300]);

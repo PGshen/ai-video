@@ -6,7 +6,8 @@ import asyncio
 import logging
 from temporalio.client import Client
 from temporalio.worker import Worker as TemporalWorker
-from app.workers.base import BaseWorker
+from app.workers.script_worker import ScriptWorker
+from app.workers.render_worker import RenderWorker
 from app.workflows.video_production import VideoProductionWorkflow
 from app.workflows.activities import (
     update_project_status,
@@ -18,14 +19,6 @@ from app.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-class TaskWorker(BaseWorker):
-    """轮询 worker_tasks 表，Sprint 2/3 实现具体任务处理"""
-    supported_task_types = ["generate_script", "render_video"]
-
-    async def _execute(self, task) -> dict:
-        raise NotImplementedError(f"Task type {task.task_type} not yet implemented")
 
 
 async def main():
@@ -44,8 +37,14 @@ async def main():
         ],
     )
 
-    task_worker = TaskWorker(
-        worker_id="combined-worker-01",
+    script_worker = ScriptWorker(
+        worker_id="script-worker-01",
+        temporal_client=client,
+        poll_interval=2.0,
+    )
+
+    render_worker = RenderWorker(
+        worker_id="render-worker-01",
         temporal_client=client,
         poll_interval=2.0,
     )
@@ -53,7 +52,8 @@ async def main():
     logger.info("Workers started.")
     await asyncio.gather(
         temporal_worker.run(),
-        task_worker.run(),
+        script_worker.run(),
+        render_worker.run(),
     )
 
 

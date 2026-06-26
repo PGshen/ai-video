@@ -87,11 +87,21 @@ export function ResearchChat({ topic }: Props) {
         body: JSON.stringify({ message, use_default_prompt: useDefaultPrompt }),
       });
 
-      if (!res.ok || !res.body) return;
+      if (!res.ok || !res.body) {
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.id === assistantEntry.id
+              ? { ...e, text: `请求失败 (${res.status})，请重试` }
+              : e
+          )
+        );
+        return;
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let shouldStop = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -102,7 +112,21 @@ export function ResearchChat({ topic }: Props) {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6);
-          if (payload === "[DONE]" || payload.startsWith("[ERROR]")) break;
+          if (payload === "[DONE]") {
+            shouldStop = true;
+            break;
+          }
+          if (payload.startsWith("[ERROR]")) {
+            setEntries((prev) =>
+              prev.map((e) =>
+                e.id === assistantEntry.id
+                  ? { ...e, text: "查询失败，请重试" }
+                  : e
+              )
+            );
+            shouldStop = true;
+            break;
+          }
           setEntries((prev) =>
             prev.map((e) =>
               e.id === assistantEntry.id
@@ -110,6 +134,10 @@ export function ResearchChat({ topic }: Props) {
                 : e
             )
           );
+        }
+        if (shouldStop) {
+          reader.cancel();
+          break;
         }
       }
     } finally {

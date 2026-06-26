@@ -169,6 +169,9 @@ async def research_topic(
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
 
+    if not body.use_default_prompt and not body.message.strip():
+        raise HTTPException(status_code=422, detail="message is required when use_default_prompt is false")
+
     history: list[dict] = topic.research_data or []
     conversation_history = [{"role": m["role"], "content": m["content"]} for m in history]
 
@@ -197,7 +200,12 @@ async def research_topic(
             ):
                 full_response.append(chunk)
                 yield f"data: {chunk}\n\n"
+        except Exception:
+            yield "data: [ERROR] 服务暂时不可用，请稍后重试\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
+        try:
             now = datetime.now(timezone.utc).isoformat()
             new_history = list(history) + [
                 {"role": "user", "content": user_message, "createdAt": now},
@@ -205,8 +213,8 @@ async def research_topic(
             ]
             topic.research_data = new_history
             await db.commit()
-        except Exception as e:
-            yield f"data: [ERROR] {e}\n\n"
+        except Exception:
+            yield "data: [ERROR] 对话内容保存失败\n\n"
         finally:
             yield "data: [DONE]\n\n"
 

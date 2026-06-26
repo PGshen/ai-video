@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { VideoProject, ProjectEvent, ReviewRequest } from "@/types";
+import type { VideoProject, ProjectEvent, ReviewRequest, ScriptVersion } from "@/types";
 
 interface ProjectListResponse {
   items: VideoProject[];
@@ -72,5 +72,14 @@ export function useSubmitReview() {
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["projects", vars.projectId] });
     },
+  });
+}
+
+export function useProjectScript(projectId: string) {
+  return useQuery<ScriptVersion>({
+    queryKey: ["projects", projectId, "script"],
+    queryFn: () => api.get<ScriptVersion>(`/api/projects/${projectId}/script`),
+    enabled: !!projectId,
+    retry: false,
   });
 }

@@ -1,6 +1,8 @@
 from typing import Optional
 from uuid import UUID
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
@@ -8,7 +10,7 @@ from app.db import get_async_session
 from app.models.topic import Topic
 from app.schemas.topic import (
     TopicCreate, TopicUpdate, TopicResponse, TopicListResponse,
-    BrainstormRequest, BrainstormResponse,
+    BrainstormRequest, BrainstormResponse, ResearchMessageRequest,
 )
 
 router = APIRouter(prefix="/api/topics", tags=["topics"])
@@ -106,3 +108,99 @@ async def update_topic(
     await db.commit()
     await db.refresh(topic)
     return topic
+
+
+DEFAULT_RESEARCH_SYSTEM_PROMPT = """\
+你是一位知识视频选题研究助手。当前研究的选题是：
+
+标题：{topic_title}
+描述：{topic_description}
+
+请围绕该选题提供背景资料，内容以 Markdown 格式输出，重点包括：核心概念、相关理论、反直觉角度、可视化潜力等。\
+"""
+
+DEFAULT_RESEARCH_QUESTION = "请介绍这个选题的背景知识和核心理论"
+
+
+def get_ai_provider():
+    """Returns the active AI provider. Replace with real implementation in Sprint 2."""
+
+    class StubProvider:
+        engine_name = "stub"
+        model_name = "stub-model"
+
+        async def generate_script(self, *args, **kwargs):
+            from app.engines.ai.base import ScriptGenerationResult
+            return ScriptGenerationResult(scenes=[], fact_checks=[])
+
+        async def research_topic(
+            self,
+            topic_title: str,
+            topic_description: str,
+            conversation_history: list[dict],
+            new_message: str,
+            use_default_prompt: bool = False,
+        ):
+            import asyncio
+            if use_default_prompt:
+                chunks = [
+                    f"## {topic_title} — 背景资料\n\n",
+                    "**核心概念：** 这是一个由 AI Stub 生成的占位回复。\n\n",
+                    "Sprint 2 接入真实 LLM 后将替换此内容。",
+                ]
+            else:
+                chunks = [f"你问的是：{new_message}\n\n", "（Stub 回复，Sprint 2 替换）"]
+            for chunk in chunks:
+                await asyncio.sleep(0)
+                yield chunk
+
+    return StubProvider()
+
+
+@router.post("/{topic_id}/research")
+async def research_topic(
+    topic_id: UUID,
+    body: ResearchMessageRequest,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    topic = await db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    history: list[dict] = topic.research_data or []
+    conversation_history = [{"role": m["role"], "content": m["content"]} for m in history]
+
+    if body.use_default_prompt:
+        user_message = DEFAULT_RESEARCH_QUESTION
+    else:
+        user_message = body.message
+
+    provider = get_ai_provider()
+
+    async def event_stream():
+        full_response = []
+        try:
+            async for chunk in provider.research_topic(
+                topic_title=topic.title,
+                topic_description=topic.description or "",
+                conversation_history=conversation_history,
+                new_message=user_message,
+                use_default_prompt=body.use_default_prompt,
+            ):
+                full_response.append(chunk)
+                yield f"data: {chunk}\n\n"
+
+            now = datetime.now(timezone.utc).isoformat()
+            new_history = list(history) + [
+                {"role": "user", "content": user_message, "createdAt": now},
+                {"role": "assistant", "content": "".join(full_response), "createdAt": now},
+            ]
+            topic.research_data = new_history
+            await db.commit()
+        except Exception as e:
+            yield f"data: [ERROR] {e}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

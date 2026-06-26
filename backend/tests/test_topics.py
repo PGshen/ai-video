@@ -115,3 +115,71 @@ def test_topic_response_includes_research_data(client, auth_headers, mock_db):
     item = response.json()["items"][0]
     assert "researchData" in item
     assert item["researchData"][0]["role"] == "user"
+
+
+def test_research_topic_streams_response(client, auth_headers, mock_db):
+    from unittest.mock import patch
+
+    topic = make_topic(
+        title="量子纠缠",
+        description="粒子间的神秘关联",
+        research_data=[],
+    )
+    mock_db.get = AsyncMock(return_value=topic)
+    mock_db.commit = AsyncMock()
+    mock_db.refresh = AsyncMock()
+
+    async def fake_research(*args, **kwargs):
+        for chunk in ["## 核心理论\n", "量子纠缠是..."]:
+            yield chunk
+
+    with patch(
+        "app.api.topics.get_ai_provider",
+        return_value=type("P", (), {"research_topic": lambda self, **kw: fake_research(**kw)})(),
+    ):
+        response = client.post(
+            f"/api/topics/{topic.id}/research",
+            headers=auth_headers,
+            json={"message": "介绍核心理论", "use_default_prompt": False},
+        )
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    body = response.text
+    assert "data: " in body
+    assert "[DONE]" in body
+
+
+def test_research_topic_404_when_not_found(client, auth_headers, mock_db):
+    mock_db.get = AsyncMock(return_value=None)
+    response = client.post(
+        f"/api/topics/00000000-0000-0000-0000-000000000000/research",
+        headers=auth_headers,
+        json={"message": "test"},
+    )
+    assert response.status_code == 404
+
+
+def test_research_topic_default_prompt(client, auth_headers, mock_db):
+    from unittest.mock import patch
+
+    topic = make_topic(title="黑洞", description="时空曲率极大处", research_data=[])
+    mock_db.get = AsyncMock(return_value=topic)
+    mock_db.commit = AsyncMock()
+    mock_db.refresh = AsyncMock()
+
+    received_kwargs = {}
+
+    async def fake_research(**kwargs):
+        received_kwargs.update(kwargs)
+        yield "测试内容"
+
+    with patch(
+        "app.api.topics.get_ai_provider",
+        return_value=type("P", (), {"research_topic": lambda self, **kw: fake_research(**kw)})(),
+    ):
+        client.post(
+            f"/api/topics/{topic.id}/research",
+            headers=auth_headers,
+            json={"use_default_prompt": True},
+        )
+    assert received_kwargs.get("use_default_prompt") is True

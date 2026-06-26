@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Protocol, AsyncIterator
 from dataclasses import dataclass
 
 
@@ -22,3 +22,12 @@ class AIProvider(Protocol):
         render_engine: str,
         rejection_context: dict | None = None,
     ) -> ScriptGenerationResult: ...
+
+    async def research_topic(
+        self,
+        topic_title: str,
+        topic_description: str,
+        conversation_history: list[dict],
+        new_message: str,
+        use_default_prompt: bool = False,
+    ) -> AsyncIterator[str]: ...

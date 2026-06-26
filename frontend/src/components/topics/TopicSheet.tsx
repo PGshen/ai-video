@@ -58,6 +58,7 @@ function ScorePicker({
 
 export function TopicSheet({ topic, onClose }: Props) {
   const updateTopic = useUpdateTopic();
+  const [displayTopic, setDisplayTopic] = useState<Topic | null>(topic);
   const [scores, setScores] = useState<TopicScores>({});
   const [status, setStatus] = useState("");
   const [tagsInput, setTagsInput] = useState("");
@@ -65,6 +66,7 @@ export function TopicSheet({ topic, onClose }: Props) {
 
   useEffect(() => {
     if (topic) {
+      setDisplayTopic(topic);
       setScores({
         counterintuitive: topic.scoreCounterintuitive ?? undefined,
         defensibility: topic.scoreDefensibility ?? undefined,
@@ -77,14 +79,14 @@ export function TopicSheet({ topic, onClose }: Props) {
   }, [topic]);
 
   const handleSave = () => {
-    if (!topic) return;
+    if (!displayTopic) return;
     const tags = tagsInput.split(",").map((t) => t.trim()).filter(Boolean);
-    updateTopic.mutate({ id: topic.id, scores, status, tags }, { onSuccess: onClose });
+    updateTopic.mutate({ id: displayTopic.id, scores, status, tags }, { onSuccess: onClose });
   };
 
-  if (!topic) return null;
+  if (!displayTopic) return null;
 
-  const compositeScore = topic.compositeScore;
+  const compositeScore = displayTopic.compositeScore;
 
   return (
     <>
@@ -92,19 +94,19 @@ export function TopicSheet({ topic, onClose }: Props) {
         {/* Header */}
         <SidePanelHeader>
           <div className="flex items-start justify-between gap-3 pr-7">
-            <h2 className="text-base font-semibold leading-snug">{topic.title}</h2>
+            <h2 className="text-base font-semibold leading-snug">{displayTopic.title}</h2>
             {compositeScore !== null && (
               <span className="shrink-0 mt-0.5 text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                 综合 {compositeScore?.toFixed(1)}
               </span>
             )}
           </div>
-          {topic.description && (
-            <p className="text-sm text-muted-foreground leading-relaxed mt-1">{topic.description}</p>
+          {displayTopic.description && (
+            <p className="text-sm text-muted-foreground leading-relaxed mt-1">{displayTopic.description}</p>
           )}
-          {topic.tags.length > 0 && (
+          {displayTopic.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {topic.tags.map((tag) => (
+              {displayTopic.tags.map((tag) => (
                 <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
               ))}
             </div>
@@ -170,7 +172,7 @@ export function TopicSheet({ topic, onClose }: Props) {
 
       {createProjectOpen && (
         <CreateProjectDialog
-          topic={topic}
+          topic={displayTopic}
           open={createProjectOpen}
           onClose={() => setCreateProjectOpen(false)}
         />

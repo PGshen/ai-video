@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const TRANSITION_MS = 300;
+
 interface SidePanelProps {
   open: boolean;
   onClose: () => void;
@@ -19,12 +21,18 @@ export function SidePanel({ open, onClose, children, className, width = "w-[460p
   React.useEffect(() => {
     if (open) {
       setMounted(true);
-      // Small delay so transition fires after mount
-      const t = requestAnimationFrame(() => setVisible(true));
-      return () => cancelAnimationFrame(t);
+      // Wait until the hidden initial frame is painted before sliding in.
+      let secondFrame = 0;
+      const firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(() => setVisible(true));
+      });
+      return () => {
+        cancelAnimationFrame(firstFrame);
+        cancelAnimationFrame(secondFrame);
+      };
     } else {
       setVisible(false);
-      const t = setTimeout(() => setMounted(false), 300);
+      const t = setTimeout(() => setMounted(false), TRANSITION_MS);
       return () => clearTimeout(t);
     }
   }, [open]);

@@ -1,19 +1,18 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useProjects } from "@/hooks/useProjects";
-import { ProjectSheet } from "@/components/projects/ProjectSheet";
 import {
   timeAgo,
   PROJECT_STATUS_LABELS,
   PROJECT_STATUS_COLORS,
 } from "@/lib/format";
-import type { VideoProject } from "@/types";
 
 export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedProject, setSelectedProject] = useState<VideoProject | null>(null);
+  const navigate = useNavigate();
 
   const { data, isLoading } = useProjects(statusFilter === "all" ? undefined : statusFilter);
 
@@ -65,7 +64,7 @@ export default function ProjectsPage() {
               <TableRow
                 key={project.id}
                 className="cursor-pointer hover:bg-muted/50"
-                onClick={() => setSelectedProject(project)}
+                onClick={() => navigate(`/projects/${project.id}`)}
               >
                 <TableCell className="font-medium max-w-[280px] truncate">
                   {project.topicTitle || "-"}
@@ -90,7 +89,7 @@ export default function ProjectsPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={(e) => { e.stopPropagation(); setSelectedProject(project); }}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/projects/${project.id}`); }}
                   >
                     详情
                   </Button>
@@ -101,10 +100,6 @@ export default function ProjectsPage() {
         </Table>
       </div>
 
-      <ProjectSheet
-        project={selectedProject}
-        onClose={() => setSelectedProject(null)}
-      />
     </div>
   );
 }

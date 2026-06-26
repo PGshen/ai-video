@@ -30,4 +30,5 @@ class AIProvider(Protocol):
         conversation_history: list[dict],
         new_message: str,
         use_default_prompt: bool = False,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[str]: ...

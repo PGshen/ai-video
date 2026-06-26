@@ -16,6 +16,7 @@ class StubAIProvider:
         conversation_history,
         new_message,
         use_default_prompt=False,
+        system_prompt=None,
     ):
         chunks = ["## 核心理论\n\n", "这是一个测试回复。"]
         for chunk in chunks:

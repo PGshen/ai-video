@@ -140,6 +140,7 @@ def get_ai_provider():
             conversation_history: list[dict],
             new_message: str,
             use_default_prompt: bool = False,
+            system_prompt: str | None = None,
         ):
             import asyncio
             if use_default_prompt:
@@ -172,8 +173,13 @@ async def research_topic(
     conversation_history = [{"role": m["role"], "content": m["content"]} for m in history]
 
     if body.use_default_prompt:
+        system_prompt = DEFAULT_RESEARCH_SYSTEM_PROMPT.format(
+            topic_title=topic.title,
+            topic_description=topic.description or "",
+        )
         user_message = DEFAULT_RESEARCH_QUESTION
     else:
+        system_prompt = None
         user_message = body.message
 
     provider = get_ai_provider()
@@ -187,6 +193,7 @@ async def research_topic(
                 conversation_history=conversation_history,
                 new_message=user_message,
                 use_default_prompt=body.use_default_prompt,
+                system_prompt=system_prompt,
             ):
                 full_response.append(chunk)
                 yield f"data: {chunk}\n\n"

@@ -9,6 +9,7 @@ import { useUpdateTopic } from "@/hooks/useTopics";
 import { CreateProjectDialog } from "./CreateProjectDialog";
 import { TOPIC_STATUS_LABELS } from "@/lib/format";
 import type { Topic, TopicScores } from "@/types";
+import { ResearchChat } from "./ResearchChat";
 
 interface Props {
   topic: Topic | null;
@@ -90,7 +91,7 @@ export function TopicSheet({ topic, onClose }: Props) {
 
   return (
     <>
-      <SidePanel open={!!topic} onClose={onClose}>
+      <SidePanel open={!!topic} onClose={onClose} wide>
         {/* Header */}
         <SidePanelHeader>
           <div className="flex items-start justify-between gap-3 pr-7">
@@ -114,49 +115,62 @@ export function TopicSheet({ topic, onClose }: Props) {
         </SidePanelHeader>
 
         {/* Scrollable body */}
-        <SidePanelBody className="space-y-6">
-          {/* Scoring */}
-          <section className="space-y-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">打分</p>
-            {SCORE_DIMENSIONS.map(({ key, label, desc }) => (
-              <div key={key} className="space-y-2">
-                <div className="flex items-baseline gap-2">
-                  <Label className="text-sm font-medium">{label}</Label>
-                  <span className="text-xs text-muted-foreground">{desc}</span>
-                </div>
-                <ScorePicker
-                  value={scores[key]}
-                  onChange={(v) => setScores((prev) => ({ ...prev, [key]: v }))}
-                />
-              </div>
-            ))}
-          </section>
+        <SidePanelBody className="p-0 overflow-hidden">
+          <div className="grid grid-cols-[1fr_320px] h-full">
+            {/* Left: Research Assistant */}
+            <div className="flex flex-col min-h-0 px-5 py-5 border-r">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                研究助手
+              </p>
+              <ResearchChat topic={displayTopic} />
+            </div>
 
-          {/* Meta */}
-          <section className="space-y-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">元数据</p>
-            <div className="space-y-1.5">
-              <Label className="text-sm">状态</Label>
-              <Select value={status} onValueChange={(v) => v && setStatus(v)}>
-                <SelectTrigger className="w-full"><SelectValue>{TOPIC_STATUS_LABELS[status]}</SelectValue></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(TOPIC_STATUS_LABELS).map(([val, lbl]) => (
-                    <SelectItem key={val} value={val}>{lbl}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Right: Scoring + Meta */}
+            <div className="overflow-y-auto px-5 py-5 space-y-6">
+              {/* Scoring */}
+              <section className="space-y-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">打分</p>
+                {SCORE_DIMENSIONS.map(({ key, label, desc }) => (
+                  <div key={key} className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <Label className="text-sm font-medium">{label}</Label>
+                      <span className="text-xs text-muted-foreground">{desc}</span>
+                    </div>
+                    <ScorePicker
+                      value={scores[key]}
+                      onChange={(v) => setScores((prev) => ({ ...prev, [key]: v }))}
+                    />
+                  </div>
+                ))}
+              </section>
+
+              {/* Meta */}
+              <section className="space-y-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">元数据</p>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">状态</Label>
+                  <Select value={status} onValueChange={(v) => v && setStatus(v)}>
+                    <SelectTrigger className="w-full"><SelectValue>{TOPIC_STATUS_LABELS[status]}</SelectValue></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(TOPIC_STATUS_LABELS).map(([val, lbl]) => (
+                        <SelectItem key={val} value={val}>{lbl}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">标签</Label>
+                  <Input
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                    placeholder="科学, 物理, 认知"
+                    className="text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">逗号分隔多个标签</p>
+                </div>
+              </section>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">标签</Label>
-              <Input
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                placeholder="科学, 物理, 认知"
-                className="text-sm"
-              />
-              <p className="text-xs text-muted-foreground">逗号分隔多个标签</p>
-            </div>
-          </section>
+          </div>
         </SidePanelBody>
 
         {/* Footer */}

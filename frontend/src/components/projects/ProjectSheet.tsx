@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { SidePanel, SidePanelHeader, SidePanelBody, SidePanelFooter } from "@/components/ui/side-panel";
+import { useState, useMemo, useRef } from "react";
+import { SidePanel, SidePanelHeader } from "@/components/ui/side-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,12 +22,14 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   signal_sent: "信号发送",
 };
 
-const SCRIPT_STATES = ["script_review", "script_generating", "script_failed",
-  "video_generating", "video_failed", "video_review", "published"];
-
 export function ProjectSheet({ project, onClose }: Props) {
-  const { data: eventsData } = useProjectEvents(project?.id ?? "");
-  const { data: script, isLoading: scriptLoading } = useProjectScript(project?.id ?? "");
+  // Keep the last non-null project so SidePanel's exit animation has content to render
+  const lastProjectRef = useRef<VideoProject | null>(null);
+  if (project) lastProjectRef.current = project;
+  const displayProject = project ?? lastProjectRef.current;
+
+  const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
+  const { data: script, isLoading: scriptLoading } = useProjectScript(displayProject?.id ?? "");
   const submitReview = useSubmitReview();
 
   const [verdicts, setVerdicts] = useState<Record<number, VerdictState>>({});
@@ -36,8 +38,6 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   const isScriptReview = project?.status === "script_review";
   const hasScript = !!script;
-  const showScriptPanel = project != null && SCRIPT_STATES.includes(project.status);
-  const wide = showScriptPanel;
 
   const allMarked = useMemo(() => {
     if (!script || script.factChecks.length === 0) return true;
@@ -79,155 +79,206 @@ export function ProjectSheet({ project, onClose }: Props) {
     submitReview.mutate({ projectId: project.id, gate: "script", verdict: "abandoned" });
   };
 
-  if (!project) return null;
+  if (!displayProject) return null;
 
-  const statusColor = PROJECT_STATUS_COLORS[project.status] ?? "bg-gray-100 text-gray-600";
-  const statusLabel = PROJECT_STATUS_LABELS[project.status] ?? project.status;
-  const canReject = project.retryCount < 3;
+  const statusColor = PROJECT_STATUS_COLORS[displayProject.status] ?? "bg-gray-100 text-gray-600";
+  const statusLabel = PROJECT_STATUS_LABELS[displayProject.status] ?? displayProject.status;
+  const canReject = displayProject.retryCount < 3;
 
   return (
-    <SidePanel open={!!project} onClose={onClose} wide={wide}>
+    <SidePanel open={!!project} onClose={onClose} widthClass="w-[90vw] max-w-[95vw]">
       <SidePanelHeader>
         <div className="pr-7 flex items-start justify-between">
           <div>
-            <h2 className="text-base font-semibold leading-snug">{project.topicTitle}</h2>
+            <h2 className="text-base font-semibold leading-snug">{displayProject.topicTitle}</h2>
             <div className="flex items-center gap-2 mt-2">
               <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor}`}>
                 {statusLabel}
               </span>
-              {project.retryCount > 0 && (
-                <span className="text-xs text-muted-foreground">已驳回 {project.retryCount} 次</span>
+              {displayProject.retryCount > 0 && (
+                <span className="text-xs text-muted-foreground">已驳回 {displayProject.retryCount} 次</span>
               )}
             </div>
           </div>
         </div>
       </SidePanelHeader>
 
-      {/* 非脚本状态：普通详情视图 */}
-      {!showScriptPanel && (
-        <SidePanelBody className="space-y-6">
-          <MetaSection project={project} />
-          <EventsSection eventsData={eventsData} />
-        </SidePanelBody>
-      )}
+      {/* 主体：左栏固定 + 右栏弹性 */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 左栏：元数据 + 时间线 */}
+        <div className="w-72 shrink-0 border-r flex flex-col overflow-hidden">
+          <ScrollArea className="flex-1">
+            <div className="p-5 space-y-6">
+              <MetaSection project={displayProject} />
+              <EventsSection eventsData={eventsData} />
+            </div>
+          </ScrollArea>
+        </div>
 
-      {/* 脚本状态：两列审核视图 */}
-      {showScriptPanel && (
-        <>
-          {project.status === "script_generating" && (
-            <SidePanelBody>
-              <div className="flex flex-col items-center justify-center h-full gap-3 py-20">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                <p className="text-muted-foreground text-sm">AI 正在生成脚本，请稍候…</p>
-              </div>
-            </SidePanelBody>
-          )}
-
-          {project.status === "script_failed" && (
-            <SidePanelBody>
-              <p className="text-destructive text-sm pt-4">脚本生成失败，请联系管理员</p>
-            </SidePanelBody>
-          )}
-
-          {(isScriptReview || hasScript) &&
-            !["script_generating", "script_failed"].includes(project.status) && (
-              <div className="flex flex-1 overflow-hidden">
-                {/* 左：镜头列表 */}
-                <div className="w-1/2 border-r flex flex-col overflow-hidden">
-                  <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    镜头列表（{script?.scenes.length ?? 0} 个）
-                  </div>
-                  <ScrollArea className="flex-1">
-                    <div className="p-4 space-y-3">
-                      {scriptLoading && <p className="text-sm text-muted-foreground">加载脚本…</p>}
-                      {script?.scenes.map((scene) => (
-                        <div key={scene.sceneIndex} className="border rounded-lg p-3 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">镜头 {scene.sceneIndex}</Badge>
-                            <span className="text-xs text-muted-foreground">~{scene.estimatedDurationSeconds}s</span>
-                          </div>
-                          <p className="text-sm font-medium">{scene.description}</p>
-                          <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
-                          <details className="text-xs">
-                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                              查看代码
-                            </summary>
-                            <pre className="mt-2 p-2 bg-muted rounded overflow-x-auto text-xs leading-relaxed">
-                              {scene.code}
-                            </pre>
-                          </details>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-
-                {/* 右：事实核查表 */}
-                <div className="w-1/2 flex flex-col overflow-hidden">
-                  <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    事实核查（{script?.factChecks.length ?? 0} 条）
-                  </div>
-                  <ScrollArea className="flex-1">
-                    <div className="p-4 space-y-3">
-                      {script?.factChecks.map((item, idx) => (
-                        <FactCheckCard
-                          key={idx}
-                          item={item}
-                          index={idx}
-                          verdict={verdicts[idx]?.verdict ?? null}
-                          note={verdicts[idx]?.note ?? ""}
-                          onVerdictChange={(i, v, n) =>
-                            setVerdicts((prev) => ({ ...prev, [i]: { verdict: v, note: n } }))
-                          }
-                        />
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-              </div>
-            )}
-
-          {/* 底部操作栏 */}
-          {isScriptReview && (
-            <SidePanelFooter className="space-y-2">
-              {showRejectInput && (
-                <Textarea
-                  value={rejectionDetail}
-                  onChange={(e) => setRejectionDetail(e.target.value)}
-                  placeholder="请说明驳回原因（AI 重新生成时会参考此信息）"
-                  className="text-sm min-h-[72px]"
-                />
-              )}
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleApprove}
-                  disabled={!allMarked || submitReview.isPending}
-                  className="flex-1"
-                >
-                  通过
-                </Button>
-                {canReject && (
-                  <Button
-                    variant="outline"
-                    onClick={handleReject}
-                    disabled={submitReview.isPending}
-                    className="flex-1"
-                  >
-                    {showRejectInput ? "确认驳回" : "驳回重生成"}
-                  </Button>
-                )}
-                <Button variant="destructive" onClick={handleAbandon} disabled={submitReview.isPending}>
-                  废弃
-                </Button>
-              </div>
-              {!allMarked && script && script.factChecks.length > 0 && (
-                <p className="text-xs text-muted-foreground text-center">请为所有核查条目标注审核结果后再提交</p>
-              )}
-            </SidePanelFooter>
-          )}
-        </>
-      )}
+        {/* 右栏：审核视图 */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <RightPanel
+            project={displayProject}
+            script={script ?? null}
+            scriptLoading={scriptLoading}
+            isScriptReview={isScriptReview}
+            hasScript={hasScript}
+            verdicts={verdicts}
+            setVerdicts={setVerdicts}
+            allMarked={allMarked}
+            canReject={canReject}
+            showRejectInput={showRejectInput}
+            rejectionDetail={rejectionDetail}
+            setRejectionDetail={setRejectionDetail}
+            submitPending={submitReview.isPending}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onAbandon={handleAbandon}
+          />
+        </div>
+      </div>
     </SidePanel>
+  );
+}
+
+interface RightPanelProps {
+  project: VideoProject;
+  script: Awaited<ReturnType<typeof useProjectScript>>["data"] | null;
+  scriptLoading: boolean;
+  isScriptReview: boolean;
+  hasScript: boolean;
+  verdicts: Record<number, VerdictState>;
+  setVerdicts: React.Dispatch<React.SetStateAction<Record<number, VerdictState>>>;
+  allMarked: boolean;
+  canReject: boolean;
+  showRejectInput: boolean;
+  rejectionDetail: string;
+  setRejectionDetail: (v: string) => void;
+  submitPending: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+  onAbandon: () => void;
+}
+
+function RightPanel({
+  project, script, scriptLoading, isScriptReview, hasScript,
+  verdicts, setVerdicts, allMarked, canReject,
+  showRejectInput, rejectionDetail, setRejectionDetail,
+  submitPending, onApprove, onReject, onAbandon,
+}: RightPanelProps) {
+  if (project.status === "script_generating") {
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <p className="text-muted-foreground text-sm">AI 正在生成脚本，请稍候…</p>
+      </div>
+    );
+  }
+
+  if (project.status === "script_failed") {
+    return (
+      <div className="flex items-center justify-center flex-1">
+        <p className="text-destructive text-sm">脚本生成失败，请联系管理员</p>
+      </div>
+    );
+  }
+
+  if (!isScriptReview && !hasScript) {
+    return (
+      <div className="flex items-center justify-center flex-1">
+        <p className="text-muted-foreground text-sm">暂无审核内容</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* 两列内容区 */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 镜头列表 */}
+        <div className="w-1/2 border-r flex flex-col overflow-hidden">
+          <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            镜头列表（{script?.scenes.length ?? 0} 个）
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-3">
+              {scriptLoading && <p className="text-sm text-muted-foreground">加载脚本…</p>}
+              {script?.scenes.map((scene) => (
+                <div key={scene.sceneIndex} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">镜头 {scene.sceneIndex}</Badge>
+                    <span className="text-xs text-muted-foreground">~{scene.estimatedDurationSeconds}s</span>
+                  </div>
+                  <p className="text-sm font-medium">{scene.description}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      查看代码
+                    </summary>
+                    <pre className="mt-2 p-2 bg-muted rounded overflow-x-auto text-xs leading-relaxed">
+                      {scene.code}
+                    </pre>
+                  </details>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* 事实核查 */}
+        <div className="w-1/2 flex flex-col overflow-hidden">
+          <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            事实核查（{script?.factChecks.length ?? 0} 条）
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-3">
+              {script?.factChecks.map((item, idx) => (
+                <FactCheckCard
+                  key={idx}
+                  item={item}
+                  index={idx}
+                  verdict={verdicts[idx]?.verdict ?? null}
+                  note={verdicts[idx]?.note ?? ""}
+                  onVerdictChange={(i, v, n) =>
+                    setVerdicts((prev) => ({ ...prev, [i]: { verdict: v, note: n } }))
+                  }
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
+
+      {/* 右栏底部操作区（仅 script_review） */}
+      {isScriptReview && (
+        <div className="px-5 py-4 border-t space-y-2">
+          {showRejectInput && (
+            <Textarea
+              value={rejectionDetail}
+              onChange={(e) => setRejectionDetail(e.target.value)}
+              placeholder="请说明驳回原因（AI 重新生成时会参考此信息）"
+              className="text-sm min-h-[72px]"
+            />
+          )}
+          <div className="flex gap-2">
+            <Button onClick={onApprove} disabled={!allMarked || submitPending} className="flex-1">
+              通过
+            </Button>
+            {canReject && (
+              <Button variant="outline" onClick={onReject} disabled={submitPending} className="flex-1">
+                {showRejectInput ? "确认驳回" : "驳回重生成"}
+              </Button>
+            )}
+            <Button variant="destructive" onClick={onAbandon} disabled={submitPending}>
+              废弃
+            </Button>
+          </div>
+          {!allMarked && script && script.factChecks.length > 0 && (
+            <p className="text-xs text-muted-foreground text-center">请为所有核查条目标注审核结果后再提交</p>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 

@@ -11,9 +11,10 @@ interface SidePanelProps {
   children: React.ReactNode;
   className?: string;
   wide?: boolean;
+  widthClass?: string;
 }
 
-export function SidePanel({ open, onClose, children, className, wide = false }: SidePanelProps) {
+export function SidePanel({ open, onClose, children, className, wide = false, widthClass }: SidePanelProps) {
   // Keep mounted so exit animation plays
   const [mounted, setMounted] = React.useState(false);
   const [visible, setVisible] = React.useState(false);
@@ -62,7 +63,7 @@ export function SidePanel({ open, onClose, children, className, wide = false }: 
         className={cn(
           "absolute inset-y-0 right-0 flex flex-col bg-background shadow-2xl border-l",
           "transition-transform duration-300 ease-out",
-          wide ? "w-[860px] max-w-[95vw]" : "w-[460px] max-w-[95vw]",
+          widthClass ?? (wide ? "w-[860px] max-w-[95vw]" : "w-[460px] max-w-[95vw]"),
           visible ? "translate-x-0" : "translate-x-full",
           className
         )}

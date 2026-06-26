@@ -8,11 +8,12 @@ from app.auth import verify_api_key
 from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
+from app.models.script_version import ScriptVersion
 from app.models.topic import Topic
 from app.models.project_event import ProjectEvent
 from app.schemas.project import (
     ProjectCreate, ProjectResponse, ProjectListResponse,
-    ProjectDetailResponse, EventListResponse,
+    ProjectDetailResponse, EventListResponse, ScriptVersionSchema,
 )
 from app.workflows.video_production import VideoProductionWorkflow
 from app.config import settings
@@ -139,6 +140,23 @@ async def list_events(
     result = await db.execute(stmt)
     events = result.scalars().all()
     return EventListResponse(items=events)
+
+
+@router.get("/{project_id}/script", response_model=ScriptVersionSchema)
+async def get_current_script(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    project = await db.get(VideoProject, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.current_script_version_id:
+        raise HTTPException(status_code=404, detail="No script generated yet")
+    sv = await db.get(ScriptVersion, project.current_script_version_id)
+    if sv is None:
+        raise HTTPException(status_code=404, detail="Script version not found")
+    return sv
 
 
 @router.get("/{project_id}/script-versions")

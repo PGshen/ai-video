@@ -125,3 +125,52 @@ def test_list_project_events(client, auth_headers, mock_db):
 def test_projects_require_api_key(client):
     response = client.get("/api/projects")
     assert response.status_code == 401
+
+
+def test_get_script_returns_script_version(client, auth_headers, mock_db):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    project_id = uuid4()
+    script_id = uuid4()
+
+    project = MagicMock()
+    project.id = project_id
+    project.current_script_version_id = script_id
+
+    # Use SimpleNamespace so missing camelCase attrs raise AttributeError,
+    # allowing Pydantic v2 alias_generator fallback to snake_case field names.
+    sv = SimpleNamespace(
+        id=script_id,
+        project_id=project_id,
+        version_number=1,
+        scenes=[{"scene_index": 0, "narration": "旁白", "description": "画面", "code": "", "estimated_duration_seconds": 5.0}],
+        fact_checks=[],
+        render_engine="manim",
+        ai_model="test-model",
+        rejection_context=None,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    mock_db.get = AsyncMock(side_effect=lambda model, pk: project if pk == project_id else sv)
+
+    response = client.get(f"/api/projects/{project_id}/script", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["versionNumber"] == 1
+    assert len(data["scenes"]) == 1
+
+
+def test_get_script_returns_404_if_no_script(client, auth_headers, mock_db):
+    project = MagicMock()
+    project.current_script_version_id = None
+    mock_db.get = AsyncMock(return_value=project)
+
+    response = client.get(f"/api/projects/{uuid4()}/script", headers=auth_headers)
+    assert response.status_code == 404
+
+
+def test_get_script_returns_404_if_project_missing(client, auth_headers, mock_db):
+    mock_db.get = AsyncMock(return_value=None)
+    response = client.get(f"/api/projects/{uuid4()}/script", headers=auth_headers)
+    assert response.status_code == 404

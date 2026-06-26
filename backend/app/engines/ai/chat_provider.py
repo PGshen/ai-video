@@ -6,6 +6,35 @@ from app.engines.ai.base import BrainstormResult, ChatClient, ScriptGenerationRe
 
 
 class ChatAIProvider:
+    _ENGINE_CODE_PROMPTS: dict[str, str] = {
+        "manim": (
+            "- code 字段使用 Python Manim 代码。每个镜头定义一个继承自 Scene 的类，"
+            "在 construct() 方法中编写动画逻辑。\n"
+            "- 在需要音频的位置使用占位符 {{AUDIO_SCENE_N}}（N 为 scene_index），"
+            "例如 {{AUDIO_SCENE_0}}。\n"
+            "- 示例：\n"
+            "  class TitleScene(Scene):\n"
+            "      def construct(self):\n"
+            "          {{AUDIO_SCENE_0}}\n"
+            "          title = Text(\"标题\").scale(1.5)\n"
+            "          self.play(Write(title))"
+        ),
+        "remotion": (
+            "- code 字段使用 React/TypeScript Remotion 组件。每个镜头导出一个函数组件，"
+            "使用 useCurrentFrame 和 useVideoConfig hook。\n"
+            "- 音频通过 <Audio src={audioSrc} /> 组件注入，组件从 props 接收 audioSrc。\n"
+            "- 示例：\n"
+            "  export const TitleScene: React.FC<{audioSrc?: string}> = ({audioSrc}) => {\n"
+            "    const frame = useCurrentFrame();\n"
+            "    return <AbsoluteFill>"
+            "{audioSrc && <Audio src={audioSrc} />}<h1>标题</h1></AbsoluteFill>;\n"
+            "  };"
+        ),
+    }
+    _ENGINE_CODE_PROMPT_FALLBACK = (
+        "- code 字段填写适合所选渲染引擎的代码，在需要音频处使用 {{AUDIO_SCENE_N}} 占位符。"
+    )
+
     def __init__(
         self,
         client: ChatClient,
@@ -31,22 +60,25 @@ class ChatAIProvider:
         render_engine: str,
         rejection_context: dict | None = None,
     ) -> ScriptGenerationResult:
-        system_prompt = """\
+        engine_hint = self._ENGINE_CODE_PROMPTS.get(
+            render_engine, self._ENGINE_CODE_PROMPT_FALLBACK
+        )
+        system_prompt = f"""\
 你是知识视频脚本生成器。请严格输出 JSON object，不要输出 Markdown。
 
 JSON 格式示例：
-{
+{{
   "scenes": [
-    {
+    {{
       "scene_index": 0,
       "narration": "旁白文稿",
       "description": "画面描述",
-      "code": "渲染代码，必要时使用 {{AUDIO_SCENE_0}} 音频占位符",
+      "code": "渲染代码",
       "estimated_duration_seconds": 12.5
-    }
+    }}
   ],
   "fact_checks": [
-    {
+    {{
       "claim_text": "需要核查的具体论断",
       "scene_index": 0,
       "source_url": null,
@@ -57,29 +89,36 @@ JSON 格式示例：
       "controversy": null,
       "reviewer_verdict": null,
       "reviewer_note": null
-    }
+    }}
   ]
-}
+}}
+
+渲染引擎：{render_engine}
+{engine_hint}
 
 要求：
 - scenes 是镜头数组，scene_index 从 0 连续递增。
 - 每个镜头包含 narration、description、code、estimated_duration_seconds。
-- code 应匹配指定渲染引擎，并预留 {{AUDIO_SCENE_N}} 音频占位符。
 - fact_checks 覆盖脚本中的关键事实论断和可能争议点。
-- 只能输出合法 JSON object。\
-"""
-        user_payload = {
+- 只能输出合法 JSON object。"""
+
+        user_payload: dict = {
             "topic_title": topic_title,
             "topic_description": topic_description,
             "render_engine": render_engine,
-            "rejection_context": rejection_context,
         }
+        if rejection_context:
+            user_payload["rejection_context"] = rejection_context
+            user_note = "（注意：这是一次重新生成，请参考 rejection_context 中的驳回原因修正问题）"
+        else:
+            user_note = ""
+
         content = await self.client.create_chat_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": "请为以下选题生成知识视频脚本 JSON：\n"
+                    "content": f"请为以下选题生成知识视频脚本 JSON{user_note}：\n"
                     + json.dumps(user_payload, ensure_ascii=False),
                 },
             ],

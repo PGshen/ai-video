@@ -1,4 +1,10 @@
 // ═══ 选题 ═══
+export interface ResearchMessage {
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
 export interface TopicScores {
   counterintuitive?: number;
   defensibility?: number;
@@ -20,6 +26,7 @@ export interface Topic {
   performanceScore: number | null;
   tags: string[];
   needsRecheck: boolean;
+  researchData: ResearchMessage[];
   createdAt: string;
   updatedAt: string;
 }

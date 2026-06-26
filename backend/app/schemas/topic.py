@@ -53,6 +53,7 @@ class TopicResponse(BaseModel):
     performance_score: Optional[float] = None
     tags: list[str] = []
     needs_recheck: bool
+    research_data: list[dict] = []
     created_at: datetime
     updated_at: datetime
 
@@ -61,6 +62,11 @@ class TopicListResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
     items: list[TopicResponse]
     total: int
+
+
+class ResearchMessageRequest(BaseModel):
+    message: str = ""
+    use_default_prompt: bool = False
 
 
 class BrainstormRequest(BaseModel):

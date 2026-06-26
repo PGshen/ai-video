@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import String, Text, SmallInteger, Float, Boolean, Computed, DateTime
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PGUUID, ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
@@ -16,6 +16,7 @@ class Topic(Base):
         kwargs.setdefault("id", uuid.uuid4())
         kwargs.setdefault("status", "pending")
         kwargs.setdefault("needs_recheck", False)
+        kwargs.setdefault("research_data", [])
         now = utcnow()
         kwargs.setdefault("created_at", now)
         kwargs.setdefault("updated_at", now)
@@ -44,6 +45,9 @@ class Topic(Base):
     performance_score: Mapped[Optional[float]] = mapped_column(Float)
     tags: Mapped[Optional[list]] = mapped_column(ARRAY(String(50)))
     needs_recheck: Mapped[bool] = mapped_column(Boolean, default=False)
+    research_data: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default="[]"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

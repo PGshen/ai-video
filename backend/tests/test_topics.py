@@ -19,6 +19,8 @@ def make_topic(**kwargs):
     t.performance_score = kwargs.get("performance_score", None)
     t.tags = kwargs.get("tags", [])
     t.needs_recheck = kwargs.get("needs_recheck", False)
+    t.research_data = kwargs.get("research_data", [])
+    t.researchData = t.research_data  # prevent MagicMock auto-attr from shadowing alias
     t.created_at = kwargs.get("created_at", datetime.now(timezone.utc))
     t.updated_at = kwargs.get("updated_at", datetime.now(timezone.utc))
     return t
@@ -103,3 +105,13 @@ def test_brainstorm_returns_candidates(client, auth_headers):
 def test_topics_require_api_key(client):
     response = client.get("/api/topics")
     assert response.status_code == 401
+
+
+def test_topic_response_includes_research_data(client, auth_headers, mock_db):
+    topic = make_topic(research_data=[{"role": "user", "content": "hi", "createdAt": "2026-01-01T00:00:00Z"}])
+    mock_db.execute.return_value.scalars.return_value.all.return_value = [topic]
+    response = client.get("/api/topics", headers=auth_headers)
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert "researchData" in item
+    assert item["researchData"][0]["role"] == "user"

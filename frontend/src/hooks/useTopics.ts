@@ -1,10 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Topic, TopicScores } from "@/types";
+import type { BrainstormCandidate, Topic, TopicScores } from "@/types";
 
 interface TopicListResponse {
   items: Topic[];
   total: number;
+}
+
+interface BrainstormResponse {
+  candidates: BrainstormCandidate[];
 }
 
 export function useTopics(status?: string) {
@@ -17,6 +21,16 @@ export function useTopics(status?: string) {
   });
 }
 
+export function useBrainstormTopics() {
+  return useMutation({
+    mutationFn: (data: { topicDirection: string; count: number }) =>
+      api.post<BrainstormResponse>("/api/topics/brainstorm", {
+        topic_direction: data.topicDirection,
+        count: data.count,
+      }),
+  });
+}
+
 export function useCreateTopic() {
   const qc = useQueryClient();
   return useMutation({
@@ -26,6 +40,24 @@ export function useCreateTopic() {
       source: string;
       tags: string[];
     }) => api.post<Topic>("/api/topics", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["topics"] }),
+  });
+}
+
+export function useImportBrainstormCandidates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (candidates: BrainstormCandidate[]) =>
+      Promise.all(
+        candidates.map((candidate) =>
+          api.post<Topic>("/api/topics", {
+            title: candidate.title,
+            description: candidate.description || undefined,
+            source: "ai_brainstorm",
+            tags: candidate.tags ?? [],
+          })
+        )
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["topics"] }),
   });
 }

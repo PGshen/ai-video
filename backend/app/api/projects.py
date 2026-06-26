@@ -84,6 +84,10 @@ async def create_project(
     _=Depends(verify_api_key),
 ):
     import uuid as _uuid
+    topic = await db.get(Topic, body.topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
     project_id = _uuid.uuid4()
     workflow_id = f"video-production-{project_id}"
 
@@ -96,6 +100,7 @@ async def create_project(
         temporal_workflow_id=workflow_id,
     )
     orm_project.id = project_id
+    topic.status = "in_production"
     db.add(orm_project)
     await db.commit()
 
@@ -106,7 +111,6 @@ async def create_project(
         task_queue=settings.TEMPORAL_TASK_QUEUE,
     )
 
-    topic = await db.get(Topic, orm_project.topic_id)
     return _project_to_response(orm_project, topic)
 
 

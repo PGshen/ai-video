@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useTopics } from "@/hooks/useTopics";
+import { BrainstormDialog } from "@/components/topics/BrainstormDialog";
 import { CreateTopicDialog } from "@/components/topics/CreateTopicDialog";
 import { TopicSheet } from "@/components/topics/TopicSheet";
 import {
@@ -32,6 +34,7 @@ function ScoreBadge({ score }: { score: number | null }) {
 export default function TopicsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
+  const [brainstormOpen, setBrainstormOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
 
   const { data, isLoading } = useTopics(statusFilter === "all" ? undefined : statusFilter);
@@ -52,7 +55,14 @@ export default function TopicsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={() => setCreateOpen(true)}>新增选题</Button>
+          <Button variant="outline" onClick={() => setBrainstormOpen(true)}>
+            <Sparkles />
+            AI 批量生成
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus />
+            新增选题
+          </Button>
         </div>
       </div>
 
@@ -136,6 +146,7 @@ export default function TopicsPage() {
         </Table>
       </div>
 
+      <BrainstormDialog open={brainstormOpen} onClose={() => setBrainstormOpen(false)} />
       <CreateTopicDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       <TopicSheet topic={selectedTopic} onClose={() => setSelectedTopic(null)} />
     </div>

@@ -11,6 +11,7 @@ interface Props {
   topic: Topic;
   open: boolean;
   onClose: () => void;
+  onCreated?: () => void;
 }
 
 const RENDER_ENGINE_LABELS: Record<string, string> = {
@@ -31,7 +32,7 @@ const ASPECT_RATIO_LABELS: Record<string, string> = {
   portrait: "竖屏 9:16",
 };
 
-export function CreateProjectDialog({ topic, open, onClose }: Props) {
+export function CreateProjectDialog({ topic, open, onClose, onCreated }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
   const [ttsVoice, setTtsVoice] = useState("alloy");
   const [aspectRatio, setAspectRatio] = useState("landscape");
@@ -43,6 +44,7 @@ export function CreateProjectDialog({ topic, open, onClose }: Props) {
       { topicId: topic.id, renderEngine, ttsVoice, aspectRatio },
       {
         onSuccess: (_project) => {
+          onCreated?.();
           onClose();
           navigate("/projects");
         },

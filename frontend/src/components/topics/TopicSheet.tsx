@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { SidePanel, SidePanelHeader, SidePanelBody, SidePanelFooter } from "@/components/ui/side-panel";
+import { Check, PackagePlus, X } from "lucide-react";
+import { SidePanel, SidePanelHeader, SidePanelBody } from "@/components/ui/side-panel";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useUpdateTopic } from "@/hooks/useTopics";
@@ -61,7 +61,6 @@ export function TopicSheet({ topic, onClose }: Props) {
   const updateTopic = useUpdateTopic();
   const [displayTopic, setDisplayTopic] = useState<Topic | null>(topic);
   const [scores, setScores] = useState<TopicScores>({});
-  const [status, setStatus] = useState("");
   const [tagsInput, setTagsInput] = useState("");
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
@@ -74,20 +73,41 @@ export function TopicSheet({ topic, onClose }: Props) {
         visual: topic.scoreVisual ?? undefined,
         freshness: topic.scoreFreshness ?? undefined,
       });
-      setStatus(topic.status);
       setTagsInput(topic.tags.join(", "));
     }
   }, [topic]);
 
-  const handleSave = () => {
-    if (!displayTopic) return;
+  const buildTopicUpdate = (status: Topic["status"]) => {
     const tags = tagsInput.split(",").map((t) => t.trim()).filter(Boolean);
-    updateTopic.mutate({ id: displayTopic.id, scores, status, tags }, { onSuccess: onClose });
+    return { scores, status, tags };
+  };
+
+  const handleStatusAction = (status: Topic["status"]) => {
+    if (!displayTopic) return;
+    updateTopic.mutate(
+      { id: displayTopic.id, ...buildTopicUpdate(status) },
+      {
+        onSuccess: (updatedTopic) => {
+          setDisplayTopic(updatedTopic);
+          setScores({
+            counterintuitive: updatedTopic.scoreCounterintuitive ?? undefined,
+            defensibility: updatedTopic.scoreDefensibility ?? undefined,
+            visual: updatedTopic.scoreVisual ?? undefined,
+            freshness: updatedTopic.scoreFreshness ?? undefined,
+          });
+          setTagsInput(updatedTopic.tags.join(", "));
+        },
+      }
+    );
   };
 
   if (!displayTopic) return null;
 
   const compositeScore = displayTopic.compositeScore;
+  const isStocked = displayTopic.status === "stocked";
+  const isInProduction = displayTopic.status === "in_production";
+  const isUpdating = updateTopic.isPending;
+  const allScoresFilled = SCORE_DIMENSIONS.every(({ key }) => scores[key] !== undefined);
 
   return (
     <>
@@ -116,9 +136,9 @@ export function TopicSheet({ topic, onClose }: Props) {
 
         {/* Scrollable body */}
         <SidePanelBody className="p-0 overflow-hidden">
-          <div className="grid grid-cols-[1fr_320px] h-full">
+          <div className="grid grid-cols-[minmax(0,1fr)_320px] h-full">
             {/* Left: Research Assistant */}
-            <div className="flex flex-col min-h-0 px-5 py-5 border-r">
+            <div className="flex flex-col min-h-0 min-w-0 px-5 py-5 border-r">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                 研究助手
               </p>
@@ -126,7 +146,7 @@ export function TopicSheet({ topic, onClose }: Props) {
             </div>
 
             {/* Right: Scoring + Meta */}
-            <div className="overflow-y-auto px-5 py-5 space-y-6">
+            <div className="min-w-0 overflow-y-auto px-5 py-5 space-y-6">
               {/* Scoring */}
               <section className="space-y-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">打分</p>
@@ -142,22 +162,56 @@ export function TopicSheet({ topic, onClose }: Props) {
                     />
                   </div>
                 ))}
+                <div className="border-t pt-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">操作</p>
+                    <Badge variant="secondary" className="text-xs">
+                      {TOPIC_STATUS_LABELS[displayTopic.status] ?? displayTopic.status}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleStatusAction("stocked")}
+                      disabled={isUpdating || isInProduction || !allScoresFilled}
+                    >
+                      <Check className="size-4" />
+                      通过
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => handleStatusAction("abandoned")}
+                      disabled={isUpdating || isInProduction || !allScoresFilled}
+                    >
+                      <X className="size-4" />
+                      废弃
+                    </Button>
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={() => setCreateProjectOpen(true)}
+                    disabled={!isStocked || isUpdating}
+                  >
+                    <PackagePlus className="size-4" />
+                    创建项目
+                  </Button>
+                  {!isStocked && !isInProduction && (
+                    <p className="text-xs text-muted-foreground">
+                      {allScoresFilled ? "通过后可创建项目。" : "完成全部打分后可通过或废弃。"}
+                    </p>
+                  )}
+                  {isInProduction && (
+                    <p className="text-xs text-muted-foreground">项目已创建，选题正在制作中。</p>
+                  )}
+                </div>
               </section>
 
               {/* Meta */}
               <section className="space-y-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">元数据</p>
-                <div className="space-y-1.5">
-                  <Label className="text-sm">状态</Label>
-                  <Select value={status} onValueChange={(v) => v && setStatus(v)}>
-                    <SelectTrigger className="w-full"><SelectValue>{TOPIC_STATUS_LABELS[status]}</SelectValue></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(TOPIC_STATUS_LABELS).map(([val, lbl]) => (
-                        <SelectItem key={val} value={val}>{lbl}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-1.5">
                   <Label className="text-sm">标签</Label>
                   <Input
@@ -172,16 +226,6 @@ export function TopicSheet({ topic, onClose }: Props) {
             </div>
           </div>
         </SidePanelBody>
-
-        {/* Footer */}
-        <SidePanelFooter className="flex flex-col gap-2">
-          <Button variant="outline" className="w-full" onClick={() => setCreateProjectOpen(true)}>
-            从此选题创建项目
-          </Button>
-          <Button className="w-full" onClick={handleSave} disabled={updateTopic.isPending}>
-            {updateTopic.isPending ? "保存中..." : "保存"}
-          </Button>
-        </SidePanelFooter>
       </SidePanel>
 
       {createProjectOpen && (
@@ -189,6 +233,11 @@ export function TopicSheet({ topic, onClose }: Props) {
           topic={displayTopic}
           open={createProjectOpen}
           onClose={() => setCreateProjectOpen(false)}
+          onCreated={() =>
+            setDisplayTopic((prev) =>
+              prev ? { ...prev, status: "in_production" } : prev
+            )
+          }
         />
       )}
     </>

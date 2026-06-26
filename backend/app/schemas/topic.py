@@ -74,6 +74,12 @@ class BrainstormRequest(BaseModel):
     count: int = Field(default=5, ge=1, le=20)
 
 
+class BrainstormCandidate(BaseModel):
+    title: str
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
 class BrainstormResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
-    candidates: list[dict]
+    candidates: list[BrainstormCandidate]

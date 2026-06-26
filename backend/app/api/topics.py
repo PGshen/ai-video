@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timezone
@@ -7,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.db import get_async_session
+from app.engines.ai.factory import get_ai_provider
 from app.models.topic import Topic
 from app.schemas.topic import (
     TopicCreate, TopicUpdate, TopicResponse, TopicListResponse,
@@ -58,25 +60,12 @@ async def brainstorm_topics(
     body: BrainstormRequest,
     _=Depends(verify_api_key),
 ):
-    # Sprint 2: replace with real Claude API call
-    candidates = [
-        {
-            "title": "为什么飞机翅膀向上弯曲而不是向下",
-            "description": "解释机翼弯曲方向与升力的反直觉关系",
-            "tags": ["航空", "物理", "工程"],
-        },
-        {
-            "title": "大脑中的记忆并不是「存储」的",
-            "description": "记忆是每次回忆时重新构建的，而非调取固定文件",
-            "tags": ["神经科学", "认知", "心理学"],
-        },
-        {
-            "title": "为什么节食反而让你更容易变胖",
-            "description": "身体代谢适应机制：极低热量摄入如何触发「饥荒模式」",
-            "tags": ["健康", "营养", "进化生物学"],
-        },
-    ]
-    return BrainstormResponse(candidates=candidates[: body.count])
+    provider = get_ai_provider()
+    try:
+        result = await provider.brainstorm_topics(body.topic_direction, body.count)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable") from exc
+    return BrainstormResponse(candidates=result.candidates[: body.count])
 
 
 @router.patch("/{topic_id}", response_model=TopicResponse)
@@ -122,42 +111,6 @@ DEFAULT_RESEARCH_SYSTEM_PROMPT = """\
 DEFAULT_RESEARCH_QUESTION = "请介绍这个选题的背景知识和核心理论"
 
 
-def get_ai_provider():
-    """Returns the active AI provider. Replace with real implementation in Sprint 2."""
-
-    class StubProvider:
-        engine_name = "stub"
-        model_name = "stub-model"
-
-        async def generate_script(self, *args, **kwargs):
-            from app.engines.ai.base import ScriptGenerationResult
-            return ScriptGenerationResult(scenes=[], fact_checks=[])
-
-        async def research_topic(
-            self,
-            topic_title: str,
-            topic_description: str,
-            conversation_history: list[dict],
-            new_message: str,
-            use_default_prompt: bool = False,
-            system_prompt: str | None = None,
-        ):
-            import asyncio
-            if use_default_prompt:
-                chunks = [
-                    f"## {topic_title} — 背景资料\n\n",
-                    "**核心概念：** 这是一个由 AI Stub 生成的占位回复。\n\n",
-                    "Sprint 2 接入真实 LLM 后将替换此内容。",
-                ]
-            else:
-                chunks = [f"你问的是：{new_message}\n\n", "（Stub 回复，Sprint 2 替换）"]
-            for chunk in chunks:
-                await asyncio.sleep(0)
-                yield chunk
-
-    return StubProvider()
-
-
 @router.post("/{topic_id}/research")
 async def research_topic(
     topic_id: UUID,
@@ -199,7 +152,7 @@ async def research_topic(
                 system_prompt=system_prompt,
             ):
                 full_response.append(chunk)
-                yield f"data: {chunk}\n\n"
+                yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
         except Exception:
             yield "data: [ERROR] 服务暂时不可用，请稍后重试\n\n"
             yield "data: [DONE]\n\n"

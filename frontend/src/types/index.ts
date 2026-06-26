@@ -31,6 +31,12 @@ export interface Topic {
   updatedAt: string;
 }
 
+export interface BrainstormCandidate {
+  title: string;
+  description: string;
+  tags: string[];
+}
+
 // ═══ 视频项目 ═══
 export type ProjectStatus =
   | "draft"

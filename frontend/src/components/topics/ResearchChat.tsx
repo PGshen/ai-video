@@ -33,10 +33,30 @@ function MessageBubble({ entry }: { entry: ChatEntry }) {
     );
   }
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+    <div className="min-w-0 max-w-full text-sm">
       <ChatMessageMarkdown content={entry.text || "▋"} />
     </div>
   );
+}
+
+function decodeResearchPayload(payload: string): string {
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "content" in parsed &&
+      typeof parsed.content === "string"
+    ) {
+      return parsed.content;
+    }
+  } catch {
+    // Keep compatibility with the previous plain-text SSE format.
+  }
+  return payload;
 }
 
 interface Props {
@@ -60,7 +80,7 @@ export function ResearchChat({ topic }: Props) {
   // Re-sync when topic changes (panel re-opened with different topic)
   useEffect(() => {
     setEntries(toEntries(topic.researchData ?? []));
-  }, [topic.id]);
+  }, [topic.id, topic.researchData]);
 
   async function send(message: string, useDefaultPrompt: boolean) {
     const userEntry: ChatEntry = {
@@ -127,10 +147,11 @@ export function ResearchChat({ topic }: Props) {
             shouldStop = true;
             break;
           }
+          const content = decodeResearchPayload(payload);
           setEntries((prev) =>
             prev.map((e) =>
               e.id === assistantEntry.id
-                ? { ...e, text: e.text + payload }
+                ? { ...e, text: e.text + content }
                 : e
             )
           );
@@ -160,11 +181,11 @@ export function ResearchChat({ topic }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 min-w-0">
       {/* Messages area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-4 pr-1"
+        className="flex-1 min-w-0 overflow-y-auto space-y-4 pr-1"
       >
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
@@ -186,13 +207,13 @@ export function ResearchChat({ topic }: Props) {
       </div>
 
       {/* Input area */}
-      <form onSubmit={handleSubmit} className="flex gap-2 pt-3 border-t mt-3">
+      <form onSubmit={handleSubmit} className="flex min-w-0 gap-2 pt-3 border-t mt-3">
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入问题，Enter 发送，Shift+Enter 换行"
-          className="resize-none text-sm min-h-[40px] max-h-[120px]"
+          className="min-w-0 resize-none text-sm min-h-[40px] max-h-[120px]"
           rows={1}
           disabled={streaming}
         />

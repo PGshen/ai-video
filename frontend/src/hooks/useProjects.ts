@@ -53,7 +53,10 @@ export function useCreateProject() {
         tts_voice: data.ttsVoice,
         aspect_ratio: data.aspectRatio,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["topics"] });
+    },
   });
 }
 

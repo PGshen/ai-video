@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from uuid import uuid4
@@ -147,6 +148,12 @@ def test_research_topic_streams_response(client, auth_headers, mock_db):
     body = response.text
     assert "data: " in body
     assert "[DONE]" in body
+    data_lines = [
+        line.removeprefix("data: ")
+        for line in body.splitlines()
+        if line.startswith("data: {")
+    ]
+    assert json.loads(data_lines[0])["content"] == "## 核心理论\n"
 
 
 def test_research_topic_404_when_not_found(client, auth_headers, mock_db):

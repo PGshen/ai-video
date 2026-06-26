@@ -66,6 +66,7 @@ def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temp
             },
         )
     assert response.status_code == 201
+    assert topic.status == "in_production"
     mock_temporal.start_workflow.assert_called_once()
 
 

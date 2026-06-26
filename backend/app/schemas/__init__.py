@@ -1,6 +1,6 @@
 from app.schemas.topic import (
     TopicCreate, TopicUpdate, TopicResponse, TopicListResponse,
-    BrainstormRequest, BrainstormResponse,
+    BrainstormCandidate, BrainstormRequest, BrainstormResponse,
 )
 from app.schemas.project import (
     ProjectCreate, ProjectResponse, ProjectDetailResponse, ProjectListResponse,
@@ -12,7 +12,7 @@ from app.schemas.worker_task import WorkerTaskResponse, WorkerTaskListResponse
 
 __all__ = [
     "TopicCreate", "TopicUpdate", "TopicResponse", "TopicListResponse",
-    "BrainstormRequest", "BrainstormResponse",
+    "BrainstormCandidate", "BrainstormRequest", "BrainstormResponse",
     "ProjectCreate", "ProjectResponse", "ProjectDetailResponse", "ProjectListResponse",
     "ScriptVersionListResponse", "EventListResponse", "PerformanceCreate",
     "PerformanceResponse", "PreviewUrlResponse",

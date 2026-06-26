@@ -149,19 +149,33 @@ TopicSheet 扩展为宽屏（`max-w-4xl`），SidePanelBody 内采用 CSS Grid �
 
 ### 新增组件：`frontend/src/components/topics/ResearchChat.tsx`
 
+使用 [simple-ai](https://www.simple-ai.dev/docs/components/chat-message) 的 `ChatMessage` 系列组件（shadcn 风格，`npx shadcn@latest add @simple-ai/chat-message` 安装），内置 Markdown 渲染和流式内容展示，**不引入 `@ai-sdk/react`**。
+
 职责：
 - 接收 `topic: Topic` prop
-- 初始化时从 `topic.researchData` 加载历史
+- 初始化时从 `topic.researchData` 加载历史，转换为组件所需的 `parts: [{type: "text", text}]` 格式（本地适配层，不污染存储格式）
 - 维护本地 `messages` 状态（含流式中的临时 assistant 消息）
 - 发送时调用 `fetch POST /api/topics/{id}/research`，用 `ReadableStream` 逐 chunk 更新当前 assistant 消息
-- 流式进行中禁用输入框和发送按钮，显示光标动画
-- 用 `react-markdown` 渲染 assistant 消息
+- 流式进行中禁用输入框和发送按钮
 
-### 新增依赖
+消息的本地格式（仅组件内部）：
+```ts
+interface ChatEntry {
+  id: string;
+  role: "user" | "assistant";
+  parts: [{ type: "text"; text: string }];
+}
+```
 
+持久化格式（存入 DB / `topic.researchData`）保持不变：`{role, content, createdAt}`。
+
+### 新增 shadcn 组件
+
+```bash
+npx shadcn@latest add @simple-ai/chat-message
 ```
-react-markdown
-```
+
+无需额外安装 npm 包（组件文件直接复制到项目中）。
 
 ### 修改文件
 
@@ -170,7 +184,7 @@ react-markdown
 | `frontend/src/components/topics/TopicSheet.tsx` | 引入 ResearchChat，改为分栏布局，扩宽 SidePanel |
 | `frontend/src/components/ui/side-panel.tsx` | 支持 `size` prop（`default` / `wide`）控制宽度 |
 | `frontend/src/types/index.ts` | `Topic` 新增 `researchData: ResearchMessage[]` |
-| `frontend/src/hooks/useTopics.ts` | 新增 `useResearchTopic` hook（SSE fetch） |
+| `frontend/src/hooks/useTopics.ts` | 新增 `useResearchChat` hook（SSE fetch，管理流式状态） |
 
 ---
 

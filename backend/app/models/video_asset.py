@@ -25,6 +25,7 @@ class VideoAsset(Base):
     duration_seconds: Mapped[Optional[float]] = mapped_column(Float)
     resolution: Mapped[Optional[str]] = mapped_column(String(20))
     render_log: Mapped[Optional[str]] = mapped_column(Text)
+    error_message: Mapped[Optional[str]] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), default="rendering")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow

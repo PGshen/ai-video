@@ -39,15 +39,21 @@ class RenderWorker(BaseWorker):
         finally:
             db.close()
 
-        # Step 1: 并发 TTS 合成
+        # Step 1: 并发 TTS 合成（最多 3 路并发，避免超出配额）
         logger.info("[RenderWorker] Starting TTS for %d scenes", len(scenes_data))
         tts_engine = get_tts_engine()
         tts_requests = [
             TTSRequest(text=s.get("narration", ""), voice=tts_voice)
             for s in scenes_data
         ]
+        sem = asyncio.Semaphore(3)
+
+        async def _synthesize(req):
+            async with sem:
+                return await tts_engine.synthesize(req)
+
         tts_results = await asyncio.gather(
-            *[tts_engine.synthesize(req) for req in tts_requests],
+            *[_synthesize(req) for req in tts_requests],
             return_exceptions=True,
         )
 
@@ -121,6 +127,7 @@ class RenderWorker(BaseWorker):
                     if asset_orm:
                         asset_orm.status = "failed"
                         asset_orm.render_log = render_result.render_log
+                        asset_orm.error_message = render_result.error_message
                     db.commit()
                 finally:
                     db.close()

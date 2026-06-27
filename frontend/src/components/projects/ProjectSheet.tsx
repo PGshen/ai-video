@@ -409,25 +409,50 @@ function EventsSection({
   eventsData, narrativeVersions, scriptVersions, selectedNode, onSelectNode,
 }: EventsSectionProps) {
   // Correlate each status-change event to a version by counting occurrences per type
+  // Build a map: status → list of verdict events (in order) for that gate
+  const verdictsByGate = useMemo(() => {
+    const map: Record<string, Array<{ verdict: string; rejection_detail?: string; target_stage?: string }>> = {};
+    for (const event of eventsData?.items ?? []) {
+      if (event.eventType === "review_verdict" && event.payload) {
+        const gate = event.payload["gate"] as string;
+        if (!map[gate]) map[gate] = [];
+        map[gate].push(event.payload as { verdict: string; rejection_detail?: string; target_stage?: string });
+      }
+    }
+    return map;
+  }, [eventsData]);
+
   const annotated = useMemo(() => {
     let narrativeCount = 0;
     let scriptCount = 0;
-    return (eventsData?.items ?? []).map((event) => {
-      const contentType = event.toStatus ? CONTENT_STATUS_MAP[event.toStatus] : undefined;
-      let versionId: string | null = null;
-      let versionNumber: number | null = null;
-      if (contentType === "narrative") {
-        narrativeCount++;
-        const v = narrativeVersions[narrativeCount - 1];
-        if (v) { versionId = v.id; versionNumber = v.versionNumber; }
-      } else if (contentType === "script") {
-        scriptCount++;
-        const v = scriptVersions[scriptCount - 1];
-        if (v) { versionId = v.id; versionNumber = v.versionNumber; }
-      }
-      return { event, contentType, versionId, versionNumber };
-    });
-  }, [eventsData, narrativeVersions, scriptVersions]);
+    const verdictConsumed: Record<string, number> = {};
+    return (eventsData?.items ?? [])
+      .filter((e) => e.eventType === "status_change") // show only status changes in the timeline
+      .map((event) => {
+        const contentType = event.toStatus ? CONTENT_STATUS_MAP[event.toStatus] : undefined;
+        let versionId: string | null = null;
+        let versionNumber: number | null = null;
+        let verdict: { verdict: string; rejection_detail?: string; target_stage?: string } | null = null;
+
+        if (contentType === "narrative") {
+          narrativeCount++;
+          const v = narrativeVersions[narrativeCount - 1];
+          if (v) { versionId = v.id; versionNumber = v.versionNumber; }
+          // Attach the corresponding verdict (nth narrative_review → nth narrative verdict)
+          const used = verdictConsumed["narrative"] ?? 0;
+          const vd = (verdictsByGate["narrative"] ?? [])[used];
+          if (vd) { verdict = vd; verdictConsumed["narrative"] = used + 1; }
+        } else if (contentType === "script") {
+          scriptCount++;
+          const v = scriptVersions[scriptCount - 1];
+          if (v) { versionId = v.id; versionNumber = v.versionNumber; }
+          const used = verdictConsumed["script"] ?? 0;
+          const vd = (verdictsByGate["script"] ?? [])[used];
+          if (vd) { verdict = vd; verdictConsumed["script"] = used + 1; }
+        }
+        return { event, contentType, versionId, versionNumber, verdict };
+      });
+  }, [eventsData, narrativeVersions, scriptVersions, verdictsByGate]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
@@ -439,11 +464,24 @@ function EventsSection({
           <p className="text-sm text-muted-foreground">暂无事件记录</p>
         ) : (
           <div className="space-y-0 pr-3">
-            {annotated.map(({ event, contentType, versionId, versionNumber }, i) => {
+            {annotated.map(({ event, contentType, versionId, versionNumber, verdict }, i) => {
               const isClickable = !!(contentType && versionId);
               const isSelected =
                 selectedNode?.versionId === versionId && selectedNode?.type === contentType;
               const isLast = i === annotated.length - 1;
+
+              const verdictLabel = verdict?.verdict === "approved"
+                ? { text: "通过", color: "text-green-600" }
+                : verdict?.verdict === "rejected"
+                ? { text: "驳回", color: "text-destructive" }
+                : verdict?.verdict === "abandoned"
+                ? { text: "废弃", color: "text-muted-foreground" }
+                : null;
+
+              const handleClick = () => {
+                if (!isClickable) return;
+                onSelectNode(isSelected ? null : { type: contentType!, versionId: versionId!, versionNumber: versionNumber! });
+              };
 
               return (
                 <div key={event.id} className="flex gap-3">
@@ -458,50 +496,52 @@ function EventsSection({
                           ? "bg-primary border-primary"
                           : "bg-muted-foreground/40 border-muted-foreground/40"
                       }`}
-                      onClick={() => {
-                        if (!isClickable) return;
-                        if (isSelected) {
-                          onSelectNode(null);
-                        } else {
-                          onSelectNode({ type: contentType!, versionId: versionId!, versionNumber: versionNumber! });
-                        }
-                      }}
+                      onClick={handleClick}
                     />
                     {i < annotated.length - 1 && (
                       <div className="w-px flex-1 bg-border mt-1" />
                     )}
                   </div>
                   <div
-                    className={`pb-4 min-w-0 ${isClickable ? "cursor-pointer" : ""}`}
-                    onClick={() => {
-                      if (!isClickable) return;
-                      if (isSelected) {
-                        onSelectNode(null);
-                      } else {
-                        onSelectNode({ type: contentType!, versionId: versionId!, versionNumber: versionNumber! });
-                      }
-                    }}
+                    className={`pb-4 min-w-0 flex-1 ${isClickable ? "cursor-pointer" : ""}`}
+                    onClick={handleClick}
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className={`text-sm font-medium leading-snug ${isSelected ? "text-primary" : ""}`}>
                         {event.toStatus
                           ? (PROJECT_STATUS_LABELS[event.toStatus] ?? event.toStatus)
                           : (EVENT_TYPE_LABELS[event.eventType] ?? event.eventType)}
                       </p>
                       {isClickable && (
-                        <span className="text-xs text-muted-foreground">
-                          v{versionNumber}
-                        </span>
-                      )}
-                      {isClickable && (
-                        <span className="text-xs text-primary/70 ml-auto">
-                          {isSelected ? "收起 ↑" : "查看 →"}
-                        </span>
+                        <span className="text-xs text-muted-foreground">v{versionNumber}</span>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {timeAgo(event.createdAt)}
                     </p>
+                    {/* Verdict badge + rejection detail */}
+                    {verdictLabel && (
+                      <div className="mt-1 space-y-0.5">
+                        <span className={`text-xs font-medium ${verdictLabel.color}`}>
+                          {verdictLabel.text}
+                        </span>
+                        {verdict?.rejection_detail && (
+                          <p className="text-xs text-muted-foreground leading-relaxed break-words">
+                            {verdict.rejection_detail}
+                          </p>
+                        )}
+                        {verdict?.target_stage && verdict.verdict === "rejected" && (
+                          <p className="text-xs text-muted-foreground">
+                            回退至：{verdict.target_stage === "code" ? "重新生成代码" : "重写叙事脚本"}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {isClickable && (
+                      <p className="text-xs text-primary/70 mt-0.5">
+                        {isSelected ? "收起 ↑" : "查看内容 →"}
+                      </p>
+                    )}
                   </div>
                 </div>
               );

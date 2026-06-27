@@ -8,6 +8,7 @@ from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
 from app.models.narrative_version import NarrativeVersion
+from app.models.project_event import ProjectEvent
 from app.models.script_version import ScriptVersion
 from app.schemas.review import ReviewRequest
 
@@ -75,13 +76,29 @@ async def submit_review(
 
     else:
         signal_name = "video_review"
-    payload = {
+    signal_payload = {
         "verdict": body.verdict,
         "rejection_type": body.rejection_type,
         "rejection_detail": body.rejection_detail,
         "target_stage": body.target_stage,
     }
 
+    # Persist review verdict as a project event for timeline display
+    event_payload: dict = {"gate": body.gate, "verdict": body.verdict}
+    if body.rejection_detail:
+        event_payload["rejection_detail"] = body.rejection_detail
+    if body.target_stage:
+        event_payload["target_stage"] = body.target_stage
+    db.add(ProjectEvent(
+        project_id=project_id,
+        event_type="review_verdict",
+        from_status=project.status,
+        to_status=None,
+        actor="reviewer",
+        payload=event_payload,
+    ))
+    await db.commit()
+
     handle = temporal.get_workflow_handle(project.temporal_workflow_id)
-    await handle.signal(signal_name, payload)
+    await handle.signal(signal_name, signal_payload)
     return {"status": "ok"}

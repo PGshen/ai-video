@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.engines.ai.base import BrainstormResult, NarrativeResult, ScriptGenerationResult, ChatClient
+from app.engines.ai.base import BrainstormResult, CodeGenerationResult, NarrativeResult, ScriptGenerationResult, ChatClient
 
 
 class StubProvider:
@@ -20,6 +20,14 @@ class StubProvider:
     ) -> NarrativeResult:
         await asyncio.sleep(0)
         return NarrativeResult(scenes=[], fact_checks=[])
+
+    async def generate_code(
+        self,
+        scenes: list[dict],
+        render_engine: str,
+    ) -> CodeGenerationResult:
+        await asyncio.sleep(0)
+        return CodeGenerationResult(codes=["" for _ in scenes])
 
     async def brainstorm_topics(self, topic_direction: str, count: int) -> BrainstormResult:
         candidates = [

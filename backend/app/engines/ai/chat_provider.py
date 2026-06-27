@@ -2,7 +2,7 @@ import json
 import re
 from collections.abc import AsyncIterator
 
-from app.engines.ai.base import BrainstormResult, ChatClient, NarrativeResult, ScriptGenerationResult
+from app.engines.ai.base import BrainstormResult, ChatClient, CodeGenerationResult, NarrativeResult, ScriptGenerationResult
 
 
 class ChatAIProvider:
@@ -318,6 +318,60 @@ description 字段将直接用于后续渲染代码生成（由 code_generating 
         if not isinstance(scenes, list) or not isinstance(fact_checks, list):
             raise ValueError("Narrative response must contain scenes and fact_checks arrays")
         return NarrativeResult(scenes=scenes, fact_checks=fact_checks)
+
+    async def generate_code(
+        self,
+        scenes: list[dict],
+        render_engine: str,
+    ) -> CodeGenerationResult:
+        engine_hint = self._ENGINE_CODE_PROMPTS.get(
+            render_engine, self._ENGINE_CODE_PROMPT_FALLBACK
+        )
+        system_prompt = f"""\
+你是知识视频代码生成器。请严格输出 JSON object，不要输出 Markdown。
+
+你将收到一个知识视频的所有镜头叙事脚本，需要为每个镜头生成渲染代码片段。
+
+JSON 格式：
+{{
+  "codes": [
+    "镜头 0 的代码片段",
+    "镜头 1 的代码片段"
+  ]
+}}
+
+codes 数组长度必须与输入 scenes 数组长度完全一致，按 scene_index 顺序对应。
+
+渲染引擎：{render_engine}
+{engine_hint}
+
+【代码拼合规则】
+所有镜头的 code 片段将被渲染引擎按顺序拼合为单个执行单元，每段之间插入注释分隔符。
+音频由渲染引擎在每个镜头开始时自动注入，code 里不处理音频。
+
+要求：
+- 严格按照每个镜头的 description 实现动画逻辑
+- 充分利用跨镜头变量复用（前面镜头声明的变量在后续镜头中可直接使用）
+- 每个 code 片段不写外层结构（详见各引擎规范）
+- 只能输出合法 JSON object\
+"""
+        content = await self.client.create_chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": "请为以下镜头脚本生成渲染代码 JSON：\n"
+                    + json.dumps({"scenes": scenes}, ensure_ascii=False),
+                },
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=self.script_max_tokens,
+        )
+        payload = parse_json_object(content)
+        codes = payload.get("codes")
+        if not isinstance(codes, list):
+            raise ValueError("Code generation response must contain codes array")
+        return CodeGenerationResult(codes=codes)
 
     async def brainstorm_topics(self, topic_direction: str, count: int) -> BrainstormResult:
         system_prompt = """\

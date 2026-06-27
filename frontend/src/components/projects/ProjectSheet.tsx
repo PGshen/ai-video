@@ -6,10 +6,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel";
-import { useProjectEvents, useProjectScript, useSubmitReview } from "@/hooks/useProjects";
+import {
+  useProjectEvents, useProjectScript, useSubmitReview,
+  useNarrativeVersions, useNarrativeVersion,
+  useScriptVersions, useScriptVersion,
+} from "@/hooks/useProjects";
 import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, timeAgo } from "@/lib/format";
-import type { VideoProject } from "@/types";
+import type { VideoProject, ProjectEvent, NarrativeVersion, ScriptVersion } from "@/types";
 
 type Verdict = "approved" | "rejected" | "needs_revision";
 interface VerdictState { verdict: Verdict; note: string; }
@@ -24,6 +28,12 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   signal_sent: "信号发送",
 };
 
+interface SelectedNode {
+  type: "narrative" | "script";
+  versionId: string;
+  versionNumber: number;
+}
+
 export function ProjectSheet({ project, onClose }: Props) {
   // Keep the last non-null project so SidePanel's exit animation has content to render
   const lastProjectRef = useRef<VideoProject | null>(null);
@@ -33,12 +43,25 @@ export function ProjectSheet({ project, onClose }: Props) {
   const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
   const { data: script, isLoading: scriptLoading } = useProjectScript(displayProject?.id ?? "");
   const { data: narrative } = useNarrative(displayProject?.id ?? "");
+  const { data: narrativeVersions = [] } = useNarrativeVersions(displayProject?.id ?? "");
+  const { data: scriptVersions = [] } = useScriptVersions(displayProject?.id ?? "");
   const submitReview = useSubmitReview();
 
+  const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [verdicts, setVerdicts] = useState<Record<number, VerdictState>>({});
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [targetStage, setTargetStage] = useState<"narrative" | "code">("narrative");
+
+  // Fetch selected historical version on demand
+  const { data: selectedNarrativeVersion } = useNarrativeVersion(
+    displayProject?.id ?? "",
+    selectedNode?.type === "narrative" ? selectedNode.versionId : null,
+  );
+  const { data: selectedScriptVersion } = useScriptVersion(
+    displayProject?.id ?? "",
+    selectedNode?.type === "script" ? selectedNode.versionId : null,
+  );
 
   const isScriptReview = project?.status === "script_review";
   const hasScript = !!script;
@@ -113,32 +136,47 @@ export function ProjectSheet({ project, onClose }: Props) {
         {/* 左栏：元数据 + 时间线 */}
         <div className="w-72 shrink-0 border-r flex min-h-0 flex-col overflow-hidden p-5">
           <MetaSection project={displayProject} />
-          <EventsSection eventsData={eventsData} />
+          <EventsSection
+            eventsData={eventsData}
+            narrativeVersions={narrativeVersions}
+            scriptVersions={scriptVersions}
+            selectedNode={selectedNode}
+            onSelectNode={setSelectedNode}
+          />
         </div>
 
-        {/* 右栏：审核视图 */}
+        {/* 右栏：历史视图 or 当前审核视图 */}
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <RightPanel
-            project={displayProject}
-            script={script ?? null}
-            scriptLoading={scriptLoading}
-            narrative={narrative ?? null}
-            isScriptReview={isScriptReview}
-            hasScript={hasScript}
-            verdicts={verdicts}
-            setVerdicts={setVerdicts}
-            allMarked={allMarked}
-            canReject={canReject}
-            showRejectInput={showRejectInput}
-            rejectionDetail={rejectionDetail}
-            setRejectionDetail={setRejectionDetail}
-            targetStage={targetStage}
-            setTargetStage={setTargetStage}
-            submitPending={submitReview.isPending}
-            onApprove={handleApprove}
-            onReject={handleReject}
-            onAbandon={handleAbandon}
-          />
+          {selectedNode ? (
+            <HistoricalView
+              node={selectedNode}
+              narrativeVersion={selectedNarrativeVersion ?? null}
+              scriptVersion={selectedScriptVersion ?? null}
+              onClose={() => setSelectedNode(null)}
+            />
+          ) : (
+            <RightPanel
+              project={displayProject}
+              script={script ?? null}
+              scriptLoading={scriptLoading}
+              narrative={narrative ?? null}
+              isScriptReview={isScriptReview}
+              hasScript={hasScript}
+              verdicts={verdicts}
+              setVerdicts={setVerdicts}
+              allMarked={allMarked}
+              canReject={canReject}
+              showRejectInput={showRejectInput}
+              rejectionDetail={rejectionDetail}
+              setRejectionDetail={setRejectionDetail}
+              targetStage={targetStage}
+              setTargetStage={setTargetStage}
+              submitPending={submitReview.isPending}
+              onApprove={handleApprove}
+              onReject={handleReject}
+              onAbandon={handleAbandon}
+            />
+          )}
         </div>
       </div>
     </SidePanel>
@@ -353,39 +391,255 @@ function MetaSection({ project }: { project: VideoProject }) {
   );
 }
 
-function EventsSection({ eventsData }: { eventsData: { items: import("@/types").ProjectEvent[] } | undefined }) {
+// Statuses whose entry event is clickable and has associated content
+const CONTENT_STATUS_MAP: Record<string, "narrative" | "script"> = {
+  narrative_review: "narrative",
+  script_review: "script",
+};
+
+interface EventsSectionProps {
+  eventsData: { items: ProjectEvent[] } | undefined;
+  narrativeVersions: NarrativeVersion[];
+  scriptVersions: ScriptVersion[];
+  selectedNode: SelectedNode | null;
+  onSelectNode: (node: SelectedNode | null) => void;
+}
+
+function EventsSection({
+  eventsData, narrativeVersions, scriptVersions, selectedNode, onSelectNode,
+}: EventsSectionProps) {
+  // Correlate each status-change event to a version by counting occurrences per type
+  const annotated = useMemo(() => {
+    let narrativeCount = 0;
+    let scriptCount = 0;
+    return (eventsData?.items ?? []).map((event) => {
+      const contentType = event.toStatus ? CONTENT_STATUS_MAP[event.toStatus] : undefined;
+      let versionId: string | null = null;
+      let versionNumber: number | null = null;
+      if (contentType === "narrative") {
+        narrativeCount++;
+        const v = narrativeVersions[narrativeCount - 1];
+        if (v) { versionId = v.id; versionNumber = v.versionNumber; }
+      } else if (contentType === "script") {
+        scriptCount++;
+        const v = scriptVersions[scriptCount - 1];
+        if (v) { versionId = v.id; versionNumber = v.versionNumber; }
+      }
+      return { event, contentType, versionId, versionNumber };
+    });
+  }, [eventsData, narrativeVersions, scriptVersions]);
+
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
-      <p className="shrink-0 text-xs font-semibold text-muted-foreground uppercase tracking-wide">状态时间线</p>
+      <p className="shrink-0 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        状态时间线
+      </p>
       <ScrollArea className="min-h-0 flex-1">
-        {!eventsData?.items.length ? (
+        {!annotated.length ? (
           <p className="text-sm text-muted-foreground">暂无事件记录</p>
         ) : (
           <div className="space-y-0 pr-3">
-            {eventsData.items.map((event, i) => (
-              <div key={event.id} className="flex gap-3">
-                <div className="flex flex-col items-center">
-                  <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                  {i < eventsData.items.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
-                </div>
-                <div className="pb-4 min-w-0">
-                  <p className="text-sm font-medium">
-                    {EVENT_TYPE_LABELS[event.eventType] ?? event.eventType}
-                  </p>
-                  {event.fromStatus && event.toStatus && (
-                    <p className="text-xs text-muted-foreground">
-                      {PROJECT_STATUS_LABELS[event.fromStatus] ?? event.fromStatus}
-                      {" → "}
-                      {PROJECT_STATUS_LABELS[event.toStatus] ?? event.toStatus}
+            {annotated.map(({ event, contentType, versionId, versionNumber }, i) => {
+              const isClickable = !!(contentType && versionId);
+              const isSelected =
+                selectedNode?.versionId === versionId && selectedNode?.type === contentType;
+              const isLast = i === annotated.length - 1;
+
+              return (
+                <div key={event.id} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 border-2 transition-colors ${
+                        isSelected
+                          ? "bg-primary border-primary"
+                          : isClickable
+                          ? "bg-background border-primary cursor-pointer hover:bg-primary/20"
+                          : isLast
+                          ? "bg-primary border-primary"
+                          : "bg-muted-foreground/40 border-muted-foreground/40"
+                      }`}
+                      onClick={() => {
+                        if (!isClickable) return;
+                        if (isSelected) {
+                          onSelectNode(null);
+                        } else {
+                          onSelectNode({ type: contentType!, versionId: versionId!, versionNumber: versionNumber! });
+                        }
+                      }}
+                    />
+                    {i < annotated.length - 1 && (
+                      <div className="w-px flex-1 bg-border mt-1" />
+                    )}
+                  </div>
+                  <div
+                    className={`pb-4 min-w-0 ${isClickable ? "cursor-pointer" : ""}`}
+                    onClick={() => {
+                      if (!isClickable) return;
+                      if (isSelected) {
+                        onSelectNode(null);
+                      } else {
+                        onSelectNode({ type: contentType!, versionId: versionId!, versionNumber: versionNumber! });
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-sm font-medium leading-snug ${isSelected ? "text-primary" : ""}`}>
+                        {event.toStatus
+                          ? (PROJECT_STATUS_LABELS[event.toStatus] ?? event.toStatus)
+                          : (EVENT_TYPE_LABELS[event.eventType] ?? event.eventType)}
+                      </p>
+                      {isClickable && (
+                        <span className="text-xs text-muted-foreground">
+                          v{versionNumber}
+                        </span>
+                      )}
+                      {isClickable && (
+                        <span className="text-xs text-primary/70 ml-auto">
+                          {isSelected ? "收起 ↑" : "查看 →"}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {timeAgo(event.createdAt)}
                     </p>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-0.5">{timeAgo(event.createdAt)}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </ScrollArea>
     </section>
+  );
+}
+
+// ── Historical read-only view ──────────────────────────────────────────────
+
+interface HistoricalViewProps {
+  node: SelectedNode;
+  narrativeVersion: NarrativeVersion | null;
+  scriptVersion: ScriptVersion | null;
+  onClose: () => void;
+}
+
+function HistoricalView({ node, narrativeVersion, scriptVersion, onClose }: HistoricalViewProps) {
+  const version = node.type === "narrative" ? narrativeVersion : scriptVersion;
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      {/* Banner */}
+      <div className="flex items-center justify-between px-5 py-2.5 border-b bg-muted/40 shrink-0">
+        <span className="text-xs text-muted-foreground">
+          正在查看历史版本 — {node.type === "narrative" ? "叙事脚本" : "完整脚本"} v{node.versionNumber}（只读）
+        </span>
+        <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onClose}>
+          返回当前
+        </Button>
+      </div>
+
+      {!version ? (
+        <div className="flex items-center justify-center flex-1">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+        </div>
+      ) : node.type === "narrative" ? (
+        <HistoricalNarrativeView version={narrativeVersion!} />
+      ) : (
+        <HistoricalScriptView version={scriptVersion!} />
+      )}
+    </div>
+  );
+}
+
+function HistoricalNarrativeView({ version }: { version: NarrativeVersion }) {
+  return (
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <ScrollArea className="flex-1 p-5">
+        <div className="space-y-4">
+          {version.scenes.map((scene) => (
+            <div key={scene.sceneIndex} className="border rounded-lg p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">镜头 {scene.sceneIndex}</Badge>
+                {scene.estimatedDurationSeconds && (
+                  <span className="text-xs text-muted-foreground">{scene.estimatedDurationSeconds}s</span>
+                )}
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">旁白</p>
+              <p className="text-sm leading-relaxed">{scene.narration}</p>
+              <p className="text-xs font-medium text-muted-foreground">画面描述</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">{scene.description}</p>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+      <div className="w-64 shrink-0 border-l flex flex-col">
+        <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          事实核查（{version.factChecks.length} 条）
+        </div>
+        <ScrollArea className="flex-1 p-3">
+          <div className="space-y-2">
+            {version.factChecks.map((fc, i) => (
+              <div key={i} className="border rounded p-2 space-y-1">
+                <p className="text-xs">{fc.claimText}</p>
+                <Badge variant="secondary" className="text-xs">{fc.confidence}</Badge>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
+function HistoricalScriptView({ version }: { version: ScriptVersion }) {
+  return (
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <ScrollArea className="flex-1 p-5">
+        <div className="space-y-3">
+          {version.scenes?.map((scene) => (
+            <div key={scene.sceneIndex} className="border rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs">镜头 {scene.sceneIndex}</Badge>
+                <span className="text-xs text-muted-foreground">~{scene.estimatedDurationSeconds}s</span>
+              </div>
+              <p className="text-sm font-medium">{scene.description}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  查看代码
+                </summary>
+                <pre className="mt-2 p-2 bg-muted rounded overflow-x-auto text-xs leading-relaxed">
+                  {scene.code}
+                </pre>
+              </details>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+      <div className="w-64 shrink-0 border-l flex flex-col">
+        <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          事实核查（{version.factChecks?.length ?? 0} 条）
+        </div>
+        <ScrollArea className="flex-1 p-3">
+          <div className="space-y-2">
+            {version.factChecks?.map((fc, i) => (
+              <div key={i} className="border rounded p-2 space-y-1">
+                <p className="text-xs">{fc.claimText}</p>
+                <div className="flex gap-1 flex-wrap">
+                  <Badge variant="secondary" className="text-xs">{fc.confidence}</Badge>
+                  {fc.reviewerVerdict && (
+                    <Badge
+                      variant={fc.reviewerVerdict === "approved" ? "default" : "destructive"}
+                      className="text-xs"
+                    >
+                      {fc.reviewerVerdict}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
   );
 }

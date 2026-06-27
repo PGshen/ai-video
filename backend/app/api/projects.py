@@ -178,9 +178,58 @@ async def get_current_narrative(
     return nv
 
 
-@router.get("/{project_id}/script-versions")
-async def list_script_versions(project_id: UUID, _=Depends(verify_api_key)):
-    return {"items": [], "total": 0}
+@router.get("/{project_id}/narrative-versions", response_model=list[NarrativeVersionSchema])
+async def list_narrative_versions(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    result = await db.execute(
+        select(NarrativeVersion)
+        .where(NarrativeVersion.project_id == project_id)
+        .order_by(NarrativeVersion.version_number.asc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/{project_id}/narrative-versions/{nv_id}", response_model=NarrativeVersionSchema)
+async def get_narrative_version(
+    project_id: UUID,
+    nv_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    nv = await db.get(NarrativeVersion, nv_id)
+    if nv is None or nv.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Narrative version not found")
+    return nv
+
+
+@router.get("/{project_id}/script-versions", response_model=list[ScriptVersionSchema])
+async def list_script_versions(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    result = await db.execute(
+        select(ScriptVersion)
+        .where(ScriptVersion.project_id == project_id)
+        .order_by(ScriptVersion.version_number.asc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/{project_id}/script-versions/{sv_id}", response_model=ScriptVersionSchema)
+async def get_script_version(
+    project_id: UUID,
+    sv_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    sv = await db.get(ScriptVersion, sv_id)
+    if sv is None or sv.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Script version not found")
+    return sv
 
 
 @router.get("/{project_id}/preview-url")

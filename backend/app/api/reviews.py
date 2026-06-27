@@ -7,6 +7,7 @@ from app.auth import verify_api_key
 from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
+from app.models.narrative_version import NarrativeVersion
 from app.models.script_version import ScriptVersion
 from app.schemas.review import ReviewRequest
 
@@ -27,23 +28,53 @@ async def submit_review(
     if not project.temporal_workflow_id:
         raise HTTPException(status_code=400, detail="Project has no active workflow")
 
-    # 写回 fact_check verdicts（仅 script gate 且有标注数据时）
-    if body.gate == "script" and body.fact_check_verdicts:
-        sv = await db.get(ScriptVersion, project.current_script_version_id)
-        if sv and isinstance(sv.fact_checks, list):
-            fact_checks = list(sv.fact_checks)
-            for v in body.fact_check_verdicts:
-                if 0 <= v.index < len(fact_checks):
-                    fact_checks[v.index] = {
-                        **dict(fact_checks[v.index]),
-                        "reviewer_verdict": v.verdict,
-                        "reviewer_note": v.note or None,
-                    }
-            sv.fact_checks = fact_checks
-            flag_modified(sv, "fact_checks")
-            await db.commit()
+    if body.gate == "narrative":
+        # 若有内联编辑，更新叙事版本的 scenes
+        if body.edited_scenes and project.current_narrative_version_id:
+            nv = await db.get(NarrativeVersion, project.current_narrative_version_id)
+            if nv and isinstance(nv.scenes, list):
+                edited_map = {s.scene_index: s for s in body.edited_scenes}
+                updated_scenes = []
+                for scene in nv.scenes:
+                    idx = scene.get("scene_index", -1)
+                    if idx in edited_map:
+                        edit = edited_map[idx]
+                        updated_scenes.append({
+                            **scene,
+                            "narration": edit.narration,
+                            "description": edit.description,
+                            **({"estimated_duration_seconds": edit.estimated_duration_seconds}
+                               if edit.estimated_duration_seconds is not None else {}),
+                        })
+                    else:
+                        updated_scenes.append(scene)
+                nv.scenes = updated_scenes
+                flag_modified(nv, "scenes")
+                await db.commit()
 
-    signal_name = "script_review" if body.gate == "script" else "video_review"
+        signal_name = "narrative_review"
+
+    elif body.gate == "script":
+        # 写回 fact_check verdicts（仅有标注数据时）
+        if body.fact_check_verdicts:
+            sv = await db.get(ScriptVersion, project.current_script_version_id)
+            if sv and isinstance(sv.fact_checks, list):
+                fact_checks = list(sv.fact_checks)
+                for v in body.fact_check_verdicts:
+                    if 0 <= v.index < len(fact_checks):
+                        fact_checks[v.index] = {
+                            **dict(fact_checks[v.index]),
+                            "reviewer_verdict": v.verdict,
+                            "reviewer_note": v.note or None,
+                        }
+                sv.fact_checks = fact_checks
+                flag_modified(sv, "fact_checks")
+                await db.commit()
+
+        signal_name = "script_review"
+
+    else:
+        signal_name = "video_review"
     payload = {
         "verdict": body.verdict,
         "rejection_type": body.rejection_type,

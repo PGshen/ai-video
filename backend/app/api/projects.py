@@ -9,6 +9,8 @@ from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
 from app.models.script_version import ScriptVersion
+from app.models.narrative_version import NarrativeVersion
+from app.schemas.narrative import NarrativeVersionSchema
 from app.models.topic import Topic
 from app.models.project_event import ProjectEvent
 from app.schemas.project import (
@@ -157,6 +159,23 @@ async def get_current_script(
     if sv is None:
         raise HTTPException(status_code=404, detail="Script version not found")
     return sv
+
+
+@router.get("/{project_id}/narrative", response_model=NarrativeVersionSchema)
+async def get_current_narrative(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    project = await db.get(VideoProject, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.current_narrative_version_id:
+        raise HTTPException(status_code=404, detail="No narrative generated yet")
+    nv = await db.get(NarrativeVersion, project.current_narrative_version_id)
+    if nv is None:
+        raise HTTPException(status_code=404, detail="Narrative version not found")
+    return nv
 
 
 @router.get("/{project_id}/script-versions")

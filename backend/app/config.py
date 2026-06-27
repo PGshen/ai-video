@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     DEEPSEEK_TIMEOUT_SECONDS: float = 60.0
     DEEPSEEK_SCRIPT_MAX_TOKENS: int = 8192
     DEEPSEEK_JSON_MAX_TOKENS: int = 4096
+    VOLCENGINE_TTS_API_KEY: str = ""
+    VOLCENGINE_TTS_RESOURCE_ID: str = "seed-tts-2.0"
+    TTS_ENGINE: str = "volcengine"
+    MINIO_BUCKET: str = "video-workflow"
+    MANIM_TIMEOUT_SECONDS: float = 600.0
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

@@ -130,6 +130,17 @@ export function useScriptVersions(projectId: string) {
   });
 }
 
+export function useVideoUrl(projectId: string, assetId: string | null) {
+  return useQuery<{ url: string; expires_in: number }>({
+    queryKey: ["projects", projectId, "video-url", assetId],
+    queryFn: () =>
+      api.get(`/api/projects/${projectId}/video-url?asset_id=${assetId}`),
+    enabled: !!projectId && !!assetId,
+    staleTime: 30 * 60 * 1000, // presigned URL 1h, refetch at 30min
+    retry: false,
+  });
+}
+
 export function useScriptVersion(projectId: string, versionId: string | null) {
   return useQuery<ScriptVersion>({
     queryKey: ["projects", projectId, "script-versions", versionId],

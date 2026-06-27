@@ -37,7 +37,7 @@ class ManimRenderEngine:
                 "--output_file", output_path,
                 "--format", "mp4",
                 "--media_dir", tmpdir,
-                "-q", "m",  # medium quality
+                "-q", "l",  # low quality (480p) for faster rendering
             ]
 
             proc = await asyncio.create_subprocess_exec(

@@ -1,5 +1,5 @@
 VOICE_ALIAS_MAP: dict[str, str] = {
-    "male_calm": "zh_male_rap_M392_expressive",
+    "alloy": "zh_male_xionger_uranus_bigtts",
     "female_warm": "zh_female_story_F271_expressive",
 }
 

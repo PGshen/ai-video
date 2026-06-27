@@ -119,7 +119,7 @@ async def create_project(
     return _project_to_response(orm_project, topic)
 
 
-@router.get("/{project_id}", response_model=ProjectResponse)
+@router.get("/{project_id}", response_model=ProjectDetailResponse)
 async def get_project(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
@@ -129,7 +129,15 @@ async def get_project(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     topic = await db.get(Topic, project.topic_id)
-    return _project_to_response(project, topic)
+    base = _project_to_response(project, topic)
+    video_asset = None
+    if project.current_video_asset_id:
+        video_asset = await db.get(VideoAsset, project.current_video_asset_id)
+    return ProjectDetailResponse(
+        **base.model_dump(),
+        current_script_version=None,
+        current_video_asset=video_asset,
+    )
 
 
 @router.get("/{project_id}/events", response_model=EventListResponse)

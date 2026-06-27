@@ -72,6 +72,8 @@ class VideoAssetSchema(BaseModel):
     video_file_key: Optional[str]
     duration_seconds: Optional[float]
     resolution: Optional[str]
+    render_log: Optional[str]
+    error_message: Optional[str]
     status: str
 
 

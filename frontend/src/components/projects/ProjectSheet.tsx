@@ -10,7 +10,7 @@ import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel
 import {
   useProjectEvents, useProjectScript, useSubmitReview,
   useNarrativeVersions, useNarrativeVersion,
-  useScriptVersions, useScriptVersion,
+  useScriptVersions, useScriptVersion, useVideoUrl,
 } from "@/hooks/useProjects";
 import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, timeAgo } from "@/lib/format";
@@ -46,6 +46,10 @@ export function ProjectSheet({ project, onClose }: Props) {
   const { data: narrative } = useNarrative(displayProject?.id ?? "");
   const { data: narrativeVersions = [] } = useNarrativeVersions(displayProject?.id ?? "");
   const { data: scriptVersions = [] } = useScriptVersions(displayProject?.id ?? "");
+  const { data: videoUrlData } = useVideoUrl(
+    displayProject?.id ?? "",
+    displayProject?.currentVideoAsset?.id ?? null,
+  );
   const submitReview = useSubmitReview();
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
@@ -108,6 +112,40 @@ export function ProjectSheet({ project, onClose }: Props) {
     if (!window.confirm("确认废弃该项目？此操作不可撤销。")) return;
     submitReview.mutate(
       { projectId: project.id, gate: "script", verdict: "abandoned" },
+      {
+        onSuccess: () => { setSubmitted(true); toast.info("项目已废弃"); },
+        onError: () => toast.error("操作失败，请重试"),
+      },
+    );
+  };
+
+  const handleVideoApprove = () => {
+    if (!project) return;
+    submitReview.mutate(
+      { projectId: project.id, gate: "video", verdict: "approved" },
+      {
+        onSuccess: () => { setSubmitted(true); toast.success("视频已通过审核，准备发布"); },
+        onError: () => toast.error("提交失败，请重试"),
+      },
+    );
+  };
+
+  const handleVideoRetry = () => {
+    if (!project) return;
+    submitReview.mutate(
+      { projectId: project.id, gate: "video", verdict: "retry" },
+      {
+        onSuccess: () => { setSubmitted(false); toast.info("已触发重新生成视频"); },
+        onError: () => toast.error("操作失败，请重试"),
+      },
+    );
+  };
+
+  const handleVideoAbandon = () => {
+    if (!project) return;
+    if (!window.confirm("确认废弃该项目？此操作不可撤销。")) return;
+    submitReview.mutate(
+      { projectId: project.id, gate: "video", verdict: "abandoned" },
       {
         onSuccess: () => { setSubmitted(true); toast.info("项目已废弃"); },
         onError: () => toast.error("操作失败，请重试"),
@@ -183,6 +221,10 @@ export function ProjectSheet({ project, onClose }: Props) {
               onApprove={handleApprove}
               onReject={handleReject}
               onAbandon={handleAbandon}
+              videoUrl={videoUrlData?.url ?? null}
+              onVideoApprove={handleVideoApprove}
+              onVideoRetry={handleVideoRetry}
+              onVideoAbandon={handleVideoAbandon}
             />
           )}
         </div>
@@ -211,6 +253,10 @@ interface RightPanelProps {
   onApprove: () => void;
   onReject: () => void;
   onAbandon: () => void;
+  videoUrl: string | null;
+  onVideoApprove: () => void;
+  onVideoRetry: () => void;
+  onVideoAbandon: () => void;
 }
 
 function RightPanel({
@@ -219,7 +265,61 @@ function RightPanel({
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
   submitPending, onApprove, onReject, onAbandon,
+  videoUrl, onVideoApprove, onVideoRetry, onVideoAbandon,
 }: RightPanelProps) {
+  if (project.status === "video_generating") {
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <p className="text-muted-foreground text-sm">AI 正在生成视频…</p>
+      </div>
+    );
+  }
+
+  if (project.status === "video_failed") {
+    const asset = project.currentVideoAsset;
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8">
+        <p className="text-destructive font-medium">视频生成失败</p>
+        {asset?.errorMessage && (
+          <p className="text-sm text-muted-foreground text-center max-w-sm">{asset.errorMessage}</p>
+        )}
+        <div className="flex gap-2">
+          <Button onClick={onVideoRetry} disabled={submitPending}>重试视频生成</Button>
+          <Button variant="destructive" onClick={onVideoAbandon} disabled={submitPending}>废弃</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (project.status === "video_review") {
+    return (
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 p-5">
+          {videoUrl ? (
+            <video
+              src={videoUrl}
+              controls
+              className="w-full h-full max-h-[60vh] rounded-lg bg-black"
+            />
+          ) : (
+            <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+              视频加载中…
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t flex gap-2">
+          <Button onClick={onVideoApprove} disabled={submitPending} className="flex-1">
+            通过发布
+          </Button>
+          <Button variant="destructive" onClick={onVideoAbandon} disabled={submitPending}>
+            废弃
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (project.status === "narrative_generating") {
     return (
       <div className="flex flex-col items-center justify-center flex-1 gap-3">

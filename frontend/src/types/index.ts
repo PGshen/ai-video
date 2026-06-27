@@ -124,17 +124,19 @@ export interface VideoAsset {
   id: string;
   projectId: string;
   scriptVersionId: string;
-  videoFileKey: string;
-  durationSeconds: number;
-  resolution: string;
-  status: "rendering" | "completed" | "failed";
+  videoFileKey: string | null;
+  durationSeconds: number | null;
+  resolution: string | null;
+  renderLog: string | null;
+  errorMessage: string | null;
+  status: "rendering" | "ready" | "failed";
   createdAt: string;
 }
 
 // ═══ 审核请求 ═══
 export interface ReviewRequest {
   gate: "narrative" | "script" | "video";
-  verdict: "approved" | "rejected" | "abandoned";
+  verdict: "approved" | "rejected" | "abandoned" | "retry";
   rejectionType?: string;
   rejectionDetail?: string;
   targetStage?: "narrative" | "code";

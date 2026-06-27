@@ -202,6 +202,14 @@ class VideoProductionWorkflow:
             )
             if not can_retry:
                 await self._update_status(project_id, "video_failed")
+                # 等待用户手动重试或废弃，而不是立即终止
+                user_action = await self._wait_signal("video_review")
+                if user_action.get("verdict") == "retry":
+                    await self._update_status(project_id, "video_generating")
+                    await workflow.execute_activity(
+                        submit_video_generation_task, args=[project_id], **_ACTIVITY_OPTS
+                    )
+                    continue
                 return "abandoned"
             await workflow.execute_activity(
                 submit_video_generation_task, args=[project_id], **_ACTIVITY_OPTS

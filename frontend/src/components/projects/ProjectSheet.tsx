@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel";
 import {
-  useProjectEvents, useProjectScript, useSubmitReview,
+  useProject, useProjectEvents, useProjectScript, useSubmitReview,
   useNarrativeVersions, useNarrativeVersion,
   useScriptVersions, useScriptVersion, useVideoUrl,
 } from "@/hooks/useProjects";
@@ -41,6 +41,9 @@ export function ProjectSheet({ project, onClose }: Props) {
   if (project) lastProjectRef.current = project;
   const displayProject = project ?? lastProjectRef.current;
 
+  // Fetch full project detail (includes currentVideoAsset); list endpoint omits it
+  const { data: projectDetail } = useProject(displayProject?.id ?? "");
+
   const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
   const { data: script, isLoading: scriptLoading } = useProjectScript(displayProject?.id ?? "");
   const { data: narrative } = useNarrative(displayProject?.id ?? "");
@@ -48,7 +51,7 @@ export function ProjectSheet({ project, onClose }: Props) {
   const { data: scriptVersions = [] } = useScriptVersions(displayProject?.id ?? "");
   const { data: videoUrlData } = useVideoUrl(
     displayProject?.id ?? "",
-    displayProject?.currentVideoAsset?.id ?? null,
+    projectDetail?.currentVideoAsset?.id ?? null,
   );
   const submitReview = useSubmitReview();
 
@@ -221,6 +224,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               onApprove={handleApprove}
               onReject={handleReject}
               onAbandon={handleAbandon}
+              currentVideoAsset={projectDetail?.currentVideoAsset ?? null}
               videoUrl={videoUrlData?.url ?? null}
               onVideoApprove={handleVideoApprove}
               onVideoRetry={handleVideoRetry}
@@ -253,6 +257,7 @@ interface RightPanelProps {
   onApprove: () => void;
   onReject: () => void;
   onAbandon: () => void;
+  currentVideoAsset: import("@/types").VideoAsset | null;
   videoUrl: string | null;
   onVideoApprove: () => void;
   onVideoRetry: () => void;
@@ -265,7 +270,7 @@ function RightPanel({
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
   submitPending, onApprove, onReject, onAbandon,
-  videoUrl, onVideoApprove, onVideoRetry, onVideoAbandon,
+  currentVideoAsset, videoUrl, onVideoApprove, onVideoRetry, onVideoAbandon,
 }: RightPanelProps) {
   if (project.status === "video_generating") {
     return (
@@ -277,7 +282,7 @@ function RightPanel({
   }
 
   if (project.status === "video_failed") {
-    const asset = project.currentVideoAsset;
+    const asset = currentVideoAsset;
     return (
       <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8">
         <p className="text-destructive font-medium">视频生成失败</p>

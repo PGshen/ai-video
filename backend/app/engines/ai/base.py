@@ -13,6 +13,12 @@ class BrainstormResult:
     candidates: list[dict]
 
 
+@dataclass
+class NarrativeResult:
+    scenes: list[dict]
+    fact_checks: list[dict]
+
+
 class ChatClient(Protocol):
     @property
     def engine_name(self) -> str: ...
@@ -47,6 +53,14 @@ class AIProvider(Protocol):
         render_engine: str,
         rejection_context: dict | None = None,
     ) -> ScriptGenerationResult: ...
+
+    async def generate_narrative(
+        self,
+        topic_title: str,
+        topic_description: str,
+        render_engine: str,
+        rejection_context: dict | None = None,
+    ) -> NarrativeResult: ...
 
     async def brainstorm_topics(
         self,

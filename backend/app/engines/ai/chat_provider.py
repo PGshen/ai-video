@@ -2,7 +2,7 @@ import json
 import re
 from collections.abc import AsyncIterator
 
-from app.engines.ai.base import BrainstormResult, ChatClient, ScriptGenerationResult
+from app.engines.ai.base import BrainstormResult, ChatClient, NarrativeResult, ScriptGenerationResult
 
 
 class ChatAIProvider:
@@ -225,6 +225,99 @@ code 字段只写代码片段，不写外层结构（详见各引擎规范）。
         if not isinstance(scenes, list) or not isinstance(fact_checks, list):
             raise ValueError("Script response must contain scenes and fact_checks arrays")
         return ScriptGenerationResult(scenes=scenes, fact_checks=fact_checks)
+
+    _NARRATIVE_SYSTEM_PROMPT = """\
+你是知识视频叙事脚本生成器。请严格输出 JSON object，不要输出 Markdown。
+
+JSON 格式示例：
+{
+  "scenes": [
+    {
+      "scene_index": 0,
+      "narration": "旁白文稿——控制节奏、娓娓道来",
+      "description": "画面描述（明确标注进场/变形/退场/跨镜头衔接）",
+      "estimated_duration_seconds": 8.0
+    }
+  ],
+  "fact_checks": [
+    {
+      "claim_text": "需要核查的具体论断",
+      "scene_index": 0,
+      "source_url": null,
+      "source_description": "建议核查来源或说明",
+      "confidence": "medium",
+      "is_hypothesis": false,
+      "assumptions": null,
+      "controversy": null,
+      "reviewer_verdict": null,
+      "reviewer_note": null
+    }
+  ]
+}
+
+【叙事要求】
+- 整体娓娓道来，从一个反直觉的问题或现象切入，逐步建立知识体系
+- 旁白（narration）负责讲解，每句话清晰有力，不空洞
+- 镜头数量根据内容自然分配，通常 8-20 个镜头
+- estimated_duration_seconds 根据旁白长度和画面复杂度估算（通常 5-12 秒/镜头）
+
+【画面描述规范】
+description 字段将直接用于后续渲染代码生成（由 code_generating 阶段处理），必须足够精确：
+- 优先使用图形、公式、数轴、几何图示表达概念，而非纯文字说明
+- 明确标注每个元素的进场方式（如：用 Create 绘制/用 Write 书写/用 FadeIn 淡入/用 GrowArrow 生长）
+- 明确标注跨镜头复用：哪些元素保留给下一镜头、如何变形（Transform/ReplacementTransform/.animate）
+- 明确标注退场：哪些元素在本镜头末尾 FadeOut/移出画面（不再使用的元素必须清场）
+- 每帧实际显示的文字不超过 15 个汉字（关键词、数字、公式、简短标注）
+- 可参考的 Manim 元素类型：Circle/Arrow/NumberLine/Axes/Graph/VGroup/MathTex/Text
+
+【跨镜头衔接示例（description 写法）】
+场景：标题在镜头 0 引入，镜头 1 缩小到顶部
+- 镜头 0 description："黑色背景。用 Write 写出标题'...'. 结尾保留 title 对象供下一镜头使用。"
+- 镜头 1 description："承接 title 对象，用 title.animate.scale(0.5).to_edge(UP) 移动到顶部。下方用 Create 绘制..."
+
+要求：
+- scenes 是镜头数组，scene_index 从 0 连续递增
+- 每个镜头包含 narration、description、estimated_duration_seconds
+- fact_checks 覆盖脚本中的关键事实论断和可能争议点
+- 只能输出合法 JSON object\
+"""
+
+    async def generate_narrative(
+        self,
+        topic_title: str,
+        topic_description: str,
+        render_engine: str,
+        rejection_context: dict | None = None,
+    ) -> NarrativeResult:
+        user_payload: dict = {
+            "topic_title": topic_title,
+            "topic_description": topic_description,
+            "render_engine": render_engine,
+        }
+        if rejection_context:
+            user_payload["rejection_context"] = rejection_context
+            user_note = "（注意：这是一次重新生成，请参考 rejection_context 中的驳回原因修正叙事结构）"
+        else:
+            user_note = ""
+
+        content = await self.client.create_chat_completion(
+            messages=[
+                {"role": "system", "content": self._NARRATIVE_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"请为以下选题生成知识视频叙事脚本 JSON{user_note}：\n"
+                    + json.dumps(user_payload, ensure_ascii=False),
+                },
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=self.script_max_tokens,
+        )
+        payload = parse_json_object(content)
+        scenes = payload.get("scenes")
+        fact_checks = payload.get("fact_checks")
+        if not isinstance(scenes, list) or not isinstance(fact_checks, list):
+            raise ValueError("Narrative response must contain scenes and fact_checks arrays")
+        return NarrativeResult(scenes=scenes, fact_checks=fact_checks)
 
     async def brainstorm_topics(self, topic_direction: str, count: int) -> BrainstormResult:
         system_prompt = """\

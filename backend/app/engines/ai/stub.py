@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.engines.ai.base import BrainstormResult, ScriptGenerationResult, ChatClient
+from app.engines.ai.base import BrainstormResult, NarrativeResult, ScriptGenerationResult, ChatClient
 
 
 class StubProvider:
@@ -10,6 +10,16 @@ class StubProvider:
 
     async def generate_script(self, *args, **kwargs) -> ScriptGenerationResult:
         return ScriptGenerationResult(scenes=[], fact_checks=[])
+
+    async def generate_narrative(
+        self,
+        topic_title: str,
+        topic_description: str,
+        render_engine: str,
+        rejection_context: dict | None = None,
+    ) -> NarrativeResult:
+        await asyncio.sleep(0)
+        return NarrativeResult(scenes=[], fact_checks=[])
 
     async def brainstorm_topics(self, topic_direction: str, count: int) -> BrainstormResult:
         candidates = [
@@ -73,10 +83,7 @@ class StubChatClient:
     ) -> str:
         """Return a stub JSON response with empty scenes and fact_checks."""
         await asyncio.sleep(0)
-        response = {
-            "scenes": [],
-            "fact_checks": [],
-        }
+        response = {"scenes": [], "fact_checks": [], "codes": []}
         return json.dumps(response, ensure_ascii=False)
 
     async def stream_chat_completion(

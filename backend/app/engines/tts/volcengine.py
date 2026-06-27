@@ -21,6 +21,8 @@ class VolcengineTTSEngine:
         self._resource_id = resource_id
 
     async def synthesize(self, request: TTSRequest) -> VolcanTTSResult:
+        import json as _json
+
         speaker = resolve_speaker(request.voice)
         headers = {
             "X-Api-Key": self._api_key,
@@ -38,31 +40,42 @@ class VolcengineTTSEngine:
                 },
             }
         }
+
+        # 接口返回 chunked 流式响应，每个 chunk 是独立的 JSON 行，需逐行解析累积音频
+        audio_chunks: list[bytes] = []
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(_TTS_URL, json=body, headers=headers)
+            async with client.stream("POST", _TTS_URL, json=body, headers=headers) as resp:
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        chunk = _json.loads(line)
+                    except Exception:
+                        return VolcanTTSResult(
+                            success=False,
+                            output_path=None,
+                            duration_seconds=None,
+                            error_message=f"TTS chunk parse failed (HTTP {resp.status_code}): {line[:100]}",
+                            audio_bytes=b"",
+                        )
+                    code = chunk.get("code", 0)
+                    if code != 0:
+                        # 20000000 是流式传输正常结束标志，跳过
+                        if code == 20000000:
+                            continue
+                        return VolcanTTSResult(
+                            success=False,
+                            output_path=None,
+                            duration_seconds=None,
+                            error_message=chunk.get("message", f"TTS API error code {code}"),
+                            audio_bytes=b"",
+                        )
+                    audio_data = chunk.get("data", "")
+                    if audio_data:
+                        audio_chunks.append(base64.b64decode(audio_data))
 
-        try:
-            data = resp.json()
-        except Exception:
-            return VolcanTTSResult(
-                success=False,
-                output_path=None,
-                duration_seconds=None,
-                error_message=f"TTS API returned non-JSON response (HTTP {resp.status_code})",
-                audio_bytes=b"",
-            )
-
-        if data.get("code", 0) != 0:
-            return VolcanTTSResult(
-                success=False,
-                output_path=None,
-                duration_seconds=None,
-                error_message=data.get("message", "TTS API error"),
-                audio_bytes=b"",
-            )
-
-        audio_data = data.get("data", "")
-        if not audio_data:
+        if not audio_chunks:
             return VolcanTTSResult(
                 success=False,
                 output_path=None,
@@ -70,13 +83,13 @@ class VolcengineTTSEngine:
                 error_message="TTS API returned empty audio data",
                 audio_bytes=b"",
             )
-        audio_bytes = base64.b64decode(audio_data)
+
         return VolcanTTSResult(
             success=True,
             output_path=None,
             duration_seconds=None,
             error_message=None,
-            audio_bytes=audio_bytes,
+            audio_bytes=b"".join(audio_chunks),
         )
 
     async def health_check(self) -> bool:

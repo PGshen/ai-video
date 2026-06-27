@@ -1,5 +1,6 @@
 import base64
 import pytest
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.engines.tts.base import TTSRequest
 from app.engines.tts.volcengine import VolcengineTTSEngine, VolcanTTSResult
@@ -10,18 +11,43 @@ def engine():
     return VolcengineTTSEngine(api_key="test-key", resource_id="seed-tts-2.0")
 
 
+def _make_stream_mock(lines: list[str]):
+    """Build a mock for httpx client.stream() that yields the given lines."""
+
+    async def _aiter_lines():
+        for line in lines:
+            yield line
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.aiter_lines = _aiter_lines
+
+    @asynccontextmanager
+    async def _stream(*args, **kwargs):
+        yield mock_resp
+
+    mock_client = MagicMock()
+    mock_client.stream = _stream
+
+    @asynccontextmanager
+    async def _async_client(*args, **kwargs):
+        yield mock_client
+
+    return _async_client
+
+
 @pytest.mark.asyncio
 async def test_synthesize_success(engine):
     audio_bytes = b"fake-audio-data"
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "code": 0,
-        "message": "success",
-        "data": base64.b64encode(audio_bytes).decode(),
-    }
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
-        result = await engine.synthesize(TTSRequest(text="你好世界", voice="male_calm"))
+    chunk = {"code": 0, "message": "", "data": base64.b64encode(audio_bytes).decode()}
+    terminal = {"code": 20000000, "message": "OK", "data": ""}
+
+    import json
+    lines = [json.dumps(chunk), json.dumps(terminal)]
+
+    with patch("httpx.AsyncClient", _make_stream_mock(lines)):
+        result = await engine.synthesize(TTSRequest(text="你好世界", voice="alloy"))
+
     assert result.success is True
     assert isinstance(result, VolcanTTSResult)
     assert result.audio_bytes == audio_bytes
@@ -29,11 +55,13 @@ async def test_synthesize_success(engine):
 
 @pytest.mark.asyncio
 async def test_synthesize_api_error(engine):
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"code": 10001, "message": "invalid api key"}
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
-        result = await engine.synthesize(TTSRequest(text="hello", voice="male_calm"))
+    import json
+    error_chunk = {"code": 10001, "message": "invalid api key", "data": ""}
+    lines = [json.dumps(error_chunk)]
+
+    with patch("httpx.AsyncClient", _make_stream_mock(lines)):
+        result = await engine.synthesize(TTSRequest(text="hello", voice="alloy"))
+
     assert result.success is False
     assert "invalid api key" in result.error_message
 

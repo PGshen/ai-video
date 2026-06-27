@@ -28,6 +28,9 @@ class VideoProject(Base):
     current_video_asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True)
     )
+    current_narrative_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True)
+    )
     temporal_workflow_id: Mapped[Optional[str]] = mapped_column(String(100))
     retry_count: Mapped[int] = mapped_column(SmallInteger, default=0)
     created_at: Mapped[datetime] = mapped_column(

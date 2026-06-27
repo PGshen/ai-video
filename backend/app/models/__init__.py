@@ -1,3 +1,4 @@
+from app.models.narrative_version import NarrativeVersion  # noqa
 from app.models.topic import Topic
 from app.models.project import VideoProject
 from app.models.script_version import ScriptVersion
@@ -7,6 +8,7 @@ from app.models.project_event import ProjectEvent
 from app.models.performance_record import PerformanceRecord
 
 __all__ = [
+    "NarrativeVersion",
     "Topic",
     "VideoProject",
     "ScriptVersion",

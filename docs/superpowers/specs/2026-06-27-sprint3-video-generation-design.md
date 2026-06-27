@@ -106,7 +106,7 @@ python -m manim render <script_file> <SceneName> --output_file <output_path> ...
 
 ### 音频注入
 
-Manim 脚本模板在每个 scene 的 `construct()` 方法中使用 `self.add_sound(audio_path)` 注入对应 scene 的音频路径（MinIO 下载到本地临时目录）。
+整个脚本是**一个 Manim Scene**，所有镜头代码共享同一个 `construct()` 作用域。RenderWorker 在生成 Manim 脚本时，在每个镜头动画块的起始处插入 `self.add_sound("<audio_path>")`，对应该镜头的 TTS 音频（已下载到本地临时目录）。注入顺序与 `scenes[]` 数组顺序一致。
 
 ## MinIO 存储路径
 

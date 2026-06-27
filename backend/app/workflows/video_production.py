@@ -66,7 +66,9 @@ class VideoProductionWorkflow:
                 if narrative_result == "abandoned":
                     await self._update_status(project_id, "abandoned")
                     return
-                # narrative_result == "approved" → fall through to code generation
+                if narrative_result != "approved":
+                    need_narrative = True
+                    continue
 
             code_result = await self._generate_code_and_review_script(project_id)
             if code_result == "approved":
@@ -98,6 +100,9 @@ class VideoProductionWorkflow:
                         if narrative_result == "abandoned":
                             await self._update_status(project_id, "abandoned")
                             return
+                        if narrative_result != "approved":
+                            need_narrative = True
+                            continue
                     code_result = await self._generate_code_and_review_script(project_id)
                     if code_result == "approved":
                         break

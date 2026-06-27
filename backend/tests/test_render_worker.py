@@ -1,8 +1,6 @@
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
-from datetime import datetime, timezone
-
 
 def make_project(script_version_id=None):
     p = MagicMock()
@@ -54,8 +52,11 @@ async def test_render_worker_success():
         error_message=None, render_log="OK", video_bytes=b"fake-video"
     )
 
+    asset_mock = MagicMock()
+    project_mock = MagicMock()
+
     mock_db = MagicMock()
-    mock_db.get.side_effect = [project, sv]
+    mock_db.get.side_effect = [project, sv, asset_mock, project_mock]
 
     mock_tts = AsyncMock()
     mock_tts.synthesize = AsyncMock(return_value=tts_result)

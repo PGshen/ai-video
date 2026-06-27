@@ -71,8 +71,8 @@ class RenderWorker(BaseWorker):
         asset_id_str = str(asset_id)
         asset = VideoAsset(
             id=asset_id,
-            project_id=project.id,
-            script_version_id=sv.id,
+            project_id=uuid.UUID(project_id),
+            script_version_id=uuid.UUID(script_version_id),
             status="rendering",
         )
         db = get_sync_session()
@@ -115,11 +115,12 @@ class RenderWorker(BaseWorker):
             render_result = await render_engine.render(render_request)
 
             if not render_result.success:
-                asset.status = "failed"
-                asset.render_log = render_result.render_log
                 db = get_sync_session()
                 try:
-                    db.merge(asset)
+                    asset_orm = db.get(VideoAsset, asset_id)
+                    if asset_orm:
+                        asset_orm.status = "failed"
+                        asset_orm.render_log = render_result.render_log
                     db.commit()
                 finally:
                     db.close()
@@ -135,14 +136,16 @@ class RenderWorker(BaseWorker):
         # Step 6: 更新 VideoAsset 和 Project
         db = get_sync_session()
         try:
-            asset.status = "ready"
-            asset.video_file_key = video_key
-            asset.render_log = render_result.render_log
-            asset.duration_seconds = render_result.duration_seconds
-            db.merge(asset)
+            asset_orm = db.get(VideoAsset, asset_id)
+            if asset_orm:
+                asset_orm.status = "ready"
+                asset_orm.video_file_key = video_key
+                asset_orm.render_log = render_result.render_log
+                asset_orm.duration_seconds = render_result.duration_seconds
 
-            project.current_video_asset_id = asset_id
-            db.merge(project)
+            project_orm = db.get(VideoProject, task.project_id)
+            if project_orm:
+                project_orm.current_video_asset_id = asset_id
 
             db.commit()
         finally:

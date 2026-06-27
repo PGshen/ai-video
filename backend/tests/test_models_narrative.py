@@ -10,6 +10,7 @@ def test_narrative_version_model_has_expected_columns():
     assert "scenes" in cols
     assert "fact_checks" in cols
     assert "rejection_context" in cols
+    assert "ai_model" in cols
 
 
 def test_video_project_has_narrative_version_id_column():

@@ -593,7 +593,7 @@ function HistoricalView({ node, narrativeVersion, scriptVersion, onClose }: Hist
 function HistoricalNarrativeView({ version }: { version: NarrativeVersion }) {
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
-      <ScrollArea className="flex-1 p-5">
+      <ScrollArea className="flex-[3] min-w-0 p-5">
         <div className="space-y-4">
           {version.scenes.map((scene) => (
             <div key={scene.sceneIndex} className="border rounded-lg p-4 space-y-2">
@@ -611,17 +611,14 @@ function HistoricalNarrativeView({ version }: { version: NarrativeVersion }) {
           ))}
         </div>
       </ScrollArea>
-      <div className="w-64 shrink-0 border-l flex flex-col">
-        <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+      <div className="flex-[2] min-w-0 border-l flex flex-col">
+        <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
           事实核查（{version.factChecks.length} 条）
         </div>
         <ScrollArea className="flex-1 p-3">
-          <div className="space-y-2">
+          <div className="space-y-3">
             {version.factChecks.map((fc, i) => (
-              <div key={i} className="border rounded p-2 space-y-1">
-                <p className="text-xs">{fc.claimText}</p>
-                <Badge variant="secondary" className="text-xs">{fc.confidence}</Badge>
-              </div>
+              <HistoricalFactCheckCard key={i} fc={fc} />
             ))}
           </div>
         </ScrollArea>
@@ -633,7 +630,7 @@ function HistoricalNarrativeView({ version }: { version: NarrativeVersion }) {
 function HistoricalScriptView({ version }: { version: ScriptVersion }) {
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
-      <ScrollArea className="flex-1 p-5">
+      <ScrollArea className="flex-[3] min-w-0 p-5">
         <div className="space-y-3">
           {version.scenes?.map((scene) => (
             <div key={scene.sceneIndex} className="border rounded-lg p-3 space-y-2">
@@ -655,27 +652,14 @@ function HistoricalScriptView({ version }: { version: ScriptVersion }) {
           ))}
         </div>
       </ScrollArea>
-      <div className="w-64 shrink-0 border-l flex flex-col">
-        <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+      <div className="flex-[2] min-w-0 border-l flex flex-col">
+        <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
           事实核查（{version.factChecks?.length ?? 0} 条）
         </div>
         <ScrollArea className="flex-1 p-3">
-          <div className="space-y-2">
+          <div className="space-y-3">
             {version.factChecks?.map((fc, i) => (
-              <div key={i} className="border rounded p-2 space-y-1">
-                <p className="text-xs">{fc.claimText}</p>
-                <div className="flex gap-1 flex-wrap">
-                  <Badge variant="secondary" className="text-xs">{fc.confidence}</Badge>
-                  {fc.reviewerVerdict && (
-                    <Badge
-                      variant={fc.reviewerVerdict === "approved" ? "default" : "destructive"}
-                      className="text-xs"
-                    >
-                      {fc.reviewerVerdict}
-                    </Badge>
-                  )}
-                </div>
-              </div>
+              <HistoricalFactCheckCard key={i} fc={fc} />
             ))}
           </div>
         </ScrollArea>
@@ -683,3 +667,83 @@ function HistoricalScriptView({ version }: { version: ScriptVersion }) {
     </div>
   );
 }
+
+// ── Shared fact-check card for historical views ────────────────────────────
+
+const CONFIDENCE_LABEL: Record<string, string> = { high: "高", medium: "中", low: "低" };
+const CONFIDENCE_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
+  high: "default", medium: "secondary", low: "destructive",
+};
+const VERDICT_LABEL: Record<string, string> = {
+  approved: "通过", rejected: "驳回", needs_revision: "待修改",
+};
+const VERDICT_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
+  approved: "default", needs_revision: "secondary", rejected: "destructive",
+};
+
+function HistoricalFactCheckCard({ fc }: { fc: import("@/types").FactCheckItem }) {
+  return (
+    <div className="border rounded-lg p-3 space-y-2 text-xs">
+      {/* Claim */}
+      <p className="font-medium leading-relaxed">{fc.claimText}</p>
+
+      {/* Badges row */}
+      <div className="flex gap-1.5 flex-wrap">
+        <Badge variant={CONFIDENCE_VARIANT[fc.confidence] ?? "secondary"} className="text-xs">
+          可信度：{CONFIDENCE_LABEL[fc.confidence] ?? fc.confidence}
+        </Badge>
+        {fc.isHypothesis && (
+          <Badge variant="outline" className="text-xs">假设</Badge>
+        )}
+        {fc.reviewerVerdict && (
+          <Badge variant={VERDICT_VARIANT[fc.reviewerVerdict] ?? "secondary"} className="text-xs">
+            {VERDICT_LABEL[fc.reviewerVerdict] ?? fc.reviewerVerdict}
+          </Badge>
+        )}
+      </div>
+
+      {/* Source */}
+      {fc.sourceDescription && (
+        <div className="space-y-0.5">
+          <p className="text-muted-foreground font-medium">来源</p>
+          <p className="text-muted-foreground leading-relaxed">{fc.sourceDescription}</p>
+          {fc.sourceUrl && (
+            <a
+              href={fc.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline break-all"
+            >
+              {fc.sourceUrl}
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Assumptions */}
+      {fc.assumptions && (
+        <div className="space-y-0.5">
+          <p className="text-muted-foreground font-medium">前提假设</p>
+          <p className="text-muted-foreground leading-relaxed">{fc.assumptions}</p>
+        </div>
+      )}
+
+      {/* Controversy */}
+      {fc.controversy && (
+        <div className="space-y-0.5">
+          <p className="text-amber-600 font-medium">争议点</p>
+          <p className="text-amber-600/80 leading-relaxed">{fc.controversy}</p>
+        </div>
+      )}
+
+      {/* Reviewer note */}
+      {fc.reviewerNote && (
+        <div className="space-y-0.5">
+          <p className="text-muted-foreground font-medium">审核备注</p>
+          <p className="text-muted-foreground leading-relaxed">{fc.reviewerNote}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+

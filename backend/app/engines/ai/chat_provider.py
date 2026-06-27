@@ -226,21 +226,53 @@ code 字段只写代码片段，不写外层结构（详见各引擎规范）。
             raise ValueError("Script response must contain scenes and fact_checks arrays")
         return ScriptGenerationResult(scenes=scenes, fact_checks=fact_checks)
 
-    _NARRATIVE_SYSTEM_PROMPT = """\
+    _NARRATIVE_ENGINE_HINTS: dict[str, str] = {
+        "manim": """\
+【Manim 画面描述规范】
+description 字段将由 Manim 渲染引擎解析为 Python 动画代码，描述时必须对应 Manim 的对象和方法：
+- 用具体 Manim 类描述元素：Circle/Square/Arrow/NumberLine/Axes/Graph/VGroup/MathTex/Text
+- 进场标注：用 Create 绘制几何图形、用 Write 书写文字/公式、用 FadeIn 淡入、用 GrowArrow 生长箭头
+- 跨镜头复用：明确写出哪些变量名保留（如"保留 title 对象"），以及如何变形（title.animate.scale(0.5).to_edge(UP) / Transform / ReplacementTransform）
+- 退场标注：本镜头末尾不再使用的对象必须写 self.play(FadeOut(obj))，否则会残留在下一镜头
+- 公式用 MathTex，避免用 Text 堆砌文字；每帧可见文字不超过 15 个汉字
+
+跨镜头示例：
+- 镜头 0："黑色背景。用 Write 写出 title = Text('为什么天空是蓝色的？')，缩放 1.2。结尾保留 title 供下一镜头。"
+- 镜头 1："承接 title，用 title.animate.scale(0.5).to_edge(UP) 移到顶部。下方用 Create 绘制 sun = Circle(color=YELLOW)，GrowArrow 引出光线箭头。镜头末尾 FadeOut(sun, arrow)。"\
+""",
+        "remotion": """\
+【Remotion 画面描述规范】
+description 字段将由 Remotion 渲染引擎解析为 React/TSX 动画代码，描述时对应 Remotion 的组件和 hook：
+- 用 SVG 元素描述几何图形（<circle>/<line>/<path>/<rect>）、用 <div> 描述文字层
+- 动效标注：用 interpolate(frame, [in, out], [from, to]) 做线性动画，用 spring({frame, fps}) 做弹性入场
+- 跨镜头：Remotion 的每个 <Sequence> 是独立作用域，需要在 description 里明确「该镜头开始时的初始状态」，不能直接引用上一镜头变量
+- 持续存在于多个镜头的元素（背景、标题栏）应在 description 里注明「作为共享层放在外层 Sequence」
+- 每帧文字不超过 15 个汉字；避免大段段落文字
+
+跨镜头示例：
+- 镜头 0："黑色背景 AbsoluteFill。标题文字用 spring 入场（opacity 0→1，translateY 30→0）。"
+- 镜头 1："背景继承上一镜头（共享层）。中央 SVG：左侧黄色圆圈代表太阳，用 interpolate 驱动一条白色射线从圆圈向右延伸至画面 2/3 处。"\
+""",
+    }
+    _NARRATIVE_ENGINE_HINT_FALLBACK = (
+        "description 字段将用于后续渲染代码生成，必须精确描述每个元素的进场、变形、退场及跨镜头衔接关系。"
+    )
+
+    _NARRATIVE_SYSTEM_PROMPT_TEMPLATE = """\
 你是知识视频叙事脚本生成器。请严格输出 JSON object，不要输出 Markdown。
 
 JSON 格式示例：
-{
+{{
   "scenes": [
-    {
+    {{
       "scene_index": 0,
       "narration": "旁白文稿——控制节奏、娓娓道来",
       "description": "画面描述（明确标注进场/变形/退场/跨镜头衔接）",
       "estimated_duration_seconds": 8.0
-    }
+    }}
   ],
   "fact_checks": [
-    {
+    {{
       "claim_text": "需要核查的具体论断",
       "scene_index": 0,
       "source_url": null,
@@ -251,32 +283,26 @@ JSON 格式示例：
       "controversy": null,
       "reviewer_verdict": null,
       "reviewer_note": null
-    }
+    }}
   ]
-}
+}}
 
 【叙事要求】
-- 整体娓娓道来，从一个反直觉的问题或现象切入，逐步建立知识体系
-- 旁白（narration）负责讲解，每句话清晰有力，不空洞
-- 镜头数量根据内容自然分配，通常 8-20 个镜头
-- estimated_duration_seconds 根据旁白长度和画面复杂度估算（通常 5-12 秒/镜头）
+- 整体娓娓道来，从一个反直觉的问题或现象切入，逐步建立知识体系，结尾给出有价值的启示
+- 旁白（narration）负责讲解，每句话清晰有力，不空洞，不重复画面文字
+- 目标视频时长 2-3 分钟，需要 15-20 个镜头，每个镜头旁白约 30-50 字、时长 7-10 秒
+- estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得少于 5 秒
 
-【画面描述规范】
-description 字段将直接用于后续渲染代码生成（由 code_generating 阶段处理），必须足够精确：
-- 优先使用图形、公式、数轴、几何图示表达概念，而非纯文字说明
-- 明确标注每个元素的进场方式（如：用 Create 绘制/用 Write 书写/用 FadeIn 淡入/用 GrowArrow 生长）
-- 明确标注跨镜头复用：哪些元素保留给下一镜头、如何变形（Transform/ReplacementTransform/.animate）
-- 明确标注退场：哪些元素在本镜头末尾 FadeOut/移出画面（不再使用的元素必须清场）
-- 每帧实际显示的文字不超过 15 个汉字（关键词、数字、公式、简短标注）
-- 可参考的 Manim 元素类型：Circle/Arrow/NumberLine/Axes/Graph/VGroup/MathTex/Text
+【内容节奏】
+- 镜头 0-1：抛出问题/反直觉现象，吸引注意
+- 镜头 2-5：建立基础知识框架，引入关键概念
+- 镜头 6-14：逐步深入，结合图示/公式/实例展开论证
+- 镜头 15+：总结升华，给出启示或应用价值
 
-【跨镜头衔接示例（description 写法）】
-场景：标题在镜头 0 引入，镜头 1 缩小到顶部
-- 镜头 0 description："黑色背景。用 Write 写出标题'...'. 结尾保留 title 对象供下一镜头使用。"
-- 镜头 1 description："承接 title 对象，用 title.animate.scale(0.5).to_edge(UP) 移动到顶部。下方用 Create 绘制..."
+{engine_hint}
 
 要求：
-- scenes 是镜头数组，scene_index 从 0 连续递增
+- scenes 是镜头数组，scene_index 从 0 连续递增，数量在 15-20 个
 - 每个镜头包含 narration、description、estimated_duration_seconds
 - fact_checks 覆盖脚本中的关键事实论断和可能争议点
 - 只能输出合法 JSON object\
@@ -289,6 +315,13 @@ description 字段将直接用于后续渲染代码生成（由 code_generating 
         render_engine: str,
         rejection_context: dict | None = None,
     ) -> NarrativeResult:
+        engine_hint = self._NARRATIVE_ENGINE_HINTS.get(
+            render_engine, self._NARRATIVE_ENGINE_HINT_FALLBACK
+        )
+        system_prompt = self._NARRATIVE_SYSTEM_PROMPT_TEMPLATE.format(
+            engine_hint=engine_hint
+        )
+
         user_payload: dict = {
             "topic_title": topic_title,
             "topic_description": topic_description,
@@ -302,7 +335,7 @@ description 字段将直接用于后续渲染代码生成（由 code_generating 
 
         content = await self.client.create_chat_completion(
             messages=[
-                {"role": "system", "content": self._NARRATIVE_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": f"请为以下选题生成知识视频叙事脚本 JSON{user_note}：\n"

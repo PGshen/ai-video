@@ -18,14 +18,28 @@ export function useProjects(status?: string) {
       api.get<ProjectListResponse>(
         `/api/projects${status ? `?status=${status}` : ""}`
       ),
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      return items.some((p) => TRANSITIONAL_STATUSES.has(p.status)) ? 3000 : false;
+    },
   });
 }
+
+const TRANSITIONAL_STATUSES = new Set([
+  "narrative_generating",
+  "code_generating",
+  "video_generating",
+]);
 
 export function useProject(id: string) {
   return useQuery<VideoProject>({
     queryKey: ["projects", id],
     queryFn: () => api.get<VideoProject>(`/api/projects/${id}`),
     enabled: !!id,
+    refetchInterval: (query) =>
+      query.state.data && TRANSITIONAL_STATUSES.has(query.state.data.status)
+        ? 3000
+        : false,
   });
 }
 

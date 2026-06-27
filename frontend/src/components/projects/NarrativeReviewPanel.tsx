@@ -166,13 +166,18 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
             rows={2}
           />
         )}
+        {submitReview.isSuccess && (
+          <p className="text-sm text-muted-foreground text-center animate-pulse">
+            已提交，正在切换到代码生成阶段…
+          </p>
+        )}
         <div className="flex gap-2">
           <Button
             onClick={handleApprove}
-            disabled={submitReview.isPending}
+            disabled={submitReview.isPending || submitReview.isSuccess}
             className="flex-1"
           >
-            确认通过（进入代码生成）
+            {submitReview.isPending ? "提交中…" : "确认通过（进入代码生成）"}
           </Button>
           <Button
             variant="outline"
@@ -183,14 +188,14 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                 setShowRejectInput(true);
               }
             }}
-            disabled={submitReview.isPending}
+            disabled={submitReview.isPending || submitReview.isSuccess}
           >
-            驳回重生成
+            {submitReview.isPending ? "提交中…" : "驳回重生成"}
           </Button>
           <Button
             variant="ghost"
             onClick={handleAbandon}
-            disabled={submitReview.isPending}
+            disabled={submitReview.isPending || submitReview.isSuccess}
           >
             废弃
           </Button>

@@ -135,8 +135,7 @@ export default function ProjectDetailPage() {
         )}
 
       {/* 脚本审核主区域 */}
-      {(isScriptReview || script) &&
-        !["script_generating", "script_failed"].includes(project.status) && (
+      {(isScriptReview || script) && (
           <div className="flex flex-1 overflow-hidden">
             {/* 左：镜头列表 */}
             <div className="w-1/2 border-r flex flex-col">

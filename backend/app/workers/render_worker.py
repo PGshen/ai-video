@@ -112,7 +112,7 @@ class RenderWorker(BaseWorker):
                 resolution=(1920, 1080),
                 fps=30,
             )
-            render_result = await render_engine.render(render_request)
+            render_result = await render_engine.render(render_request, work_dir=tmpdir)
 
             if not render_result.success:
                 db = get_sync_session()

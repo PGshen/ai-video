@@ -41,7 +41,17 @@ class VolcengineTTSEngine:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(_TTS_URL, json=body, headers=headers)
 
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            return VolcanTTSResult(
+                success=False,
+                output_path=None,
+                duration_seconds=None,
+                error_message=f"TTS API returned non-JSON response (HTTP {resp.status_code})",
+                audio_bytes=b"",
+            )
+
         if data.get("code", 0) != 0:
             return VolcanTTSResult(
                 success=False,
@@ -51,7 +61,16 @@ class VolcengineTTSEngine:
                 audio_bytes=b"",
             )
 
-        audio_bytes = base64.b64decode(data["data"])
+        audio_data = data.get("data", "")
+        if not audio_data:
+            return VolcanTTSResult(
+                success=False,
+                output_path=None,
+                duration_seconds=None,
+                error_message="TTS API returned empty audio data",
+                audio_bytes=b"",
+            )
+        audio_bytes = base64.b64decode(audio_data)
         return VolcanTTSResult(
             success=True,
             output_path=None,

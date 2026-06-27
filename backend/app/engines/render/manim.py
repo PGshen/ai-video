@@ -1,9 +1,19 @@
 import asyncio
+import contextlib
 import os
 import tempfile
 from pathlib import Path
 from app.engines.render.base import RenderEngine, RenderRequest, RenderResult, SceneInput
 from app.config import settings
+
+
+@contextlib.contextmanager
+def _tmpdir_context(work_dir):
+    if work_dir is not None:
+        yield work_dir
+    else:
+        with tempfile.TemporaryDirectory() as d:
+            yield d
 
 
 class ManimRenderEngine:
@@ -12,11 +22,11 @@ class ManimRenderEngine:
     async def validate_code(self, scenes: list[SceneInput]) -> tuple[bool, str]:
         return True, ""
 
-    async def render(self, request: RenderRequest) -> RenderResult:
-        with tempfile.TemporaryDirectory() as tmpdir:
+    async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:
+        with _tmpdir_context(work_dir) as tmpdir:
             script_path = os.path.join(tmpdir, "scene.py")
             output_path = os.path.join(tmpdir, "output.mp4")
-            script_content = _build_manim_script(request.scenes, tmpdir)
+            script_content = _build_manim_script(request.scenes)
 
             with open(script_path, "w") as f:
                 f.write(script_content)
@@ -100,7 +110,7 @@ class _RenderResultWithBytes(RenderResult):
         self.video_bytes = video_bytes
 
 
-def _build_manim_script(scenes: list[SceneInput], workdir: str) -> str:
+def _build_manim_script(scenes: list[SceneInput]) -> str:
     lines = [
         "from manim import *",
         "",
@@ -109,9 +119,9 @@ def _build_manim_script(scenes: list[SceneInput], workdir: str) -> str:
         "    def construct(self):",
     ]
     for i, scene in enumerate(scenes):
-        audio_filename = f"scene_{i}_audio.mp3"
+        audio_path = scene.audio.audio_path if scene.audio else f"scene_{i}_audio.mp3"
         lines.append(f"        # Scene {i}: {scene.description}")
-        lines.append(f'        self.add_sound("{audio_filename}")')
+        lines.append(f'        self.add_sound("{audio_path}")')
         for code_line in scene.code.splitlines():
             lines.append(f"        {code_line}")
         lines.append("")

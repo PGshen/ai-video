@@ -27,3 +27,9 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
 };
+
+export function fetchNarrative(projectId: string) {
+  return api.get<import("@/types").NarrativeVersion>(
+    `/api/projects/${projectId}/narrative`
+  );
+}

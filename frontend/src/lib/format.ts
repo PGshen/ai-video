@@ -33,8 +33,11 @@ export const TOPIC_STATUS_COLORS: Record<string, string> = {
 
 export const PROJECT_STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
-  script_generating: "生成脚本中",
-  script_failed: "脚本失败",
+  narrative_generating: "生成叙事中",
+  narrative_review: "叙事待审核",
+  narrative_failed: "叙事生成失败",
+  code_generating: "生成代码中",
+  code_failed: "代码生成失败",
   script_review: "脚本待审核",
   video_generating: "生成视频中",
   video_failed: "视频失败",
@@ -45,8 +48,11 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
 
 export const PROJECT_STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-600",
-  script_generating: "bg-blue-100 text-blue-700",
-  script_failed: "bg-red-100 text-red-700",
+  narrative_generating: "bg-blue-100 text-blue-700",
+  narrative_review: "bg-yellow-100 text-yellow-700",
+  narrative_failed: "bg-red-100 text-red-700",
+  code_generating: "bg-blue-100 text-blue-700",
+  code_failed: "bg-red-100 text-red-700",
   script_review: "bg-yellow-100 text-yellow-700",
   video_generating: "bg-purple-100 text-purple-700",
   video_failed: "bg-red-100 text-red-700",

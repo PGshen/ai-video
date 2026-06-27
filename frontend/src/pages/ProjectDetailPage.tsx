@@ -17,8 +17,11 @@ interface VerdictState {
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   draft: "草稿",
-  script_generating: "AI 生成脚本中…",
-  script_failed: "脚本生成失败",
+  narrative_generating: "AI 生成叙事脚本中…",
+  narrative_review: "待叙事审核",
+  narrative_failed: "叙事生成失败",
+  code_generating: "AI 生成代码中…",
+  code_failed: "代码生成失败",
   script_review: "待审核",
   video_generating: "视频渲染中…",
   video_failed: "视频生成失败",
@@ -107,22 +110,22 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {project.status === "script_generating" && (
+      {(project.status === "narrative_generating" || project.status === "code_generating") && (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-2">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-            <p className="text-muted-foreground">AI 正在生成脚本，请稍候…</p>
+            <p className="text-muted-foreground">{STATUS_LABELS[project.status]}</p>
           </div>
         </div>
       )}
 
-      {project.status === "script_failed" && (
+      {(project.status === "narrative_failed" || project.status === "code_failed") && (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-destructive">脚本生成失败，请联系管理员</p>
+          <p className="text-destructive">{STATUS_LABELS[project.status]}，请联系管理员</p>
         </div>
       )}
 
-      {!["script_generating", "script_failed", "script_review"].includes(project.status) &&
+      {!["narrative_generating", "narrative_failed", "code_generating", "code_failed", "script_review"].includes(project.status) &&
         project.status !== "draft" && (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-muted-foreground">

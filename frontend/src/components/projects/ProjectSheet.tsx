@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
+import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel";
 import { useProjectEvents, useProjectScript, useSubmitReview } from "@/hooks/useProjects";
+import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, timeAgo } from "@/lib/format";
 import type { VideoProject } from "@/types";
 
@@ -30,11 +32,13 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
   const { data: script, isLoading: scriptLoading } = useProjectScript(displayProject?.id ?? "");
+  const { data: narrative } = useNarrative(displayProject?.id ?? "");
   const submitReview = useSubmitReview();
 
   const [verdicts, setVerdicts] = useState<Record<number, VerdictState>>({});
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [targetStage, setTargetStage] = useState<"narrative" | "code">("narrative");
 
   const isScriptReview = project?.status === "script_review";
   const hasScript = !!script;
@@ -69,6 +73,7 @@ export function ProjectSheet({ project, onClose }: Props) {
       gate: "script",
       verdict: "rejected",
       rejectionDetail,
+      targetStage,
       factCheckVerdicts: buildVerdictList(),
     });
   };
@@ -104,23 +109,20 @@ export function ProjectSheet({ project, onClose }: Props) {
       </SidePanelHeader>
 
       {/* 主体：左栏固定 + 右栏弹性 */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* 左栏：元数据 + 时间线 */}
-        <div className="w-72 shrink-0 border-r flex flex-col overflow-hidden">
-          <ScrollArea className="flex-1">
-            <div className="p-5 space-y-6">
-              <MetaSection project={displayProject} />
-              <EventsSection eventsData={eventsData} />
-            </div>
-          </ScrollArea>
+        <div className="w-72 shrink-0 border-r flex min-h-0 flex-col overflow-hidden p-5">
+          <MetaSection project={displayProject} />
+          <EventsSection eventsData={eventsData} />
         </div>
 
         {/* 右栏：审核视图 */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           <RightPanel
             project={displayProject}
             script={script ?? null}
             scriptLoading={scriptLoading}
+            narrative={narrative ?? null}
             isScriptReview={isScriptReview}
             hasScript={hasScript}
             verdicts={verdicts}
@@ -130,6 +132,8 @@ export function ProjectSheet({ project, onClose }: Props) {
             showRejectInput={showRejectInput}
             rejectionDetail={rejectionDetail}
             setRejectionDetail={setRejectionDetail}
+            targetStage={targetStage}
+            setTargetStage={setTargetStage}
             submitPending={submitReview.isPending}
             onApprove={handleApprove}
             onReject={handleReject}
@@ -145,6 +149,7 @@ interface RightPanelProps {
   project: VideoProject;
   script: Awaited<ReturnType<typeof useProjectScript>>["data"] | null;
   scriptLoading: boolean;
+  narrative: Awaited<ReturnType<typeof useNarrative>>["data"] | null;
   isScriptReview: boolean;
   hasScript: boolean;
   verdicts: Record<number, VerdictState>;
@@ -154,6 +159,8 @@ interface RightPanelProps {
   showRejectInput: boolean;
   rejectionDetail: string;
   setRejectionDetail: (v: string) => void;
+  targetStage: "narrative" | "code";
+  setTargetStage: (v: "narrative" | "code") => void;
   submitPending: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -161,24 +168,44 @@ interface RightPanelProps {
 }
 
 function RightPanel({
-  project, script, scriptLoading, isScriptReview, hasScript,
+  project, script, scriptLoading, narrative, isScriptReview, hasScript,
   verdicts, setVerdicts, allMarked, canReject,
   showRejectInput, rejectionDetail, setRejectionDetail,
+  targetStage, setTargetStage,
   submitPending, onApprove, onReject, onAbandon,
 }: RightPanelProps) {
-  if (project.status === "script_generating") {
+  if (project.status === "narrative_generating") {
     return (
       <div className="flex flex-col items-center justify-center flex-1 gap-3">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        <p className="text-muted-foreground text-sm">AI 正在生成脚本，请稍候…</p>
+        <p className="text-muted-foreground text-sm">AI 正在生成叙事脚本…</p>
       </div>
     );
   }
 
-  if (project.status === "script_failed") {
+  if (project.status === "narrative_review" && narrative) {
+    return (
+      <div className="flex-1 min-h-0 overflow-hidden p-5">
+        <NarrativeReviewPanel projectId={project.id} narrative={narrative} />
+      </div>
+    );
+  }
+
+  if (project.status === "code_generating") {
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <p className="text-muted-foreground text-sm">AI 正在生成动画代码…</p>
+      </div>
+    );
+  }
+
+  if (project.status === "narrative_failed" || project.status === "code_failed") {
     return (
       <div className="flex items-center justify-center flex-1">
-        <p className="text-destructive text-sm">脚本生成失败，请联系管理员</p>
+        <p className="text-destructive text-sm">
+          {project.status === "narrative_failed" ? "叙事脚本生成失败" : "代码生成失败"}，请联系管理员
+        </p>
       </div>
     );
   }
@@ -194,13 +221,13 @@ function RightPanel({
   return (
     <>
       {/* 两列内容区 */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* 镜头列表 */}
-        <div className="w-1/2 border-r flex flex-col overflow-hidden">
+        <div className="w-1/2 border-r flex min-h-0 flex-col overflow-hidden">
           <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             镜头列表（{script?.scenes.length ?? 0} 个）
           </div>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-3">
               {scriptLoading && <p className="text-sm text-muted-foreground">加载脚本…</p>}
               {script?.scenes.map((scene) => (
@@ -226,11 +253,11 @@ function RightPanel({
         </div>
 
         {/* 事实核查 */}
-        <div className="w-1/2 flex flex-col overflow-hidden">
+        <div className="w-1/2 flex min-h-0 flex-col overflow-hidden">
           <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             事实核查（{script?.factChecks.length ?? 0} 条）
           </div>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-3">
               {script?.factChecks.map((item, idx) => (
                 <FactCheckCard
@@ -253,12 +280,36 @@ function RightPanel({
       {isScriptReview && (
         <div className="px-5 py-4 border-t space-y-2">
           {showRejectInput && (
-            <Textarea
-              value={rejectionDetail}
-              onChange={(e) => setRejectionDetail(e.target.value)}
-              placeholder="请说明驳回原因（AI 重新生成时会参考此信息）"
-              className="text-sm min-h-[72px]"
-            />
+            <div className="space-y-2">
+              <Textarea
+                value={rejectionDetail}
+                onChange={(e) => setRejectionDetail(e.target.value)}
+                placeholder="请说明驳回原因（AI 重新生成时会参考此信息）"
+                className="text-sm min-h-[72px]"
+              />
+              <div className="flex gap-4 text-sm">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="targetStage"
+                    value="narrative"
+                    checked={targetStage === "narrative"}
+                    onChange={() => setTargetStage("narrative")}
+                  />
+                  重写叙事脚本
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="targetStage"
+                    value="code"
+                    checked={targetStage === "code"}
+                    onChange={() => setTargetStage("code")}
+                  />
+                  仅重新生成代码
+                </label>
+              </div>
+            </div>
           )}
           <div className="flex gap-2">
             <Button onClick={onApprove} disabled={!allMarked || submitPending} className="flex-1">
@@ -284,7 +335,7 @@ function RightPanel({
 
 function MetaSection({ project }: { project: VideoProject }) {
   return (
-    <section className="space-y-3">
+    <section className="shrink-0 space-y-3 pb-6">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">项目配置</p>
       <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
         <span className="text-muted-foreground">渲染引擎</span>
@@ -304,35 +355,37 @@ function MetaSection({ project }: { project: VideoProject }) {
 
 function EventsSection({ eventsData }: { eventsData: { items: import("@/types").ProjectEvent[] } | undefined }) {
   return (
-    <section className="space-y-3">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">状态时间线</p>
-      {!eventsData?.items.length ? (
-        <p className="text-sm text-muted-foreground">暂无事件记录</p>
-      ) : (
-        <div className="space-y-0">
-          {eventsData.items.map((event, i) => (
-            <div key={event.id} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                {i < eventsData.items.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
-              </div>
-              <div className="pb-4 min-w-0">
-                <p className="text-sm font-medium">
-                  {EVENT_TYPE_LABELS[event.eventType] ?? event.eventType}
-                </p>
-                {event.fromStatus && event.toStatus && (
-                  <p className="text-xs text-muted-foreground">
-                    {PROJECT_STATUS_LABELS[event.fromStatus] ?? event.fromStatus}
-                    {" → "}
-                    {PROJECT_STATUS_LABELS[event.toStatus] ?? event.toStatus}
+    <section className="flex min-h-0 flex-1 flex-col gap-3">
+      <p className="shrink-0 text-xs font-semibold text-muted-foreground uppercase tracking-wide">状态时间线</p>
+      <ScrollArea className="min-h-0 flex-1">
+        {!eventsData?.items.length ? (
+          <p className="text-sm text-muted-foreground">暂无事件记录</p>
+        ) : (
+          <div className="space-y-0 pr-3">
+            {eventsData.items.map((event, i) => (
+              <div key={event.id} className="flex gap-3">
+                <div className="flex flex-col items-center">
+                  <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
+                  {i < eventsData.items.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
+                </div>
+                <div className="pb-4 min-w-0">
+                  <p className="text-sm font-medium">
+                    {EVENT_TYPE_LABELS[event.eventType] ?? event.eventType}
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground mt-0.5">{timeAgo(event.createdAt)}</p>
+                  {event.fromStatus && event.toStatus && (
+                    <p className="text-xs text-muted-foreground">
+                      {PROJECT_STATUS_LABELS[event.fromStatus] ?? event.fromStatus}
+                      {" → "}
+                      {PROJECT_STATUS_LABELS[event.toStatus] ?? event.toStatus}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-0.5">{timeAgo(event.createdAt)}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </ScrollArea>
     </section>
   );
 }

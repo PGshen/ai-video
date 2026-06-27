@@ -13,6 +13,8 @@ from app.models.narrative_version import NarrativeVersion
 from app.schemas.narrative import NarrativeVersionSchema
 from app.models.topic import Topic
 from app.models.project_event import ProjectEvent
+from app.models.video_asset import VideoAsset
+from app.storage import get_presigned_url
 from app.schemas.project import (
     ProjectCreate, ProjectResponse, ProjectListResponse,
     ProjectDetailResponse, EventListResponse, ScriptVersionSchema,
@@ -232,9 +234,26 @@ async def get_script_version(
     return sv
 
 
-@router.get("/{project_id}/preview-url")
-async def get_preview_url(project_id: UUID, _=Depends(verify_api_key)):
-    raise HTTPException(status_code=404, detail="No video asset yet")
+@router.get("/{project_id}/video-url")
+async def get_video_url(
+    project_id: UUID,
+    asset_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    project = await db.get(VideoProject, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    asset = await db.get(VideoAsset, asset_id)
+    if asset is None or asset.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Video asset not found")
+
+    if not asset.video_file_key:
+        raise HTTPException(status_code=404, detail="Video not yet available")
+
+    url = get_presigned_url(asset.video_file_key, expires_seconds=3600)
+    return {"url": url, "expires_in": 3600}
 
 
 @router.post("/{project_id}/performance")

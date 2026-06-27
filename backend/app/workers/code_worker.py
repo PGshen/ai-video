@@ -1,3 +1,4 @@
+import logging
 import uuid
 from sqlalchemy import func, select
 from app.db import get_sync_session
@@ -7,6 +8,8 @@ from app.models.narrative_version import NarrativeVersion
 from app.models.script_version import ScriptVersion
 from app.workers.base import BaseWorker
 
+logger = logging.getLogger(__name__)
+
 
 class CodeWorker(BaseWorker):
     supported_task_types = ["generate_code"]
@@ -14,6 +17,13 @@ class CodeWorker(BaseWorker):
     async def _execute(self, task) -> dict:
         payload = task.input_payload or {}
         render_engine = payload.get("render_engine", "manim")
+
+        logger.info(
+            "[CodeWorker] task=%s project=%s engine=%s",
+            task.id,
+            task.project_id,
+            render_engine,
+        )
 
         db = get_sync_session()
         try:
@@ -27,12 +37,19 @@ class CodeWorker(BaseWorker):
 
             scenes = list(narrative.scenes or [])
             fact_checks = list(narrative.fact_checks or [])
+            logger.info(
+                "[CodeWorker] loaded narrative_version=%s scenes=%d",
+                project.current_narrative_version_id,
+                len(scenes),
+            )
 
             provider = get_ai_provider()
+            logger.info("[CodeWorker] calling AI provider model=%s", provider.model_name)
             result = await provider.generate_code(
                 scenes=scenes,
                 render_engine=render_engine,
             )
+            logger.info("[CodeWorker] AI done: codes=%d", len(result.codes))
 
             # Merge code into scenes (match by position / scene_index order)
             merged_scenes = []
@@ -61,6 +78,11 @@ class CodeWorker(BaseWorker):
 
             project.current_script_version_id = sv.id
             db.commit()
+            logger.info(
+                "[CodeWorker] committed script_version_id=%s version=%d",
+                sv.id,
+                next_version,
+            )
 
             return {
                 "script_version_id": str(sv.id),

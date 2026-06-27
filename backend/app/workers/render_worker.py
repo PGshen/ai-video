@@ -39,8 +39,17 @@ class RenderWorker(BaseWorker):
         finally:
             db.close()
 
+        logger.info(
+            "[RenderWorker] task=%s project=%s scenes=%d engine=%s voice=%s",
+            task.id,
+            task.project_id,
+            len(scenes_data),
+            render_engine_name,
+            tts_voice,
+        )
+
         # Step 1: 并发 TTS 合成（最多 3 路并发，避免超出配额）
-        logger.info("[RenderWorker] Starting TTS for %d scenes", len(scenes_data))
+        logger.info("[RenderWorker] Starting TTS for %d scenes (concurrency=3)", len(scenes_data))
         tts_engine = get_tts_engine()
         tts_requests = [
             TTSRequest(text=s.get("narration", ""), voice=tts_voice)
@@ -60,9 +69,12 @@ class RenderWorker(BaseWorker):
         # 检查 TTS 结果
         for i, result in enumerate(tts_results):
             if isinstance(result, Exception):
+                logger.error("[RenderWorker] TTS exception scene %d: %s", i, result)
                 raise RuntimeError(f"TTS failed for scene {i}: {result}")
             if not result.success:
+                logger.error("[RenderWorker] TTS failed scene %d: %s", i, result.error_message)
                 raise RuntimeError(f"TTS failed for scene {i}: {result.error_message}")
+        logger.info("[RenderWorker] TTS done: all %d scenes synthesized", len(tts_results))
 
         # Step 2: 上传音频到 MinIO
         audio_keys = []
@@ -121,6 +133,11 @@ class RenderWorker(BaseWorker):
             render_result = await render_engine.render(render_request, work_dir=tmpdir)
 
             if not render_result.success:
+                logger.error(
+                    "[RenderWorker] Render failed asset=%s: %s",
+                    asset_id_str,
+                    render_result.error_message,
+                )
                 db = get_sync_session()
                 try:
                     asset_orm = db.get(VideoAsset, asset_id)

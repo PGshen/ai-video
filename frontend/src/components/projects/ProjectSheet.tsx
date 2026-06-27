@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import { SidePanel, SidePanelHeader } from "@/components/ui/side-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export function ProjectSheet({ project, onClose }: Props) {
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [targetStage, setTargetStage] = useState<"narrative" | "code">("narrative");
+  const [submitted, setSubmitted] = useState(false);
 
   // Fetch selected historical version on demand
   const { data: selectedNarrativeVersion } = useNarrativeVersion(
@@ -80,31 +82,37 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   const handleApprove = () => {
     if (!project) return;
-    submitReview.mutate({
-      projectId: project.id,
-      gate: "script",
-      verdict: "approved",
-      factCheckVerdicts: buildVerdictList(),
-    });
+    submitReview.mutate(
+      { projectId: project.id, gate: "script", verdict: "approved", factCheckVerdicts: buildVerdictList() },
+      {
+        onSuccess: () => { setSubmitted(true); toast.success("审核已通过，AI 正在生成代码…"); },
+        onError: () => toast.error("提交失败，请重试"),
+      },
+    );
   };
 
   const handleReject = () => {
     if (!project) return;
     if (!showRejectInput) { setShowRejectInput(true); return; }
-    submitReview.mutate({
-      projectId: project.id,
-      gate: "script",
-      verdict: "rejected",
-      rejectionDetail,
-      targetStage,
-      factCheckVerdicts: buildVerdictList(),
-    });
+    submitReview.mutate(
+      { projectId: project.id, gate: "script", verdict: "rejected", rejectionDetail, targetStage, factCheckVerdicts: buildVerdictList() },
+      {
+        onSuccess: () => { setSubmitted(true); toast.success("已驳回，AI 将重新生成"); },
+        onError: () => toast.error("提交失败，请重试"),
+      },
+    );
   };
 
   const handleAbandon = () => {
     if (!project) return;
     if (!window.confirm("确认废弃该项目？此操作不可撤销。")) return;
-    submitReview.mutate({ projectId: project.id, gate: "script", verdict: "abandoned" });
+    submitReview.mutate(
+      { projectId: project.id, gate: "script", verdict: "abandoned" },
+      {
+        onSuccess: () => { setSubmitted(true); toast.info("项目已废弃"); },
+        onError: () => toast.error("操作失败，请重试"),
+      },
+    );
   };
 
   if (!displayProject) return null;
@@ -171,7 +179,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               setRejectionDetail={setRejectionDetail}
               targetStage={targetStage}
               setTargetStage={setTargetStage}
-              submitPending={submitReview.isPending}
+              submitPending={submitReview.isPending || submitted}
               onApprove={handleApprove}
               onReject={handleReject}
               onAbandon={handleAbandon}

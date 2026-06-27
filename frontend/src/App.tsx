@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
 import Layout from "@/components/Layout";
 import TopicsPage from "@/pages/TopicsPage";
 import ProjectsPage from "@/pages/ProjectsPage";
@@ -30,6 +31,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      <Toaster position="top-center" richColors />
     </QueryClientProvider>
   );
 }

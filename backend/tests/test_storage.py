@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 import pytest
 
 
@@ -6,12 +6,13 @@ def test_upload_bytes_calls_put_object():
     mock_client = MagicMock()
     with patch("app.storage._get_client", return_value=mock_client):
         from app.storage import upload_bytes
+        from app.config import settings
         upload_bytes("test/key.mp3", b"audio-data", "audio/mpeg")
     mock_client.put_object.assert_called_once()
-    args = mock_client.put_object.call_args
-    assert args.kwargs["bucket_name"] == mock_client.put_object.call_args.kwargs["bucket_name"] or True
-    # verify key passed
     call_kwargs = mock_client.put_object.call_args[1]
+    assert call_kwargs["bucket_name"] == settings.MINIO_BUCKET
+    assert call_kwargs["length"] == len(b"audio-data")
+    # verify key passed
     assert call_kwargs["object_name"] == "test/key.mp3"
 
 

@@ -106,3 +106,43 @@ async def check_and_increment_retry(project_id: str, stage: str, error: str) -> 
         return project.retry_count < 3
     finally:
         db.close()
+
+
+@activity.defn
+async def submit_narrative_task(project_id: str) -> None:
+    db = get_sync_session()
+    try:
+        project = db.get(VideoProject, uuid.UUID(project_id))
+        if project is None:
+            return
+        topic = db.get(Topic, project.topic_id)
+
+        rejection_event = db.execute(
+            select(ProjectEvent)
+            .where(
+                ProjectEvent.project_id == project.id,
+                ProjectEvent.event_type == "review_rejected",
+            )
+            .order_by(desc(ProjectEvent.created_at))
+        ).scalars().first()
+        rejection_context = rejection_event.payload if rejection_event else None
+
+        task = WorkerTask(
+            project_id=project.id,
+            task_type="generate_narrative",
+            engine=project.render_engine,
+            status="pending",
+            input_payload={
+                "topic_title": topic.title if topic else "",
+                "topic_description": topic.description if topic else "",
+                "render_engine": project.render_engine,
+                "rejection_context": rejection_context,
+            },
+            temporal_workflow_id=f"video-production-{project_id}",
+            signal_name="narrative_generated",
+            max_retries=3,
+        )
+        db.add(task)
+        db.commit()
+    finally:
+        db.close()

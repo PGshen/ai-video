@@ -6,12 +6,14 @@ import asyncio
 import logging
 from temporalio.client import Client
 from temporalio.worker import Worker as TemporalWorker
-from app.workers.script_worker import ScriptWorker
+from app.workers.narrative_worker import NarrativeWorker
+from app.workers.code_worker import CodeWorker
 from app.workers.render_worker import RenderWorker
 from app.workflows.video_production import VideoProductionWorkflow
 from app.workflows.activities import (
     update_project_status,
-    submit_script_generation_task,
+    submit_narrative_task,
+    submit_code_task,
     submit_video_generation_task,
     check_and_increment_retry,
 )
@@ -31,14 +33,21 @@ async def main():
         workflows=[VideoProductionWorkflow],
         activities=[
             update_project_status,
-            submit_script_generation_task,
+            submit_narrative_task,
+            submit_code_task,
             submit_video_generation_task,
             check_and_increment_retry,
         ],
     )
 
-    script_worker = ScriptWorker(
-        worker_id="script-worker-01",
+    narrative_worker = NarrativeWorker(
+        worker_id="narrative-worker-01",
+        temporal_client=client,
+        poll_interval=2.0,
+    )
+
+    code_worker = CodeWorker(
+        worker_id="code-worker-01",
         temporal_client=client,
         poll_interval=2.0,
     )
@@ -52,7 +61,8 @@ async def main():
     logger.info("Workers started.")
     await asyncio.gather(
         temporal_worker.run(),
-        script_worker.run(),
+        narrative_worker.run(),
+        code_worker.run(),
         render_worker.run(),
     )
 

@@ -6,6 +6,7 @@ with workflow.unsafe.imports_passed_through():
     from app.workflows.activities import (
         update_project_status,
         submit_narrative_task,
+        submit_code_task,
         submit_video_generation_task,
         check_and_increment_retry,
     )
@@ -27,8 +28,16 @@ class VideoProductionWorkflow:
         self._signals: dict[str, list] = {}
 
     @workflow.signal
-    async def script_generated(self, payload: dict) -> None:
-        self._signals.setdefault("script_generated", []).append(payload)
+    async def narrative_generated(self, payload: dict) -> None:
+        self._signals.setdefault("narrative_generated", []).append(payload)
+
+    @workflow.signal
+    async def narrative_review(self, payload: dict) -> None:
+        self._signals.setdefault("narrative_review", []).append(payload)
+
+    @workflow.signal
+    async def code_generated(self, payload: dict) -> None:
+        self._signals.setdefault("code_generated", []).append(payload)
 
     @workflow.signal
     async def script_review(self, payload: dict) -> None:
@@ -48,12 +57,27 @@ class VideoProductionWorkflow:
 
     @workflow.run
     async def run(self, project_id: str) -> None:
-        # Phase 1: script generation loop
+        need_narrative = True
+
+        # Phase 1 outer loop: narrative + code + script review
         while True:
-            result = await self._generate_and_review_script(project_id)
-            if result == "approved":
+            if need_narrative:
+                narrative_result = await self._generate_and_review_narrative(project_id)
+                if narrative_result == "abandoned":
+                    await self._update_status(project_id, "abandoned")
+                    return
+                # narrative_result == "approved" → fall through to code generation
+
+            code_result = await self._generate_code_and_review_script(project_id)
+            if code_result == "approved":
                 break
-            elif result == "abandoned":
+            elif code_result == "back_to_narrative":
+                need_narrative = True
+                continue
+            elif code_result == "back_to_code":
+                need_narrative = False
+                continue
+            elif code_result == "abandoned":
                 await self._update_status(project_id, "abandoned")
                 return
 
@@ -66,42 +90,95 @@ class VideoProductionWorkflow:
                 await self._update_status(project_id, "abandoned")
                 return
             elif result == "back_to_script":
+                # go back to narrative generation
+                need_narrative = True
                 while True:
-                    r = await self._generate_and_review_script(project_id)
-                    if r == "approved":
+                    if need_narrative:
+                        narrative_result = await self._generate_and_review_narrative(project_id)
+                        if narrative_result == "abandoned":
+                            await self._update_status(project_id, "abandoned")
+                            return
+                    code_result = await self._generate_code_and_review_script(project_id)
+                    if code_result == "approved":
                         break
-                    elif r == "abandoned":
+                    elif code_result == "back_to_narrative":
+                        need_narrative = True
+                        continue
+                    elif code_result == "back_to_code":
+                        need_narrative = False
+                        continue
+                    elif code_result == "abandoned":
                         await self._update_status(project_id, "abandoned")
                         return
 
-        # Phase 3: publish
         await self._update_status(project_id, "published")
 
-    async def _generate_and_review_script(self, project_id: str) -> str:
-        await self._update_status(project_id, "script_generating")
+    async def _generate_and_review_narrative(self, project_id: str) -> str:
+        await self._update_status(project_id, "narrative_generating")
         await workflow.execute_activity(
             submit_narrative_task, args=[project_id], **_ACTIVITY_OPTS
         )
 
         while True:
-            result = await self._wait_signal("script_generated")
+            result = await self._wait_signal("narrative_generated")
             if result["success"]:
                 break
             can_retry = await workflow.execute_activity(
                 check_and_increment_retry,
-                args=[project_id, "script_generating", result.get("error", "")],
+                args=[project_id, "narrative_generating", result.get("error", "")],
                 **_STATUS_OPTS,
             )
             if not can_retry:
-                await self._update_status(project_id, "script_failed")
+                await self._update_status(project_id, "narrative_failed")
                 return "abandoned"
             await workflow.execute_activity(
                 submit_narrative_task, args=[project_id], **_ACTIVITY_OPTS
             )
 
+        await self._update_status(project_id, "narrative_review")
+        review = await self._wait_signal("narrative_review")
+        verdict = review.get("verdict")
+        if verdict == "approved":
+            return "approved"
+        elif verdict == "abandoned":
+            return "abandoned"
+        # rejected → retry narrative
+        return "rejected_retry"
+
+    async def _generate_code_and_review_script(self, project_id: str) -> str:
+        await self._update_status(project_id, "code_generating")
+        await workflow.execute_activity(
+            submit_code_task, args=[project_id], **_ACTIVITY_OPTS
+        )
+
+        while True:
+            result = await self._wait_signal("code_generated")
+            if result["success"]:
+                break
+            can_retry = await workflow.execute_activity(
+                check_and_increment_retry,
+                args=[project_id, "code_generating", result.get("error", "")],
+                **_STATUS_OPTS,
+            )
+            if not can_retry:
+                await self._update_status(project_id, "code_failed")
+                return "abandoned"
+            await workflow.execute_activity(
+                submit_code_task, args=[project_id], **_ACTIVITY_OPTS
+            )
+
         await self._update_status(project_id, "script_review")
         review = await self._wait_signal("script_review")
-        return review["verdict"]
+        verdict = review.get("verdict")
+        if verdict == "approved":
+            return "approved"
+        elif verdict == "abandoned":
+            return "abandoned"
+        # rejected: check target_stage
+        target = review.get("target_stage", "narrative")
+        if target == "code":
+            return "back_to_code"
+        return "back_to_narrative"
 
     async def _generate_and_review_video(self, project_id: str) -> str:
         await self._update_status(project_id, "video_generating")

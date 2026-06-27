@@ -31,46 +31,6 @@ async def update_project_status(project_id: str, new_status: str) -> None:
         db.close()
 
 
-@activity.defn
-async def submit_script_generation_task(project_id: str) -> None:
-    db = get_sync_session()
-    try:
-        project = db.get(VideoProject, uuid.UUID(project_id))
-        if project is None:
-            return
-        topic = db.get(Topic, project.topic_id)
-
-        # 读取最近一次驳回事件作为 rejection_context
-        rejection_event = db.execute(
-            select(ProjectEvent)
-            .where(
-                ProjectEvent.project_id == project.id,
-                ProjectEvent.event_type == "review_rejected",
-            )
-            .order_by(desc(ProjectEvent.created_at))
-        ).scalars().first()
-        rejection_context = rejection_event.payload if rejection_event else None
-
-        task = WorkerTask(
-            project_id=project.id,
-            task_type="generate_script",
-            engine=project.render_engine,
-            status="pending",
-            input_payload={
-                "topic_title": topic.title if topic else "",
-                "topic_description": topic.description if topic else "",
-                "render_engine": project.render_engine,
-                "rejection_context": rejection_context,
-            },
-            temporal_workflow_id=f"video-production-{project_id}",
-            signal_name="script_generated",
-            max_retries=3,
-        )
-        db.add(task)
-        db.commit()
-    finally:
-        db.close()
-
 
 @activity.defn
 async def submit_video_generation_task(project_id: str) -> None:
@@ -140,6 +100,29 @@ async def submit_narrative_task(project_id: str) -> None:
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="narrative_generated",
+            max_retries=3,
+        )
+        db.add(task)
+        db.commit()
+    finally:
+        db.close()
+
+
+@activity.defn
+async def submit_code_task(project_id: str) -> None:
+    db = get_sync_session()
+    try:
+        project = db.get(VideoProject, uuid.UUID(project_id))
+        if project is None:
+            return
+        task = WorkerTask(
+            project_id=project.id,
+            task_type="generate_code",
+            engine=project.render_engine,
+            status="pending",
+            input_payload={"render_engine": project.render_engine},
+            temporal_workflow_id=f"video-production-{project_id}",
+            signal_name="code_generated",
             max_retries=3,
         )
         db.add(task)

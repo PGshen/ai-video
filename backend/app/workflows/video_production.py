@@ -5,7 +5,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from app.workflows.activities import (
         update_project_status,
-        submit_script_generation_task,
+        submit_narrative_task,
         submit_video_generation_task,
         check_and_increment_retry,
     )
@@ -80,7 +80,7 @@ class VideoProductionWorkflow:
     async def _generate_and_review_script(self, project_id: str) -> str:
         await self._update_status(project_id, "script_generating")
         await workflow.execute_activity(
-            submit_script_generation_task, args=[project_id], **_ACTIVITY_OPTS
+            submit_narrative_task, args=[project_id], **_ACTIVITY_OPTS
         )
 
         while True:
@@ -96,7 +96,7 @@ class VideoProductionWorkflow:
                 await self._update_status(project_id, "script_failed")
                 return "abandoned"
             await workflow.execute_activity(
-                submit_script_generation_task, args=[project_id], **_ACTIVITY_OPTS
+                submit_narrative_task, args=[project_id], **_ACTIVITY_OPTS
             )
 
         await self._update_status(project_id, "script_review")

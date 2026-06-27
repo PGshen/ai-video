@@ -40,14 +40,33 @@ export interface BrainstormCandidate {
 // ═══ 视频项目 ═══
 export type ProjectStatus =
   | "draft"
-  | "script_generating"
-  | "script_failed"
+  | "narrative_generating"
+  | "narrative_review"
+  | "narrative_failed"
+  | "code_generating"
+  | "code_failed"
   | "script_review"
   | "video_generating"
   | "video_failed"
   | "video_review"
   | "published"
   | "abandoned";
+
+export interface NarrativeScene {
+  sceneIndex: number;
+  narration: string;
+  description: string;
+  estimatedDurationSeconds: number | null;
+}
+
+export interface NarrativeVersion {
+  id: string;
+  versionNumber: number;
+  scenes: NarrativeScene[];
+  factChecks: FactCheckItem[];
+  aiModel: string | null;
+  createdAt: string;
+}
 
 export interface VideoProject {
   id: string;
@@ -114,15 +133,21 @@ export interface VideoAsset {
 
 // ═══ 审核请求 ═══
 export interface ReviewRequest {
-  gate: "script" | "video";
+  gate: "narrative" | "script" | "video";
   verdict: "approved" | "rejected" | "abandoned";
-  rejectionType?: "topic_invalid" | "fact_error" | "script_weak" | "sync_issue";
+  rejectionType?: string;
   rejectionDetail?: string;
-  targetStage?: "script_generating";
+  targetStage?: "narrative" | "code";
   factCheckVerdicts?: Array<{
     index: number;
     verdict: "approved" | "rejected" | "needs_revision";
     note: string;
+  }>;
+  editedScenes?: Array<{
+    sceneIndex: number;
+    narration: string;
+    description: string;
+    estimatedDurationSeconds?: number | null;
   }>;
 }
 

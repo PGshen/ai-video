@@ -13,14 +13,24 @@ class ProjectCreate(BaseModel):
 
 
 class SceneSchema(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
+
     scene_index: int
     narration: str
     description: str
     code: str
-    estimated_duration_seconds: float
+    estimated_duration_seconds: Optional[float] = None
 
 
 class FactCheckItemSchema(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
+
     claim_text: str
     scene_index: int
     source_url: Optional[str]

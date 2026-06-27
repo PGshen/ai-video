@@ -145,7 +145,18 @@ def test_get_script_returns_script_version(client, auth_headers, mock_db):
         project_id=project_id,
         version_number=1,
         scenes=[{"scene_index": 0, "narration": "旁白", "description": "画面", "code": "", "estimated_duration_seconds": 5.0}],
-        fact_checks=[],
+        fact_checks=[{
+            "claim_text": "事实陈述",
+            "scene_index": 0,
+            "source_url": None,
+            "source_description": "测试来源",
+            "confidence": "high",
+            "is_hypothesis": False,
+            "assumptions": None,
+            "controversy": None,
+            "reviewer_verdict": None,
+            "reviewer_note": None,
+        }],
         render_engine="manim",
         ai_model="test-model",
         rejection_context=None,
@@ -159,6 +170,10 @@ def test_get_script_returns_script_version(client, auth_headers, mock_db):
     data = response.json()
     assert data["versionNumber"] == 1
     assert len(data["scenes"]) == 1
+    assert data["scenes"][0]["sceneIndex"] == 0
+    assert data["scenes"][0]["estimatedDurationSeconds"] == 5.0
+    assert data["factChecks"][0]["claimText"] == "事实陈述"
+    assert data["factChecks"][0]["sceneIndex"] == 0
 
 
 def test_get_script_returns_404_if_no_script(client, auth_headers, mock_db):

@@ -30,10 +30,12 @@ async def submit_review(
         raise HTTPException(status_code=400, detail="Project has no active workflow")
 
     if body.gate == "narrative":
+        reviewed_version = None
         # 若有内联编辑，更新叙事版本的 scenes
-        if body.edited_scenes and project.current_narrative_version_id:
+        if project.current_narrative_version_id:
             nv = await db.get(NarrativeVersion, project.current_narrative_version_id)
-            if nv and isinstance(nv.scenes, list):
+            reviewed_version = nv
+            if body.edited_scenes and nv and isinstance(nv.scenes, list):
                 edited_map = {s.scene_index: s for s in body.edited_scenes}
                 updated_scenes = []
                 for scene in nv.scenes:
@@ -57,6 +59,7 @@ async def submit_review(
 
     elif body.gate == "script":
         sv = await db.get(ScriptVersion, project.current_script_version_id)
+        reviewed_version = sv
         if sv:
             updated = False
             # 写回 fact_check verdicts
@@ -89,6 +92,7 @@ async def submit_review(
         signal_name = "script_review"
 
     else:
+        reviewed_version = None
         signal_name = "video_review"
     signal_payload = {
         "verdict": body.verdict,
@@ -97,22 +101,29 @@ async def submit_review(
         "target_stage": body.target_stage,
     }
 
-    # Persist review verdict as a project event for timeline display
+    # 只有 Temporal 成功接收操作后才记录结果，避免时间线出现“假成功”。
+    review_status = project.status
+    handle = temporal.get_workflow_handle(project.temporal_workflow_id)
+    await handle.signal(signal_name, signal_payload)
+
+    # Persist review verdict and its exact content version for timeline history.
     event_payload: dict = {"gate": body.gate, "verdict": body.verdict}
+    if body.rejection_type:
+        event_payload["rejection_type"] = body.rejection_type
     if body.rejection_detail:
         event_payload["rejection_detail"] = body.rejection_detail
     if body.target_stage:
         event_payload["target_stage"] = body.target_stage
+    if reviewed_version is not None:
+        event_payload["content_version_id"] = str(reviewed_version.id)
+        event_payload["content_version_number"] = reviewed_version.version_number
     db.add(ProjectEvent(
         project_id=project_id,
         event_type="review_verdict",
-        from_status=project.status,
+        from_status=review_status,
         to_status=None,
         actor="reviewer",
         payload=event_payload,
     ))
     await db.commit()
-
-    handle = temporal.get_workflow_handle(project.temporal_workflow_id)
-    await handle.signal(signal_name, signal_payload)
     return {"status": "ok"}

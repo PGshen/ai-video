@@ -6,6 +6,7 @@ from app.config import settings
 def make_project(temporal_workflow_id="wf-1", script_version_id=None):
     p = MagicMock()
     p.id = uuid4()
+    p.status = "script_review"
     p.temporal_workflow_id = temporal_workflow_id
     p.current_script_version_id = script_version_id or uuid4()
     return p
@@ -14,6 +15,7 @@ def make_project(temporal_workflow_id="wf-1", script_version_id=None):
 def make_script_version():
     sv = MagicMock()
     sv.id = uuid4()
+    sv.version_number = 3
     sv.fact_checks = [
         {"claim_text": "论断0", "scene_index": 0, "source_url": None,
          "source_description": "来源", "confidence": "medium", "is_hypothesis": False,
@@ -64,6 +66,12 @@ def test_review_with_verdicts_updates_fact_checks(client, mock_db, mock_temporal
     assert updated[1]["reviewer_note"] == "来源不可靠"
 
     mock_handle.signal.assert_called_once()
+    event = mock_db.add.call_args.args[0]
+    assert event.event_type == "review_verdict"
+    assert event.from_status == "script_review"
+    assert event.payload["verdict"] == "approved"
+    assert event.payload["content_version_id"] == str(sv.id)
+    assert event.payload["content_version_number"] == 3
 
 
 def test_review_without_verdicts_still_sends_signal(client, mock_db, mock_temporal):

@@ -153,7 +153,7 @@ async def list_events(
 ):
     stmt = select(ProjectEvent).where(
         ProjectEvent.project_id == project_id
-    ).order_by(ProjectEvent.created_at.asc())
+    ).order_by(ProjectEvent.created_at.asc(), ProjectEvent.id.asc())
     result = await db.execute(stmt)
     events = result.scalars().all()
     return EventListResponse(items=events)

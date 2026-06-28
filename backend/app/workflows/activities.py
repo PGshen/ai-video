@@ -5,6 +5,8 @@ from temporalio import activity
 from app.db import get_sync_session
 from app.models.project import VideoProject
 from app.models.project_event import ProjectEvent
+from app.models.narrative_version import NarrativeVersion
+from app.models.script_version import ScriptVersion
 from app.models.topic import Topic
 from app.models.worker_task import WorkerTask
 
@@ -18,13 +20,24 @@ async def update_project_status(project_id: str, new_status: str, payload: dict 
             return
         old_status = project.status
         project.status = new_status
+        event_payload = dict(payload or {})
+        version = None
+        if new_status == "narrative_review" and project.current_narrative_version_id:
+            version = db.get(NarrativeVersion, project.current_narrative_version_id)
+            event_payload["content_type"] = "narrative"
+        elif new_status == "script_review" and project.current_script_version_id:
+            version = db.get(ScriptVersion, project.current_script_version_id)
+            event_payload["content_type"] = "script"
+        if version is not None:
+            event_payload["content_version_id"] = str(version.id)
+            event_payload["content_version_number"] = version.version_number
         event = ProjectEvent(
             project_id=project.id,
             event_type="status_change",
             from_status=old_status,
             to_status=new_status,
             actor="workflow",
-            payload=payload or None,
+            payload=event_payload or None,
         )
         db.add(event)
         db.commit()

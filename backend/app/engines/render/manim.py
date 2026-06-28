@@ -219,6 +219,7 @@ def _build_manim_script(scenes: list[SceneInput]) -> str:
         "",
         "class MainScene(Scene):",
         "    def construct(self):",
+        "        self.camera.background_color = '#F5F0E8'",
     ])
     for i, (scene, prepared_code) in enumerate(prepared_scenes):
         audio_path = scene.audio.audio_path if scene.audio else f"scene_{i}_audio.mp3"

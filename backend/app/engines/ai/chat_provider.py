@@ -236,15 +236,26 @@ code 字段只写代码片段，不写外层结构（详见各引擎规范）。
         "manim": """\
 【Manim 画面描述规范】
 description 字段将由 Manim 渲染引擎解析为 Python 动画代码，描述时必须对应 Manim 的对象和方法：
+
+【配色风格——清新自然】
+- 背景：渲染器已全局设置米白色背景（#F5F0E8），description 中无需再设背景色
+- 文字/线条/几何图形：使用深色系，推荐 color=ManimColor('#2D2D2D')（近黑）或 DARK_GRAY
+- 强调色（高亮、关键数据点）：推荐自然色系——橄榄绿 ManimColor('#5C8A5C')、砖红 ManimColor('#B85C38')、深蓝 ManimColor('#3A5F8A')、琥珀 ManimColor('#C4893A')
+- 禁止使用纯 WHITE 文字（白底白字不可见）；避免纯 BLACK 以外颜色的大面积填充
+- 坐标轴/数轴默认颜色改为 ManimColor('#2D2D2D')，刻度标签同色
+
+【元素与动效】
 - 用具体 Manim 类描述元素：Circle/Square/Arrow/NumberLine/Axes/Graph/VGroup/MathTex/Text
 - 进场标注：用 Create 绘制几何图形、用 Write 书写文字/公式、用 FadeIn 淡入、用 GrowArrow 生长箭头
 - 跨镜头复用：明确写出哪些变量名保留（如"保留 title 对象"），以及如何变形（title.animate.scale(0.5).to_edge(UP) / Transform / ReplacementTransform）
-- 退场标注：本镜头末尾不再使用的对象必须写 self.play(FadeOut(obj))，否则会残留在下一镜头
+- 退场标注【强制】：本镜头末尾所有不延续到下一镜头的对象，必须逐一列出并执行 self.play(FadeOut(obj1, obj2, ...))。禁止用 self.remove()——必须用带动画的 FadeOut，确保渲染器不留残影。若镜头内新建了多个对象，描述末尾须写"镜头末尾 FadeOut 全部新建对象：[列举变量名]"
+- 兜底清场：每个镜头描述末尾必须有明确的清场指令，不得依赖"下一镜头会覆盖"的假设——Manim 场景对象会跨 construct() 调用累积，不会自动消失
 - 公式用 MathTex，避免用 Text 堆砌文字；每帧可见文字不超过 15 个汉字
 
-跨镜头示例：
-- 镜头 0："黑色背景。用 Write 写出 title = Text('为什么天空是蓝色的？')，缩放 1.2。结尾保留 title 供下一镜头。"
-- 镜头 1："承接 title，用 title.animate.scale(0.5).to_edge(UP) 移到顶部。下方用 Create 绘制 sun = Circle(color=YELLOW)，GrowArrow 引出光线箭头。镜头末尾 FadeOut(sun, arrow)。"\
+跨镜头示例（米白背景下的深色元素）：
+- 镜头 0："米白背景（已由渲染器设置）。Write 写出 title = Text('为什么天空是蓝色的？', color=ManimColor('#2D2D2D'))，缩放 1.2。结尾保留 title 供下一镜头。"
+- 镜头 1："承接 title，用 title.animate.scale(0.5).to_edge(UP) 移到顶部。Create 绘制 sun = Circle(color=ManimColor('#C4893A'))，GrowArrow 引出 arrow（color=ManimColor('#3A5F8A')）。镜头末尾 FadeOut 全部新建对象：sun、arrow；title 继续保留。"
+- 镜头 2："承接 title。中央展示公式 eq = MathTex(r'...', color=ManimColor('#2D2D2D'))，Write 写入。镜头末尾 FadeOut 全部新建对象：eq、title（本镜头不再延续）。"\
 """,
         "remotion": """\
 【Remotion 画面描述规范】
@@ -256,7 +267,7 @@ description 字段将由 Remotion 渲染引擎解析为 React/TSX 动画代码�
 - 每帧文字不超过 15 个汉字；避免大段段落文字
 
 跨镜头示例：
-- 镜头 0："黑色背景 AbsoluteFill。标题文字用 spring 入场（opacity 0→1，translateY 30→0）。"
+- 镜头 0："白色背景 AbsoluteFill。标题文字用 spring 入场（opacity 0→1，translateY 30→0）。"
 - 镜头 1："背景继承上一镜头（共享层）。中央 SVG：左侧黄色圆圈代表太阳，用 interpolate 驱动一条白色射线从圆圈向右延伸至画面 2/3 处。"\
 """,
     }

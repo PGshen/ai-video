@@ -40,7 +40,7 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
   code_failed: "代码生成失败",
   script_review: "脚本待审核",
   video_generating: "生成视频中",
-  video_failed: "视频失败",
+  video_failed: "视频生成失败",
   video_review: "视频待审核",
   published: "已发布",
   abandoned: "已废弃",

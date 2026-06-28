@@ -49,7 +49,7 @@ export function ProjectSheet({ project, onClose }: Props) {
       refetchProjectDetail();
       qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "events"] });
     }
-  }, [displayProject?.status]);
+  }, [displayProject?.id, displayProject?.status, qc, refetchProjectDetail]);
 
   const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
   const { data: script, isLoading: scriptLoading } = useProjectScript(displayProject?.id ?? "");
@@ -80,8 +80,25 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   const isScriptReview = project?.status === "script_review";
   const hasScript = !!script;
-  // 是否来自渲染失败退回（区别于正常代码审核）
-  const isRenderFailed = isScriptReview && projectDetail?.currentVideoAsset?.status === "failed";
+  // 事件记录是失败原因的权威来源；VideoAsset 用于兼容旧数据。
+  const renderFailureError = useMemo(() => {
+    if (!isScriptReview) return null;
+    const retreatEvent = [...(eventsData?.items ?? [])].reverse().find(
+      (event) =>
+        event.eventType === "status_change" &&
+        event.toStatus === "script_review" &&
+        (event.payload?.["trigger"] === "video_failed" || event.payload?.["render_error"]),
+    );
+    const eventError =
+      retreatEvent?.payload?.["error_message"] ?? retreatEvent?.payload?.["render_error"];
+    if (typeof eventError === "string") return eventError;
+    return projectDetail?.currentVideoAsset?.status === "failed"
+      ? projectDetail.currentVideoAsset.errorMessage
+      : null;
+  }, [eventsData, isScriptReview, projectDetail?.currentVideoAsset]);
+  const isRenderFailed =
+    !!renderFailureError ||
+    (isScriptReview && projectDetail?.currentVideoAsset?.status === "failed");
 
   // 代码编辑状态（渲染失败时允许修改）
   const [editedCode, setEditedCode] = useState<Map<number, string>>(new Map());
@@ -222,6 +239,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               narrative={narrative ?? null}
               isScriptReview={isScriptReview}
               isRenderFailed={isRenderFailed}
+              renderFailureError={renderFailureError}
               hasScript={hasScript}
 
               canReject={canReject}
@@ -256,6 +274,7 @@ interface RightPanelProps {
   narrative: Awaited<ReturnType<typeof useNarrative>>["data"] | null;
   isScriptReview: boolean;
   isRenderFailed: boolean;
+  renderFailureError: string | null;
   hasScript: boolean;
   editedCode: Map<number, string>;
   setEditedCode: React.Dispatch<React.SetStateAction<Map<number, string>>>;
@@ -277,7 +296,7 @@ interface RightPanelProps {
 }
 
 function RightPanel({
-  project, script, scriptLoading, narrative, isScriptReview, isRenderFailed, hasScript,
+  project, script, scriptLoading, narrative, isScriptReview, isRenderFailed, renderFailureError, hasScript,
   canReject,
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
@@ -385,11 +404,11 @@ function RightPanel({
   return (
     <>
       {/* 渲染失败错误提示 */}
-      {isRenderFailed && currentVideoAsset?.errorMessage && (
+      {isRenderFailed && (renderFailureError || currentVideoAsset?.errorMessage) && (
         <div className="mx-4 mt-3 p-3 rounded-lg border border-destructive/40 bg-destructive/5">
           <p className="text-xs font-semibold text-destructive mb-1">视频生成失败 — 请修改代码后重新提交</p>
           <pre className="text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-36 overflow-y-auto">
-            {currentVideoAsset.errorMessage}
+            {renderFailureError || currentVideoAsset?.errorMessage}
           </pre>
         </div>
       )}
@@ -526,52 +545,64 @@ interface EventsSectionProps {
 function EventsSection({
   eventsData, narrativeVersions, scriptVersions, selectedNode, onSelectNode,
 }: EventsSectionProps) {
-  // Correlate each status-change event to a version by counting occurrences per type
-  // Build a map: status → list of verdict events (in order) for that gate
-  const verdictsByGate = useMemo(() => {
-    const map: Record<string, Array<{ verdict: string; rejection_detail?: string; target_stage?: string }>> = {};
-    for (const event of eventsData?.items ?? []) {
-      if (event.eventType === "review_verdict" && event.payload) {
-        const gate = event.payload["gate"] as string;
-        if (!map[gate]) map[gate] = [];
-        map[gate].push(event.payload as { verdict: string; rejection_detail?: string; target_stage?: string });
-      }
-    }
-    return map;
-  }, [eventsData]);
-
   const annotated = useMemo(() => {
-    let narrativeCount = 0;
-    let scriptCount = 0;
-    const verdictConsumed: Record<string, number> = {};
-    return (eventsData?.items ?? [])
-      .filter((e) => e.eventType === "status_change")
-      .map((event) => {
-        const contentType = event.toStatus ? CONTENT_STATUS_MAP[event.toStatus] : undefined;
-        let versionId: string | null = null;
-        let versionNumber: number | null = null;
-        let verdict: { verdict: string; rejection_detail?: string; target_stage?: string } | null = null;
-        // render_error is attached to the video_generating→script_review status_change payload
-        const renderError: string | null = (event.payload?.["render_error"] as string | undefined ?? null);
+    const allEvents = eventsData?.items ?? [];
+    const statusEvents = allEvents.filter((event) => event.eventType === "status_change");
 
-        if (contentType === "narrative") {
-          narrativeCount++;
-          const v = narrativeVersions[narrativeCount - 1];
-          if (v) { versionId = v.id; versionNumber = v.versionNumber; }
-          const used = verdictConsumed["narrative"] ?? 0;
-          const vd = (verdictsByGate["narrative"] ?? [])[used];
-          if (vd) { verdict = vd; verdictConsumed["narrative"] = used + 1; }
-        } else if (contentType === "script") {
-          scriptCount++;
-          const v = scriptVersions[scriptCount - 1];
-          if (v) { versionId = v.id; versionNumber = v.versionNumber; }
-          const used = verdictConsumed["script"] ?? 0;
-          const vd = (verdictsByGate["script"] ?? [])[used];
-          if (vd) { verdict = vd; verdictConsumed["script"] = used + 1; }
-        }
-        return { event, contentType, versionId, versionNumber, verdict, renderError };
+    return statusEvents.map((event, statusIndex) => {
+        const contentType = event.toStatus ? CONTENT_STATUS_MAP[event.toStatus] : undefined;
+        const nextSameGateStatus = contentType
+          ? statusEvents.slice(statusIndex + 1).find(
+              (candidate) =>
+                candidate.toStatus &&
+                CONTENT_STATUS_MAP[candidate.toStatus] === contentType,
+            )
+          : undefined;
+        const verdictEvent = contentType
+          ? allEvents.find(
+              (candidate) =>
+                candidate.eventType === "review_verdict" &&
+                candidate.id > event.id &&
+                (!nextSameGateStatus || candidate.id < nextSameGateStatus.id) &&
+                candidate.payload?.["gate"] === contentType,
+            )
+          : undefined;
+        const verdict = verdictEvent?.payload as {
+          verdict: string;
+          rejection_detail?: string;
+          target_stage?: string;
+          content_version_id?: string;
+          content_version_number?: number;
+        } | undefined;
+
+        const versions = contentType === "narrative" ? narrativeVersions : scriptVersions;
+        const fallbackVersion = contentType
+          ? [...versions]
+              .filter((version) => new Date(version.createdAt) <= new Date(event.createdAt))
+              .sort((a, b) => b.versionNumber - a.versionNumber)[0]
+          : undefined;
+        const versionId =
+          (event.payload?.["content_version_id"] as string | undefined) ??
+          verdict?.content_version_id ??
+          fallbackVersion?.id ??
+          null;
+        const versionNumber =
+          (event.payload?.["content_version_number"] as number | undefined) ??
+          verdict?.content_version_number ??
+          fallbackVersion?.versionNumber ??
+          null;
+
+        const rawError =
+          event.payload?.["error_message"] ?? event.payload?.["render_error"];
+        const renderError =
+          event.toStatus === "video_failed" ||
+          (event.payload?.["render_error"] && event.payload?.["trigger"] !== "video_failed")
+            ? (typeof rawError === "string" ? rawError : null)
+            : null;
+
+        return { event, contentType, versionId, versionNumber, verdict: verdict ?? null, renderError };
       });
-  }, [eventsData, narrativeVersions, scriptVersions, verdictsByGate]);
+  }, [eventsData, narrativeVersions, scriptVersions]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
@@ -588,7 +619,7 @@ function EventsSection({
               const isSelected =
                 selectedNode?.versionId === versionId && selectedNode?.type === contentType;
               const isLast = i === annotated.length - 1;
-              const isRenderFailedNode = !!renderError;
+              const isRenderFailedNode = event.toStatus === "video_failed" || !!renderError;
 
               const verdictLabel = verdict?.verdict === "approved"
                 ? { text: "通过", color: "text-green-600" }
@@ -596,6 +627,8 @@ function EventsSection({
                 ? { text: "驳回", color: "text-destructive" }
                 : verdict?.verdict === "abandoned"
                 ? { text: "废弃", color: "text-muted-foreground" }
+                : verdict?.verdict === "retry"
+                ? { text: "重试", color: "text-amber-600" }
                 : null;
 
               const handleClick = () => {
@@ -643,8 +676,8 @@ function EventsSection({
                     </p>
                     {/* Render failure error message */}
                     {renderError && (
-                      <details className="mt-1">
-                        <summary className="text-xs text-destructive cursor-pointer">查看错误</summary>
+                      <details className="mt-1" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                        <summary className="text-xs text-destructive cursor-pointer">查看失败原因</summary>
                         <pre className="mt-1 text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-28 overflow-y-auto bg-destructive/5 rounded p-1.5">
                           {renderError}
                         </pre>
@@ -877,4 +910,3 @@ function HistoricalFactCheckCard({ fc }: { fc: import("@/types").FactCheckItem }
     </div>
   );
 }
-

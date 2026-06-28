@@ -199,9 +199,17 @@ class VideoProductionWorkflow:
 
             # 渲染失败：直接退回脚本审核，不重试
             render_error = result.get("error", "")
+            failure_payload = {
+                "error_message": render_error,
+                **({"task_id": result["task_id"]} if result.get("task_id") else {}),
+            }
+            # 项目最终会停在 script_review，但时间线需要保留独立的失败状态。
+            await self._update_status(
+                project_id, "video_failed", payload=failure_payload,
+            )
             await self._update_status(
                 project_id, "script_review",
-                payload={"render_error": render_error[:800]} if render_error else None,
+                payload={"trigger": "video_failed", **failure_payload},
             )
             review = await self._wait_signal("script_review")
             verdict = review.get("verdict")

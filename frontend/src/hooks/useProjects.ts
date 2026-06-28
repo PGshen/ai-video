@@ -85,6 +85,10 @@ export function useSubmitReview() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["projects", vars.projectId] });
+      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "events"] });
+      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "script"] });
+      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "script-versions"] });
+      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "narrative-versions"] });
     },
   });
 }

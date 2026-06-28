@@ -6,6 +6,7 @@ from app.db import get_sync_session
 from app.engines.render.factory import get_render_engine
 from app.engines.render.base import RenderRequest, SceneInput, SceneAudio
 from app.models.project import VideoProject
+from app.models.project_event import ProjectEvent
 from app.models.script_version import ScriptVersion
 from app.models.video_asset import VideoAsset
 from app.storage import download_to_file, upload_bytes
@@ -111,6 +112,14 @@ class RenderWorker(BaseWorker):
                     project_orm = db.get(VideoProject, task.project_id)
                     if project_orm:
                         project_orm.current_video_asset_id = asset_id
+                        db.add(ProjectEvent(
+                            project_id=uuid.UUID(project_id),
+                            event_type="render_failed",
+                            from_status="video_generating",
+                            to_status=None,
+                            actor="system",
+                            payload={"error_message": (render_result.error_message or "")[:800]},
+                        ))
                     db.commit()
                 finally:
                     db.close()

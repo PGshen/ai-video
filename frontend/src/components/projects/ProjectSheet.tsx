@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { SidePanel, SidePanelHeader } from "@/components/ui/side-panel";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ interface Props {
 const EVENT_TYPE_LABELS: Record<string, string> = {
   status_change: "状态变更",
   signal_sent: "信号发送",
+  render_failed: "视频生成失败",
 };
 
 interface SelectedNode {
@@ -42,7 +44,16 @@ export function ProjectSheet({ project, onClose }: Props) {
   const displayProject = project ?? lastProjectRef.current;
 
   // Fetch full project detail (includes currentVideoAsset); list endpoint omits it
-  const { data: projectDetail } = useProject(displayProject?.id ?? "");
+  const qc = useQueryClient();
+  const { data: projectDetail, refetch: refetchProjectDetail } = useProject(displayProject?.id ?? "");
+
+  // 项目状态变化时（如渲染失败退回 script_review）强制刷新 projectDetail
+  useEffect(() => {
+    if (displayProject?.id) {
+      refetchProjectDetail();
+      qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "events"] });
+    }
+  }, [displayProject?.status]);
 
   const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
   const { data: script, isLoading: scriptLoading } = useProjectScript(displayProject?.id ?? "");

@@ -36,14 +36,14 @@ def make_task(project_id):
 @pytest.mark.asyncio
 async def test_render_worker_success():
     from app.workers.render_worker import RenderWorker
-    from app.engines.tts.volcengine import VolcanTTSResult
+    from app.engines.tts.base import TTSResult
     from app.engines.render.manim import _RenderResultWithBytes
 
     project = make_project()
     sv = make_script_version(project.id)
     task = make_task(project.id)
 
-    tts_result = VolcanTTSResult(
+    tts_result = TTSResult(
         success=True, output_path=None, duration_seconds=None,
         error_message=None, audio_bytes=b"fake-audio"
     )
@@ -83,13 +83,13 @@ async def test_render_worker_success():
 @pytest.mark.asyncio
 async def test_render_worker_tts_failure_raises():
     from app.workers.render_worker import RenderWorker
-    from app.engines.tts.volcengine import VolcanTTSResult
+    from app.engines.tts.base import TTSResult
 
     project = make_project()
     sv = make_script_version(project.id)
     task = make_task(project.id)
 
-    tts_fail = VolcanTTSResult(
+    tts_fail = TTSResult(
         success=False, output_path=None, duration_seconds=None,
         error_message="API error", audio_bytes=b""
     )

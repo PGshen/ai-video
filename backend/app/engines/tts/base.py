@@ -1,5 +1,5 @@
 from typing import Protocol
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -15,6 +15,7 @@ class TTSResult:
     output_path: str | None
     duration_seconds: float | None
     error_message: str | None
+    audio_bytes: bytes = field(default=b"")
 
 
 class TTSEngine(Protocol):

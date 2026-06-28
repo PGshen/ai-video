@@ -2,8 +2,8 @@ import base64
 import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.engines.tts.base import TTSRequest
-from app.engines.tts.volcengine import VolcengineTTSEngine, VolcanTTSResult
+from app.engines.tts.base import TTSRequest, TTSResult
+from app.engines.tts.volcengine import VolcengineTTSEngine
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ async def test_synthesize_success(engine):
         result = await engine.synthesize(TTSRequest(text="你好世界", voice="alloy"))
 
     assert result.success is True
-    assert isinstance(result, VolcanTTSResult)
+    assert isinstance(result, TTSResult)
     assert result.audio_bytes == audio_bytes
 
 

@@ -1,16 +1,19 @@
 import base64
 import uuid
-from dataclasses import dataclass
+from io import BytesIO
 import httpx
+from mutagen.mp3 import MP3
 from app.engines.tts.base import TTSRequest, TTSResult
-from app.engines.tts.voice_map import resolve_speaker
 
 _TTS_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
 
 
-@dataclass
-class VolcanTTSResult(TTSResult):
-    audio_bytes: bytes = b""
+def _parse_mp3_duration(audio_bytes: bytes) -> float | None:
+    try:
+        audio = MP3(BytesIO(audio_bytes))
+        return audio.info.length
+    except Exception:
+        return None
 
 
 class VolcengineTTSEngine:
@@ -20,8 +23,9 @@ class VolcengineTTSEngine:
         self._api_key = api_key
         self._resource_id = resource_id
 
-    async def synthesize(self, request: TTSRequest) -> VolcanTTSResult:
+    async def synthesize(self, request: TTSRequest) -> TTSResult:
         import json as _json
+        from app.engines.tts.voice_map import resolve_speaker
 
         speaker = resolve_speaker(request.voice)
         headers = {
@@ -41,7 +45,6 @@ class VolcengineTTSEngine:
             }
         }
 
-        # 接口返回 chunked 流式响应，每个 chunk 是独立的 JSON 行，需逐行解析累积音频
         audio_chunks: list[bytes] = []
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream("POST", _TTS_URL, json=body, headers=headers) as resp:
@@ -52,7 +55,7 @@ class VolcengineTTSEngine:
                     try:
                         chunk = _json.loads(line)
                     except Exception:
-                        return VolcanTTSResult(
+                        return TTSResult(
                             success=False,
                             output_path=None,
                             duration_seconds=None,
@@ -61,10 +64,9 @@ class VolcengineTTSEngine:
                         )
                     code = chunk.get("code", 0)
                     if code != 0:
-                        # 20000000 是流式传输正常结束标志，跳过
                         if code == 20000000:
                             continue
-                        return VolcanTTSResult(
+                        return TTSResult(
                             success=False,
                             output_path=None,
                             duration_seconds=None,
@@ -76,7 +78,7 @@ class VolcengineTTSEngine:
                         audio_chunks.append(base64.b64decode(audio_data))
 
         if not audio_chunks:
-            return VolcanTTSResult(
+            return TTSResult(
                 success=False,
                 output_path=None,
                 duration_seconds=None,
@@ -84,12 +86,14 @@ class VolcengineTTSEngine:
                 audio_bytes=b"",
             )
 
-        return VolcanTTSResult(
+        audio_bytes = b"".join(audio_chunks)
+        duration = _parse_mp3_duration(audio_bytes)
+        return TTSResult(
             success=True,
             output_path=None,
-            duration_seconds=None,
+            duration_seconds=duration,
             error_message=None,
-            audio_bytes=b"".join(audio_chunks),
+            audio_bytes=audio_bytes,
         )
 
     async def health_check(self) -> bool:

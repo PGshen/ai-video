@@ -74,6 +74,14 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   const isScriptReview = project?.status === "script_review";
   const hasScript = !!script;
+  // 是否来自渲染失败退回（区别于正常代码审核）
+  const isRenderFailed = isScriptReview && projectDetail?.currentVideoAsset?.status === "failed";
+
+  // 代码编辑状态（渲染失败时允许修改）
+  const [editedCode, setEditedCode] = useState<Map<number, string>>(new Map());
+
+  const buildEditedScriptScenes = () =>
+    Array.from(editedCode.entries()).map(([sceneIndex, code]) => ({ sceneIndex, code }));
 
   const allMarked = useMemo(() => {
     if (!script || script.factChecks.length === 0) return true;
@@ -89,10 +97,20 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   const handleApprove = () => {
     if (!project) return;
+    const editedScriptScenes = buildEditedScriptScenes();
     submitReview.mutate(
-      { projectId: project.id, gate: "script", verdict: "approved", factCheckVerdicts: buildVerdictList() },
       {
-        onSuccess: () => { setSubmitted(true); toast.success("审核已通过，AI 正在生成代码…"); },
+        projectId: project.id,
+        gate: "script",
+        verdict: "approved",
+        factCheckVerdicts: buildVerdictList(),
+        ...(editedScriptScenes.length > 0 ? { editedScriptScenes } : {}),
+      },
+      {
+        onSuccess: () => {
+          setSubmitted(true);
+          toast.success(isRenderFailed ? "已提交，重新生成视频…" : "审核已通过，AI 正在生成视频…");
+        },
         onError: () => toast.error("提交失败，请重试"),
       },
     );
@@ -210,6 +228,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               scriptLoading={scriptLoading}
               narrative={narrative ?? null}
               isScriptReview={isScriptReview}
+              isRenderFailed={isRenderFailed}
               hasScript={hasScript}
               verdicts={verdicts}
               setVerdicts={setVerdicts}
@@ -229,6 +248,8 @@ export function ProjectSheet({ project, onClose }: Props) {
               onVideoApprove={handleVideoApprove}
               onVideoRetry={handleVideoRetry}
               onVideoAbandon={handleVideoAbandon}
+              editedCode={editedCode}
+              setEditedCode={setEditedCode}
             />
           )}
         </div>
@@ -243,7 +264,10 @@ interface RightPanelProps {
   scriptLoading: boolean;
   narrative: Awaited<ReturnType<typeof useNarrative>>["data"] | null;
   isScriptReview: boolean;
+  isRenderFailed: boolean;
   hasScript: boolean;
+  editedCode: Map<number, string>;
+  setEditedCode: React.Dispatch<React.SetStateAction<Map<number, string>>>;
   verdicts: Record<number, VerdictState>;
   setVerdicts: React.Dispatch<React.SetStateAction<Record<number, VerdictState>>>;
   allMarked: boolean;
@@ -265,12 +289,13 @@ interface RightPanelProps {
 }
 
 function RightPanel({
-  project, script, scriptLoading, narrative, isScriptReview, hasScript,
+  project, script, scriptLoading, narrative, isScriptReview, isRenderFailed, hasScript,
   verdicts, setVerdicts, allMarked, canReject,
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
   submitPending, onApprove, onReject, onAbandon,
   currentVideoAsset, videoUrl, onVideoApprove, onVideoRetry, onVideoAbandon,
+  editedCode, setEditedCode,
 }: RightPanelProps) {
   if (project.status === "video_generating") {
     return (
@@ -371,6 +396,16 @@ function RightPanel({
 
   return (
     <>
+      {/* 渲染失败错误提示 */}
+      {isRenderFailed && currentVideoAsset?.errorMessage && (
+        <div className="mx-4 mt-3 p-3 rounded-lg border border-destructive/40 bg-destructive/5">
+          <p className="text-xs font-semibold text-destructive mb-1">视频生成失败 — 请修改代码后重新提交</p>
+          <pre className="text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-36 overflow-y-auto">
+            {currentVideoAsset.errorMessage}
+          </pre>
+        </div>
+      )}
+
       {/* 两列内容区 */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* 镜头列表 */}
@@ -389,13 +424,28 @@ function RightPanel({
                   </div>
                   <p className="text-sm font-medium">{scene.description}</p>
                   <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
-                  <details className="text-xs">
+                  <details className="text-xs" open={isRenderFailed}>
                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      查看代码
+                      {isRenderFailed ? "编辑代码" : "查看代码"}
                     </summary>
-                    <pre className="mt-2 p-2 bg-muted rounded overflow-x-auto text-xs leading-relaxed">
-                      {scene.code}
-                    </pre>
+                    {isRenderFailed ? (
+                      <Textarea
+                        className="mt-2 font-mono text-xs leading-relaxed min-h-[120px]"
+                        value={editedCode.get(scene.sceneIndex) ?? scene.code ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditedCode((prev) => {
+                            const next = new Map(prev);
+                            next.set(scene.sceneIndex, val);
+                            return next;
+                          });
+                        }}
+                      />
+                    ) : (
+                      <pre className="mt-2 p-2 bg-muted rounded overflow-x-auto text-xs leading-relaxed">
+                        {scene.code}
+                      </pre>
+                    )}
                   </details>
                 </div>
               ))}
@@ -464,7 +514,7 @@ function RightPanel({
           )}
           <div className="flex gap-2">
             <Button onClick={onApprove} disabled={!allMarked || submitPending} className="flex-1">
-              通过
+              {isRenderFailed ? "修复完成，重新生成视频" : "通过"}
             </Button>
             {canReject && (
               <Button variant="outline" onClick={onReject} disabled={submitPending} className="flex-1">

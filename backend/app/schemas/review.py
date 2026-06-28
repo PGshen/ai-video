@@ -18,6 +18,13 @@ class EditedNarrativeScene(BaseModel):
     estimated_duration_seconds: Optional[float] = None
 
 
+class EditedScriptScene(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    scene_index: int
+    code: str
+
+
 class ReviewRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
@@ -28,6 +35,7 @@ class ReviewRequest(BaseModel):
     target_stage: Optional[str] = None
     fact_check_verdicts: Optional[list[FactCheckVerdict]] = None
     edited_scenes: Optional[list[EditedNarrativeScene]] = None
+    edited_script_scenes: Optional[list[EditedScriptScene]] = None
 
 
 class ReviewResponse(BaseModel):

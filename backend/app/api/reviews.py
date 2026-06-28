@@ -56,10 +56,11 @@ async def submit_review(
         signal_name = "narrative_review"
 
     elif body.gate == "script":
-        # 写回 fact_check verdicts（仅有标注数据时）
-        if body.fact_check_verdicts:
-            sv = await db.get(ScriptVersion, project.current_script_version_id)
-            if sv and isinstance(sv.fact_checks, list):
+        sv = await db.get(ScriptVersion, project.current_script_version_id)
+        if sv:
+            updated = False
+            # 写回 fact_check verdicts
+            if body.fact_check_verdicts and isinstance(sv.fact_checks, list):
                 fact_checks = list(sv.fact_checks)
                 for v in body.fact_check_verdicts:
                     if 0 <= v.index < len(fact_checks):
@@ -70,6 +71,19 @@ async def submit_review(
                         }
                 sv.fact_checks = fact_checks
                 flag_modified(sv, "fact_checks")
+                updated = True
+            # 写回用户编辑的代码（渲染失败后修改代码重提交）
+            if body.edited_script_scenes and isinstance(sv.scenes, list):
+                code_map = {s.scene_index: s.code for s in body.edited_script_scenes}
+                scenes = list(sv.scenes)
+                for i, scene in enumerate(scenes):
+                    idx = scene.get("scene_index", -1)
+                    if idx in code_map:
+                        scenes[i] = {**scene, "code": code_map[idx]}
+                sv.scenes = scenes
+                flag_modified(sv, "scenes")
+                updated = True
+            if updated:
                 await db.commit()
 
         signal_name = "script_review"

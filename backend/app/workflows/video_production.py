@@ -91,9 +91,10 @@ class VideoProductionWorkflow:
             elif result == "abandoned":
                 await self._update_status(project_id, "abandoned")
                 return
-            elif result == "back_to_script":
-                # go back to narrative generation
-                need_narrative = True
+            elif result in ("back_to_script", "back_to_code", "back_to_narrative"):
+                # 退回脚本阶段：back_to_script/back_to_narrative 重新生成叙事+代码，
+                # back_to_code 只重新生成代码
+                need_narrative = result != "back_to_code"
                 while True:
                     if need_narrative:
                         narrative_result = await self._generate_and_review_narrative(project_id)
@@ -195,22 +196,20 @@ class VideoProductionWorkflow:
             result = await self._wait_signal("render_completed")
             if result["success"]:
                 break
-            can_retry = await workflow.execute_activity(
-                check_and_increment_retry,
-                args=[project_id, "video_generating", result.get("error", "")],
-                **_STATUS_OPTS,
-            )
-            if not can_retry:
-                await self._update_status(project_id, "video_failed")
-                # 等待用户手动重试或废弃，而不是立即终止
-                user_action = await self._wait_signal("video_review")
-                if user_action.get("verdict") == "retry":
-                    await self._update_status(project_id, "video_generating")
-                    await workflow.execute_activity(
-                        submit_video_generation_task, args=[project_id], **_ACTIVITY_OPTS
-                    )
-                    continue
+
+            # 渲染失败：直接退回脚本审核，不重试
+            await self._update_status(project_id, "script_review")
+            review = await self._wait_signal("script_review")
+            verdict = review.get("verdict")
+            if verdict == "abandoned":
                 return "abandoned"
+            elif verdict == "rejected":
+                target = review.get("target_stage", "narrative")
+                if target == "code":
+                    return "back_to_code"
+                return "back_to_narrative"
+            # approved：用户（可能已编辑代码）重新提交视频生成
+            await self._update_status(project_id, "video_generating")
             await workflow.execute_activity(
                 submit_video_generation_task, args=[project_id], **_ACTIVITY_OPTS
             )

@@ -155,6 +155,10 @@ export interface ReviewRequest {
     description: string;
     estimatedDurationSeconds?: number | null;
   }>;
+  editedScriptScenes?: Array<{
+    sceneIndex: number;
+    code: string;
+  }>;
 }
 
 // ═══ 驳回上下文 ═══

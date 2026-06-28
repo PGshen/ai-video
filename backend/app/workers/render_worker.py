@@ -108,6 +108,9 @@ class RenderWorker(BaseWorker):
                         asset_orm.status = "failed"
                         asset_orm.render_log = render_result.render_log
                         asset_orm.error_message = render_result.error_message
+                    project_orm = db.get(VideoProject, task.project_id)
+                    if project_orm:
+                        project_orm.current_video_asset_id = asset_id
                     db.commit()
                 finally:
                     db.close()

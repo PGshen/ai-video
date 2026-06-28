@@ -389,6 +389,12 @@ codes 数组长度必须与输入 scenes 数组长度完全一致，按 scene_in
 动画节奏需要的 self.wait()（如两个动画之间的停顿）照常使用。
 若某镜头 duration_seconds 为 null，则不作时长约束，由你自行估算合适时长。
 
+【文字渲染规则（重要）】
+- 所有中文、日文等非 ASCII 文字必须使用 Text()，禁止使用 MathTex() 或 Tex()
+- MathTex() / Tex() 仅用于纯英文/ASCII 数学公式（如 r"E=mc^2"、r"\frac{{1}}{{2}}"）
+- 中英文混排时，中文用 Text()，公式用 MathTex()，再用 VGroup 组合
+- 违反此规则会导致 LaTeX 编译报错使视频生成失败
+
 要求：
 - 严格按照每个镜头的 description 实现动画逻辑
 - 充分利用跨镜头变量复用（前面镜头声明的变量在后续镜头中可直接使用）

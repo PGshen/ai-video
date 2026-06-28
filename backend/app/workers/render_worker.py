@@ -1,17 +1,14 @@
-import asyncio
 import logging
-import tempfile
 import os
+import tempfile
 import uuid
 from app.db import get_sync_session
-from app.engines.tts.factory import get_tts_engine
-from app.engines.tts.base import TTSRequest
 from app.engines.render.factory import get_render_engine
 from app.engines.render.base import RenderRequest, SceneInput, SceneAudio
 from app.models.project import VideoProject
 from app.models.script_version import ScriptVersion
 from app.models.video_asset import VideoAsset
-from app.storage import upload_bytes, download_to_file
+from app.storage import download_to_file, upload_bytes
 from app.workers.base import BaseWorker
 
 logger = logging.getLogger(__name__)
@@ -34,94 +31,60 @@ class RenderWorker(BaseWorker):
             scenes_data = list(sv.scenes or [])
             project_id = str(project.id)
             script_version_id = str(sv.id)
-            tts_voice = project.tts_voice
             render_engine_name = project.render_engine
         finally:
             db.close()
 
         logger.info(
-            "[RenderWorker] task=%s project=%s scenes=%d engine=%s voice=%s",
+            "[RenderWorker] task=%s project=%s scenes=%d engine=%s",
             task.id,
             task.project_id,
             len(scenes_data),
             render_engine_name,
-            tts_voice,
         )
 
-        # Step 1: 并发 TTS 合成（最多 3 路并发，避免超出配额）
-        logger.info("[RenderWorker] Starting TTS for %d scenes (concurrency=3)", len(scenes_data))
-        tts_engine = get_tts_engine()
-        tts_requests = [
-            TTSRequest(text=s.get("narration", ""), voice=tts_voice)
-            for s in scenes_data
-        ]
-        sem = asyncio.Semaphore(3)
-
-        async def _synthesize(req):
-            async with sem:
-                return await tts_engine.synthesize(req)
-
-        tts_results = await asyncio.gather(
-            *[_synthesize(req) for req in tts_requests],
-            return_exceptions=True,
-        )
-
-        # 检查 TTS 结果
-        for i, result in enumerate(tts_results):
-            if isinstance(result, Exception):
-                logger.error("[RenderWorker] TTS exception scene %d: %s", i, result)
-                raise RuntimeError(f"TTS failed for scene {i}: {result}")
-            if not result.success:
-                logger.error("[RenderWorker] TTS failed scene %d: %s", i, result.error_message)
-                raise RuntimeError(f"TTS failed for scene {i}: {result.error_message}")
-        logger.info("[RenderWorker] TTS done: all %d scenes synthesized", len(tts_results))
-
-        # Step 2: 上传音频到 MinIO
-        audio_keys = []
-        for i, tts_result in enumerate(tts_results):
-            key = f"audio/{project_id}/{script_version_id}/scene_{i}.mp3"
-            upload_bytes(key, tts_result.audio_bytes, "audio/mpeg")
-            audio_keys.append(key)
-            logger.info("[RenderWorker] Uploaded audio scene %d → %s", i, key)
-
-        # Step 3: 创建 VideoAsset 记录
+        # Step 1: 创建 VideoAsset 记录
         asset_id = uuid.uuid4()
         asset_id_str = str(asset_id)
-        asset = VideoAsset(
-            id=asset_id,
-            project_id=uuid.UUID(project_id),
-            script_version_id=uuid.UUID(script_version_id),
-            status="rendering",
-        )
         db = get_sync_session()
         try:
+            asset = VideoAsset(
+                id=asset_id,
+                project_id=uuid.UUID(project_id),
+                script_version_id=uuid.UUID(script_version_id),
+                status="rendering",
+            )
             db.add(asset)
             db.commit()
         finally:
             db.close()
 
-        # Step 4: 下载音频到临时目录并渲染
+        # Step 2: 下载音频并渲染
         logger.info("[RenderWorker] Starting Manim render for asset %s", asset_id_str)
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 下载各 scene 音频到临时目录
-            for i, audio_key in enumerate(audio_keys):
-                local_audio = os.path.join(tmpdir, f"scene_{i}_audio.mp3")
-                download_to_file(audio_key, local_audio)
+            scene_inputs = []
+            for i, s in enumerate(scenes_data):
+                audio_key = s.get("audio_key")
+                duration = s.get("duration_seconds") or 0.0
+                audio_path = None
+                if audio_key:
+                    audio_path = os.path.join(tmpdir, f"scene_{i}_audio.mp3")
+                    download_to_file(audio_key, audio_path)
+                    logger.info("[RenderWorker] Downloaded audio scene %d ← %s", i, audio_key)
 
-            scene_inputs = [
-                SceneInput(
-                    scene_index=i,
-                    narration=s.get("narration", ""),
-                    description=s.get("description", ""),
-                    code=s.get("code", ""),
-                    audio=SceneAudio(
+                scene_inputs.append(
+                    SceneInput(
                         scene_index=i,
-                        audio_path=os.path.join(tmpdir, f"scene_{i}_audio.mp3"),
-                        duration_seconds=0.0,
-                    ),
+                        narration=s.get("narration", ""),
+                        description=s.get("description", ""),
+                        code=s.get("code", ""),
+                        audio=SceneAudio(
+                            scene_index=i,
+                            audio_path=audio_path or "",
+                            duration_seconds=duration,
+                        ) if audio_path else None,
+                    )
                 )
-                for i, s in enumerate(scenes_data)
-            ]
 
             render_engine = get_render_engine(render_engine_name)
             render_request = RenderRequest(
@@ -148,16 +111,14 @@ class RenderWorker(BaseWorker):
                     db.commit()
                 finally:
                     db.close()
-                raise RuntimeError(
-                    f"Render failed: {render_result.error_message}"
-                )
+                raise RuntimeError(f"Render failed: {render_result.error_message}")
 
-            # Step 5: 上传视频到 MinIO
+            # Step 3: 上传视频
             video_key = f"video/{project_id}/{script_version_id}/{asset_id_str}.mp4"
             upload_bytes(video_key, render_result.video_bytes, "video/mp4")
             logger.info("[RenderWorker] Uploaded video → %s", video_key)
 
-        # Step 6: 更新 VideoAsset 和 Project
+        # Step 4: 更新 VideoAsset 和 Project
         db = get_sync_session()
         try:
             asset_orm = db.get(VideoAsset, asset_id)

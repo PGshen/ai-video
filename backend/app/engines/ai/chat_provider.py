@@ -37,6 +37,31 @@ class ChatAIProvider:
 - 多元素布局用 VGroup(...).arrange() 或明确 .shift() 定位，不依赖默认位置叠加
 - 大型 VGroup 用 .scale_to_fit_width(11) 限制最大宽度
 
+【坐标轴（Axes）专项安全规则——高频溢出场景】
+Axes 是最容易导致内容溢出的对象，必须遵守以下规则：
+
+1. 必须显式设置 x_length 和 y_length，禁止使用默认尺寸：
+   axes = Axes(x_range=[0,10,1], y_range=[0,1,0.2], x_length=9, y_length=5)
+
+2. 创建后必须立即用 .move_to(ORIGIN) 或 .shift() 定位，不依赖默认位置：
+   axes.move_to(ORIGIN).shift(RIGHT * 0.5)  # 为左侧 y 轴标签留出空间
+
+3. y 轴标签天然向左偏移约 1 单位，整体 Axes 须向右平移至少 0.8 单位，防止标签溢出左边缘：
+   axes.shift(RIGHT * 0.8)  # y 轴标签最终 x 位置 ≈ axes 左边缘 x - 1.2，必须 ≥ -6.0
+
+4. 轴标签用 font_size=22 以内，创建后检查 label.get_left()[0] ≥ -5.8、label.get_right()[0] ≤ 5.8
+
+5. 图形（Graph/ParametricFunction）绘制范围必须在轴的 x_range/y_range 之内，不要超出轴域：
+   graph = axes.plot(lambda x: 1/x, x_range=[0.1, 9.9])  # 严格在 x_range 内
+
+6. 如果同一画面有标题或其他元素，Axes 整体缩小或位移，确保与其他元素无重叠且各自在安全区内
+
+【文字元素防溢出规则】
+- 所有 Text / MathTex 在 .play(Write/FadeIn...) 前必须确认 get_left()[0] ≥ -5.8 且 get_right()[0] ≤ 5.8
+- 长文字必须先 .scale() 到合适大小再定位，不要先定位再期望 font_size 自动控制宽度
+- 跨镜头保留的文字（如标题）在移动到新位置后同样必须满足安全区约束
+- .to_corner() / .to_edge() 自带 buff=0.5，安全；但 .move_to() / .shift() 到边缘位置时须手动验证不超界
+
 【坐标系规则（重要）】
 - Manim 内部所有点坐标均为三维 (x, y, z)，z 通常为 0
 - 禁止使用 np.array([x, y]) 等二维坐标，必须写 np.array([x, y, 0])

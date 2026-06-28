@@ -1,13 +1,57 @@
+import asyncio
 import logging
 import uuid
 from sqlalchemy import func, select
+from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_sync_session
 from app.engines.ai.factory import get_ai_provider
+from app.engines.tts.factory import get_tts_engine
+from app.engines.tts.base import TTSRequest
 from app.models.project import VideoProject
 from app.models.narrative_version import NarrativeVersion
+from app.storage import upload_bytes
 from app.workers.base import BaseWorker
 
 logger = logging.getLogger(__name__)
+
+
+async def _synthesize_scenes_tts(
+    scenes: list[dict],
+    project_id: str,
+    narrative_version_id: str,
+    tts_voice: str,
+) -> list[dict]:
+    """并发合成所有镜头 TTS（最多 3 路并发），返回带 audio_key/duration_seconds/tts_status 的 scenes。"""
+    tts_engine = get_tts_engine()
+    sem = asyncio.Semaphore(3)
+
+    async def _process_scene(i: int, scene: dict) -> dict:
+        narration = scene.get("narration", "").strip()
+        if not narration:
+            return {**scene, "tts_status": "skipped", "audio_key": None, "duration_seconds": None}
+        async with sem:
+            try:
+                result = await tts_engine.synthesize(TTSRequest(text=narration, voice=tts_voice))
+            except Exception as e:
+                logger.error("[NarrativeWorker] TTS exception scene %d: %s", i, e)
+                return {**scene, "tts_status": "failed", "audio_key": None, "duration_seconds": None}
+
+        if not result.success:
+            logger.error("[NarrativeWorker] TTS failed scene %d: %s", i, result.error_message)
+            return {**scene, "tts_status": "failed", "audio_key": None, "duration_seconds": None}
+
+        key = f"audio/{project_id}/{narrative_version_id}/scene_{i}.mp3"
+        upload_bytes(key, result.audio_bytes, "audio/mpeg")
+        logger.info("[NarrativeWorker] TTS scene %d → %s (%.2fs)", i, key, result.duration_seconds or 0)
+        return {
+            **scene,
+            "tts_status": "ready",
+            "audio_key": key,
+            "duration_seconds": result.duration_seconds,
+        }
+
+    tasks = [_process_scene(i, scene) for i, scene in enumerate(scenes)]
+    return list(await asyncio.gather(*tasks))
 
 
 class NarrativeWorker(BaseWorker):
@@ -28,8 +72,6 @@ class NarrativeWorker(BaseWorker):
             render_engine,
             bool(rejection_context),
         )
-        if rejection_context:
-            logger.info("[NarrativeWorker] rejection_context: %s", rejection_context)
 
         provider = get_ai_provider()
         logger.info("[NarrativeWorker] calling AI provider model=%s", provider.model_name)
@@ -57,7 +99,6 @@ class NarrativeWorker(BaseWorker):
                 )
             ).scalar()
             next_version = (max_version or 0) + 1
-            logger.info("[NarrativeWorker] saving narrative version=%d for project=%s", next_version, task.project_id)
 
             nv = NarrativeVersion(
                 id=uuid.uuid4(),
@@ -70,15 +111,39 @@ class NarrativeWorker(BaseWorker):
             )
             db.add(nv)
             db.flush()
-
-            project.current_narrative_version_id = nv.id
+            narrative_version_id = str(nv.id)
+            project_id = str(project.id)
+            tts_voice = project.tts_voice
             db.commit()
-            logger.info("[NarrativeWorker] committed narrative_version_id=%s", nv.id)
-
-            return {
-                "narrative_version_id": str(nv.id),
-                "scene_count": len(result.scenes),
-                "fact_check_count": len(result.fact_checks),
-            }
         finally:
             db.close()
+
+        logger.info("[NarrativeWorker] Starting TTS for %d scenes", len(result.scenes))
+        scenes_with_tts = await _synthesize_scenes_tts(
+            scenes=result.scenes,
+            project_id=project_id,
+            narrative_version_id=narrative_version_id,
+            tts_voice=tts_voice,
+        )
+        ready_count = sum(1 for s in scenes_with_tts if s.get("tts_status") == "ready")
+        logger.info("[NarrativeWorker] TTS done: %d/%d ready", ready_count, len(scenes_with_tts))
+
+        db = get_sync_session()
+        try:
+            nv_orm = db.get(NarrativeVersion, uuid.UUID(narrative_version_id))
+            project_orm = db.get(VideoProject, uuid.UUID(project_id))
+            if nv_orm is None or project_orm is None:
+                raise ValueError("NarrativeVersion or Project disappeared after TTS")
+            nv_orm.scenes = scenes_with_tts
+            flag_modified(nv_orm, "scenes")
+            project_orm.current_narrative_version_id = nv_orm.id
+            db.commit()
+            logger.info("[NarrativeWorker] committed narrative_version_id=%s", narrative_version_id)
+        finally:
+            db.close()
+
+        return {
+            "narrative_version_id": narrative_version_id,
+            "scene_count": len(scenes_with_tts),
+            "fact_check_count": len(result.fact_checks),
+        }

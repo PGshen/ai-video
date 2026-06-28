@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
 from app.workers.narrative_worker import NarrativeWorker
 from app.engines.ai.base import NarrativeResult
+from app.engines.tts.base import TTSResult
 
 
 def make_task(**kwargs):
@@ -26,6 +27,7 @@ async def test_narrative_worker_supported_task_types():
 @pytest.mark.asyncio
 async def test_narrative_worker_execute_writes_narrative_version():
     task = make_task()
+    project_id = task.project_id
     mock_provider = AsyncMock()
     mock_provider.model_name = "stub-model"
     mock_provider.generate_narrative = AsyncMock(
@@ -36,19 +38,67 @@ async def test_narrative_worker_execute_writes_narrative_version():
     )
 
     mock_project = MagicMock()
-    mock_project.id = task.project_id
+    mock_project.id = project_id
+    mock_project.tts_voice = "zh_female_1"
     mock_project.current_narrative_version_id = None
 
-    mock_db = MagicMock()
-    mock_db.get.return_value = mock_project
-    mock_db.execute.return_value.scalar.return_value = None
+    nv_id = uuid.uuid4()
+    mock_nv = MagicMock()
+    mock_nv.id = nv_id
+    mock_nv.scenes = []
+
+    # First DB session: create NarrativeVersion
+    mock_db1 = MagicMock()
+    mock_db1.get.return_value = mock_project
+    mock_db1.execute.return_value.scalar.return_value = None
+
+    def db1_flush():
+        mock_nv.id = nv_id
+
+    mock_db1.flush.side_effect = db1_flush
+
+    # Capture the added NarrativeVersion to return its id
+    added_nv = {}
+
+    def db1_add(obj):
+        if hasattr(obj, "version_number"):
+            obj.id = nv_id
+            added_nv["nv"] = obj
+
+    mock_db1.add.side_effect = db1_add
+
+    # Second DB session: update scenes + current_narrative_version_id
+    mock_db2 = MagicMock()
+    mock_db2.get.side_effect = lambda model, pk: mock_nv if "NarrativeVersion" in str(model) else mock_project
+
+    mock_tts_engine = AsyncMock()
+    mock_tts_result = TTSResult(
+        success=True,
+        output_path=None,
+        error_message=None,
+        audio_bytes=b"fake-mp3",
+        duration_seconds=2.5,
+    )
+    mock_tts_engine.synthesize = AsyncMock(return_value=mock_tts_result)
+
+    session_calls = []
+
+    def get_session():
+        if len(session_calls) == 0:
+            session_calls.append(1)
+            return mock_db1
+        else:
+            return mock_db2
 
     with patch("app.workers.narrative_worker.get_ai_provider", return_value=mock_provider), \
-         patch("app.workers.narrative_worker.get_sync_session", return_value=mock_db):
+         patch("app.workers.narrative_worker.get_sync_session", side_effect=get_session), \
+         patch("app.workers.narrative_worker.get_tts_engine", return_value=mock_tts_engine), \
+         patch("app.workers.narrative_worker.upload_bytes"):
         worker = NarrativeWorker(worker_id="test", temporal_client=AsyncMock())
         result = await worker._execute(task)
 
     assert "narrative_version_id" in result
     assert result["scene_count"] == 1
-    mock_db.add.assert_called_once()
-    mock_db.commit.assert_called_once()
+    mock_db1.add.assert_called_once()
+    mock_db1.commit.assert_called_once()
+    mock_db2.commit.assert_called_once()

@@ -27,7 +27,7 @@ def make_script_version(project_id, scenes=None):
             "code": "self.play(Write(Text('Hello')))",
             "audio_key": "audio/proj/sv/scene_0.mp3",
             "duration_seconds": 3.5,
-            "tts_status": "success",
+            "tts_status": "ready",
         },
         {
             "scene_index": 1,
@@ -36,7 +36,7 @@ def make_script_version(project_id, scenes=None):
             "code": "self.play(FadeOut(Text('Hello')))",
             "audio_key": "audio/proj/sv/scene_1.mp3",
             "duration_seconds": 2.0,
-            "tts_status": "success",
+            "tts_status": "ready",
         },
     ]
     return sv

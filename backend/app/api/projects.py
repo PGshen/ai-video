@@ -192,15 +192,23 @@ async def get_current_narrative(
         raise HTTPException(status_code=404, detail="Narrative version not found")
 
     # Enrich scenes with presigned URLs for audio playback
+    # Build enriched list WITHOUT mutating the live ORM object to prevent accidental flush
     scenes = list(nv.scenes or [])
     enriched_scenes = []
     for s in scenes:
         audio_key = s.get("audio_key")
         presigned = get_presigned_url(audio_key) if audio_key else None
         enriched_scenes.append({**s, "audio_presigned_url": presigned})
-    nv.scenes = enriched_scenes
 
-    return nv
+    return NarrativeVersionSchema(
+        id=nv.id,
+        project_id=nv.project_id,
+        version_number=nv.version_number,
+        scenes=enriched_scenes,
+        fact_checks=nv.fact_checks,
+        ai_model=nv.ai_model,
+        created_at=nv.created_at,
+    )
 
 
 @router.get("/{project_id}/narrative-versions", response_model=list[NarrativeVersionSchema])

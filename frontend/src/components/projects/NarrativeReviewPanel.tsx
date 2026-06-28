@@ -119,7 +119,10 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       description: s.description,
     }));
 
-  const canSubmit = dirtyTts.size === 0;
+  const hasFailedTts = Array.from(sceneStates.values()).some(
+    (s) => s.ttsStatus === "failed"
+  );
+  const canSubmit = dirtyTts.size === 0 && !hasFailedTts;
 
   const handleApprove = () => {
     if (!canSubmit) return;
@@ -257,6 +260,11 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         {dirtyTts.size > 0 && (
           <p className="text-sm text-amber-600">
             有 {dirtyTts.size} 个镜头修改了旁白，请先点击「重新生成音频」再提交。
+          </p>
+        )}
+        {hasFailedTts && (
+          <p className="text-sm text-amber-600">
+            有镜头 TTS 生成失败，请重新生成音频后再提交。
           </p>
         )}
         {showRejectInput && (

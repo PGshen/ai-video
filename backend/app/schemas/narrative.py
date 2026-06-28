@@ -13,6 +13,10 @@ class NarrativeSceneSchema(BaseModel):
     narration: str
     description: str
     estimated_duration_seconds: Optional[float] = None
+    audio_key: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    tts_status: Optional[str] = None
+    audio_presigned_url: Optional[str] = None
 
 
 class NarrativeVersionSchema(BaseModel):

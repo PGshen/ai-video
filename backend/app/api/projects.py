@@ -1,8 +1,11 @@
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 from temporalio.client import Client as TemporalClient
 from app.auth import verify_api_key
 from app.db import get_async_session
@@ -14,7 +17,9 @@ from app.schemas.narrative import NarrativeVersionSchema
 from app.models.topic import Topic
 from app.models.project_event import ProjectEvent
 from app.models.video_asset import VideoAsset
-from app.storage import get_presigned_url
+from app.storage import get_presigned_url, upload_bytes
+from app.engines.tts.factory import get_tts_engine
+from app.engines.tts.base import TTSRequest
 from app.schemas.project import (
     ProjectCreate, ProjectResponse, ProjectListResponse,
     ProjectDetailResponse, EventListResponse, ScriptVersionSchema,
@@ -267,3 +272,81 @@ async def get_video_url(
 @router.post("/{project_id}/performance")
 async def record_performance(project_id: UUID, _=Depends(verify_api_key)):
     return {"status": "TODO", "endpoint": f"POST /api/projects/{project_id}/performance"}
+
+
+class RegenerateTtsRequest(BaseModel):
+    scene_index: int
+    narration: str
+
+
+class RegenerateTtsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+    audio_key: Optional[str]
+    duration_seconds: Optional[float]
+    tts_status: str
+    presigned_url: Optional[str]
+
+
+@router.post("/{project_id}/narrative/tts", response_model=RegenerateTtsResponse)
+async def regenerate_scene_tts(
+    project_id: UUID,
+    body: RegenerateTtsRequest,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    project = await db.get(VideoProject, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.current_narrative_version_id:
+        raise HTTPException(status_code=404, detail="No narrative version found")
+
+    nv = await db.get(NarrativeVersion, project.current_narrative_version_id)
+    if nv is None or not isinstance(nv.scenes, list):
+        raise HTTPException(status_code=404, detail="Narrative version scenes not found")
+
+    narration = body.narration.strip()
+    scene_idx = body.scene_index
+
+    if not narration:
+        scenes = list(nv.scenes)
+        for i, s in enumerate(scenes):
+            if s.get("scene_index") == scene_idx:
+                scenes[i] = {**s, "tts_status": "skipped", "audio_key": None, "duration_seconds": None, "narration": narration}
+                break
+        nv.scenes = scenes
+        flag_modified(nv, "scenes")
+        await db.commit()
+        return RegenerateTtsResponse(audio_key=None, duration_seconds=None, tts_status="skipped", presigned_url=None)
+
+    tts_engine = get_tts_engine()
+    tts_voice = project.tts_voice
+    result = await tts_engine.synthesize(TTSRequest(text=narration, voice=tts_voice))
+
+    if not result.success:
+        raise HTTPException(status_code=502, detail=f"TTS failed: {result.error_message}")
+
+    key = f"audio/{project_id}/{nv.id}/scene_{scene_idx}.mp3"
+    upload_bytes(key, result.audio_bytes, "audio/mpeg")
+
+    scenes = list(nv.scenes)
+    for i, s in enumerate(scenes):
+        if s.get("scene_index") == scene_idx:
+            scenes[i] = {
+                **s,
+                "narration": narration,
+                "tts_status": "ready",
+                "audio_key": key,
+                "duration_seconds": result.duration_seconds,
+            }
+            break
+    nv.scenes = scenes
+    flag_modified(nv, "scenes")
+    await db.commit()
+
+    presigned = get_presigned_url(key)
+    return RegenerateTtsResponse(
+        audio_key=key,
+        duration_seconds=result.duration_seconds,
+        tts_status="ready",
+        presigned_url=presigned,
+    )

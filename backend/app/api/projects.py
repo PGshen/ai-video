@@ -309,10 +309,14 @@ async def regenerate_scene_tts(
 
     if not narration:
         scenes = list(nv.scenes)
+        found = False
         for i, s in enumerate(scenes):
             if s.get("scene_index") == scene_idx:
                 scenes[i] = {**s, "tts_status": "skipped", "audio_key": None, "duration_seconds": None, "narration": narration}
+                found = True
                 break
+        if not found:
+            raise HTTPException(status_code=404, detail=f"Scene {scene_idx} not found in narrative")
         nv.scenes = scenes
         flag_modified(nv, "scenes")
         await db.commit()
@@ -329,6 +333,7 @@ async def regenerate_scene_tts(
     upload_bytes(key, result.audio_bytes, "audio/mpeg")
 
     scenes = list(nv.scenes)
+    found = False
     for i, s in enumerate(scenes):
         if s.get("scene_index") == scene_idx:
             scenes[i] = {
@@ -338,7 +343,10 @@ async def regenerate_scene_tts(
                 "audio_key": key,
                 "duration_seconds": result.duration_seconds,
             }
+            found = True
             break
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Scene {scene_idx} not found in narrative")
     nv.scenes = scenes
     flag_modified(nv, "scenes")
     await db.commit()

@@ -190,6 +190,16 @@ async def get_current_narrative(
     nv = await db.get(NarrativeVersion, project.current_narrative_version_id)
     if nv is None:
         raise HTTPException(status_code=404, detail="Narrative version not found")
+
+    # Enrich scenes with presigned URLs for audio playback
+    scenes = list(nv.scenes or [])
+    enriched_scenes = []
+    for s in scenes:
+        audio_key = s.get("audio_key")
+        presigned = get_presigned_url(audio_key) if audio_key else None
+        enriched_scenes.append({**s, "audio_presigned_url": presigned})
+    nv.scenes = enriched_scenes
+
     return nv
 
 

@@ -4,7 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useSubmitReview } from "@/hooks/useProjects";
-import type { NarrativeVersion } from "@/types";
+import { useRegenerateTts } from "@/hooks/useNarrative";
+import type { NarrativeVersion, NarrativeScene } from "@/types";
+
+interface SceneState {
+  narration: string;
+  description: string;
+  audioPresignedUrl: string | null;
+  durationSeconds: number | null;
+  ttsStatus: NarrativeScene["ttsStatus"];
+}
 
 interface Props {
   projectId: string;
@@ -13,40 +22,88 @@ interface Props {
 
 export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   const submitReview = useSubmitReview();
+  const regenerateTts = useRegenerateTts(projectId);
 
-  const [editedScenes, setEditedScenes] = useState<
-    Map<number, { narration: string; description: string }>
-  >(
+  const [sceneStates, setSceneStates] = useState<Map<number, SceneState>>(
     new Map(
       narrative.scenes.map((s) => [
         s.sceneIndex,
-        { narration: s.narration, description: s.description },
+        {
+          narration: s.narration,
+          description: s.description,
+          audioPresignedUrl: s.audioPresignedUrl ?? null,
+          durationSeconds: s.durationSeconds ?? null,
+          ttsStatus: s.ttsStatus ?? null,
+        },
       ])
     )
   );
 
+  // 记录哪些镜头的旁白被用户修改但尚未重新 TTS
+  const [dirtyTts, setDirtyTts] = useState<Set<number>>(new Set());
+  const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null);
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
 
-  const updateScene = (
-    idx: number,
-    field: "narration" | "description",
-    value: string
-  ) => {
-    setEditedScenes((prev) => {
+  const updateNarration = (idx: number, value: string) => {
+    setSceneStates((prev) => {
       const next = new Map(prev);
-      next.set(idx, { ...next.get(idx)!, [field]: value });
+      const cur = next.get(idx)!;
+      next.set(idx, { ...cur, narration: value });
+      return next;
+    });
+    setDirtyTts((prev) => new Set(prev).add(idx));
+  };
+
+  const updateDescription = (idx: number, value: string) => {
+    setSceneStates((prev) => {
+      const next = new Map(prev);
+      const cur = next.get(idx)!;
+      next.set(idx, { ...cur, description: value });
       return next;
     });
   };
 
+  const handleRegenerateTts = async (idx: number) => {
+    const state = sceneStates.get(idx);
+    if (!state) return;
+    setRegeneratingIdx(idx);
+    try {
+      const res = await regenerateTts.mutateAsync({
+        sceneIndex: idx,
+        narration: state.narration,
+      });
+      setSceneStates((prev) => {
+        const next = new Map(prev);
+        next.set(idx, {
+          ...next.get(idx)!,
+          audioPresignedUrl: res.presignedUrl,
+          durationSeconds: res.durationSeconds,
+          ttsStatus: res.ttsStatus as NarrativeScene["ttsStatus"],
+        });
+        return next;
+      });
+      setDirtyTts((prev) => {
+        const next = new Set(prev);
+        next.delete(idx);
+        return next;
+      });
+    } finally {
+      setRegeneratingIdx(null);
+    }
+  };
+
   const buildEditedScenes = () =>
-    Array.from(editedScenes.entries()).map(([sceneIndex, vals]) => ({
+    Array.from(sceneStates.entries()).map(([sceneIndex, s]) => ({
       sceneIndex,
-      ...vals,
+      narration: s.narration,
+      description: s.description,
     }));
 
+  const canSubmit = dirtyTts.size === 0;
+
   const handleApprove = () => {
+    if (!canSubmit) return;
     submitReview.mutate({
       projectId,
       gate: "narrative",
@@ -56,6 +113,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   };
 
   const handleReject = () => {
+    if (!canSubmit) return;
     submitReview.mutate({
       projectId,
       gate: "narrative",
@@ -66,11 +124,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   };
 
   const handleAbandon = () => {
-    submitReview.mutate({
-      projectId,
-      gate: "narrative",
-      verdict: "abandoned",
-    });
+    submitReview.mutate({ projectId, gate: "narrative", verdict: "abandoned" });
   };
 
   return (
@@ -80,7 +134,10 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         <ScrollArea className="flex-1">
           <div className="space-y-4 pr-2">
             {narrative.scenes.map((scene) => {
-              const edited = editedScenes.get(scene.sceneIndex)!;
+              const state = sceneStates.get(scene.sceneIndex)!;
+              const isDirty = dirtyTts.has(scene.sceneIndex);
+              const isRegenerating = regeneratingIdx === scene.sceneIndex;
+
               return (
                 <div
                   key={scene.sceneIndex}
@@ -88,34 +145,51 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                 >
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">镜头 {scene.sceneIndex}</Badge>
-                    {scene.estimatedDurationSeconds && (
+                    {state.durationSeconds != null && (
                       <span className="text-xs text-muted-foreground">
-                        {scene.estimatedDurationSeconds}s
+                        旁白时长：{state.durationSeconds.toFixed(1)}s
                       </span>
                     )}
+                    {state.ttsStatus === "failed" && (
+                      <Badge variant="destructive" className="text-xs">TTS 失败</Badge>
+                    )}
                   </div>
+
+                  {/* 音频播放器 */}
+                  {state.audioPresignedUrl && !isDirty && (
+                    <audio
+                      controls
+                      src={state.audioPresignedUrl}
+                      className="w-full h-8"
+                    />
+                  )}
+
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      旁白
-                    </label>
+                    <label className="text-xs font-medium text-muted-foreground">旁白</label>
                     <Textarea
-                      value={edited.narration}
-                      onChange={(e) =>
-                        updateScene(scene.sceneIndex, "narration", e.target.value)
-                      }
+                      value={state.narration}
+                      onChange={(e) => updateNarration(scene.sceneIndex, e.target.value)}
                       rows={3}
                       className="text-sm"
                     />
                   </div>
+
+                  {isDirty && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRegenerateTts(scene.sceneIndex)}
+                      disabled={isRegenerating}
+                    >
+                      {isRegenerating ? "生成中…" : "重新生成音频"}
+                    </Button>
+                  )}
+
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      画面描述
-                    </label>
+                    <label className="text-xs font-medium text-muted-foreground">画面描述</label>
                     <Textarea
-                      value={edited.description}
-                      onChange={(e) =>
-                        updateScene(scene.sceneIndex, "description", e.target.value)
-                      }
+                      value={state.description}
+                      onChange={(e) => updateDescription(scene.sceneIndex, e.target.value)}
                       rows={4}
                       className="text-sm"
                     />
@@ -126,7 +200,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
           </div>
         </ScrollArea>
 
-        {/* Right: fact checks (read-only) */}
+        {/* Right: fact checks */}
         <ScrollArea className="w-72 shrink-0">
           <div className="space-y-3 pr-1">
             <p className="text-xs font-medium text-muted-foreground">
@@ -147,9 +221,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                 >
                   {fc.confidence}
                 </Badge>
-                <p className="text-xs text-muted-foreground">
-                  {fc.sourceDescription}
-                </p>
+                <p className="text-xs text-muted-foreground">{fc.sourceDescription}</p>
               </div>
             ))}
           </div>
@@ -158,6 +230,11 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
 
       {/* Bottom action bar */}
       <div className="border-t pt-4 mt-4 space-y-3">
+        {dirtyTts.size > 0 && (
+          <p className="text-sm text-amber-600">
+            有 {dirtyTts.size} 个镜头修改了旁白，请先点击「重新生成音频」再提交。
+          </p>
+        )}
         {showRejectInput && (
           <Textarea
             placeholder="请说明驳回原因..."
@@ -174,7 +251,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         <div className="flex gap-2">
           <Button
             onClick={handleApprove}
-            disabled={submitReview.isPending || submitReview.isSuccess}
+            disabled={submitReview.isPending || submitReview.isSuccess || !canSubmit}
             className="flex-1"
           >
             {submitReview.isPending ? "提交中…" : "确认通过（进入代码生成）"}
@@ -188,7 +265,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                 setShowRejectInput(true);
               }
             }}
-            disabled={submitReview.isPending || submitReview.isSuccess}
+            disabled={submitReview.isPending || submitReview.isSuccess || !canSubmit}
           >
             {submitReview.isPending ? "提交中…" : "驳回重生成"}
           </Button>

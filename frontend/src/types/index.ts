@@ -60,7 +60,7 @@ export interface NarrativeScene {
   audioKey: string | null;
   durationSeconds: number | null;
   ttsStatus: "ready" | "failed" | "skipped" | "pending" | null;
-  audioPresignedUrl?: string | null;
+  audioPresignedUrl: string | null;
 }
 
 export interface NarrativeVersion {

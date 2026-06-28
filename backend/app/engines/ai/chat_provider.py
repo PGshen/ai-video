@@ -24,50 +24,112 @@ class ChatAIProvider:
 禁止在 code 里写 import 语句、def construct、或结构定义。
 
 【变量生命周期规则】
-- scene 0 声明的变量（如 title = Text("...")）在 scene 1、2... 中仍在作用域内，可直接引用
+- scene 0 声明的变量在 scene 1、2... 中仍在作用域内，可直接引用
 - 元素默认可跨镜头保留；镜头边界不等于清场点，不要为了结束当前镜头而机械 FadeOut
-- 仅当元素完成叙事作用、即将被新内容替代或会遮挡后续重点时，才在合适的转场时机用 FadeOut / ReplacementTransform 退场
+- 仅当元素完成叙事作用、即将被新内容替代或会遮挡后续重点时，才在合适的转场时机用 FadeOut 退场
 - 若下一镜头复用某元素（变形/移动/替换），用 Transform / ReplacementTransform / .animate，不要重新声明同名变量
 - 禁止在不同镜头中对同一逻辑元素重复声明同名变量
 
-【动画时序规则】
-- 用 self.wait(n) 控制停留时长，单位秒
-- 每个镜头 code 的所有 self.play(run_time=...) 与 self.wait(...) 之和需与该镜头 estimated_duration_seconds 匹配（误差 ±1s 可接受）
-- 镜头之间用 FadeOut/FadeIn 或 Transform 做过渡，避免画面突然硬切
-- 关键图形和结论必须至少保留到对应旁白讲完；禁止旁白尚未结束就清空画面
-- 渲染器会自动补齐镜头剩余时长。如果本镜头没有必要的退场或转场，代码末尾保持最终画面即可，不要添加 FadeOut 清场
+【画布安全区（重要）】
+- Manim 默认画布：14.2 × 8 单位（宽×高），坐标原点在中心
+- 安全区：x ∈ [-6.0, 6.0]，y ∈ [-3.5, 3.5]，距边缘至少 0.3 单位缓冲
+- 所有元素创建后必须确认坐标在安全区内，禁止超出此范围
+- 多元素布局用 VGroup(...).arrange() 或明确 .shift() 定位，不依赖默认位置叠加
+- 大型 VGroup 用 .scale_to_fit_width(11) 限制最大宽度
 
 【坐标系规则（重要）】
 - Manim 内部所有点坐标均为三维 (x, y, z)，z 通常为 0
 - 禁止使用 np.array([x, y]) 等二维坐标，必须写 np.array([x, y, 0])
 - set_points_as_corners、set_anchors_and_handles 等方法参数必须是 shape (n, 3) 的数组
-- 若用 numpy 构建路径点，形如 [[x1,y1,0], [x2,y2,0], ...]，不可省略 z 分量
-- Axes 构造函数不支持 x_label / y_label 参数；先创建 axes，再用 axes.get_x_axis_label(Text("横轴")) 和 axes.get_y_axis_label(Text("纵轴")) 创建标签，并将标签与坐标轴一起播放和清场
+- Axes 构造函数不支持 x_label / y_label 参数；先创建 axes，再用 axes.get_x_axis_label(Text("横轴")) 和 axes.get_y_axis_label(Text("纵轴")) 创建标签
+
+【字体大小规范（重要）】
+- 主标题（视频大标题）：font_size=44
+- 节点标签/图形旁说明：font_size=32
+- 正文内容（关键词、数字）：font_size=28
+- 小标注（公式辅助说明）：font_size=22
+- 禁止使用不加 font_size 的裸 Text()（默认值过大，导致布局失控）
+
+【配色系统——活力暖色扁平】
+背景：米白 #F5F0E8（渲染器已全局设置，代码无需处理）
+主色（暖色）：草莓红 #E8524A、橘橙 #F07D3E、向日葵黄 #F5C518
+辅助色（冷色）：天蓝 #4BA3C3、草绿 #5BAD6F
+强调色：薰衣草紫 #9B7EC8
+文字/轮廓：深炭灰 #2C2C2C
+同一画面控制在 1 个主色 + 1 个辅色 + 1 个强调色，避免彩虹式混色
+禁止：荧光色、高饱和原色（纯红/纯蓝/纯绿）、纯白文字（白底白字不可见）
+
+【动画节奏规范】
+入场动画（按优先级）：
+- 图形：GrowFromCenter（弹性感首选）或 DrawBorderThenFill
+- 文字：Write
+- 箭头：GrowArrow
+- 次要/背景元素：FadeIn（非首选）
+
+强调动画（关键结论必须使用）：
+- Flash、Circumscribe、Indicate 突出关键节点
+- 避免只用静态颜色高亮
+
+变换动画：
+- 图形演变：ReplacementTransform
+- 属性变化（位置/缩放/颜色）：.animate
+- 禁止：消灭元素后重建同功能元素
+
+退场动画：FadeOut(element, run_time=0.5)，统一 0.5s
+
+run_time 选择：
+- 简单入场：0.8s；标准动画：1.0–1.5s；复杂变换：2.0s；退场：0.5s
+
+【退场检查清单（每个镜头必须执行）】
+每个镜头代码开头，隐式维护画布存量列表，对每个存活元素判断：
+- 本镜头继续引用或保留 → 不退场，直接使用
+- 已完成使命且本镜头不再出现 → 本镜头开头 FadeOut(run_time=0.5)
+- 位置与本镜头新元素重叠 → 本镜头开头 FadeOut 或 ReplacementTransform
+- 背景性持续元素（如顶部标题） → 保留，除非叙事需要替换
+
+退场动画统一放在本镜头开头（先清场，再出新内容）。
+
+代码注释格式：
+# === 镜头 N ===
+# 画布存量：[元素列表]
+# [元素] → 退场/保留，原因：[一句话]
+
+【动画时序规则】
+- 用 self.wait(n) 控制停留时长，单位秒
+- 每个镜头 code 的所有 self.play(run_time=...) 与 self.wait(...) 之和需与该镜头 estimated_duration_seconds 匹配（误差 ±1s 可接受）
+- 关键图形和结论必须至少保留到对应旁白讲完；禁止旁白尚未结束就清空画面
+- 渲染器会自动补齐镜头剩余时长。如果本镜头没有必要的退场或转场，代码末尾保持最终画面即可，不要添加 FadeOut 清场
 
 【视觉优先】
-- 除纯标题或总结镜头外，每个镜头至少设计一个承载知识含义的图形动画；多用 Circle、Square、Arrow、NumberLine、Axes、Graph、VGroup 等构建关系、过程、对比或变化
-- 优先让已有图形移动、缩放、变形、连线、分裂或聚合来推进讲解，避免只摆放静态文字和装饰性图形
-- 公式只展示理解结论不可缺少的关键公式，用 MathTex 配合图形直观解释；不要连续堆砌公式、推导步骤或符号墙
+- 除纯标题或总结镜头外，每个镜头至少设计一个承载知识含义的图形动画
+- 多用 Circle、Square、Arrow、NumberLine、Axes、Graph、VGroup 构建关系、过程、对比或变化
+- 优先让已有图形移动、缩放、变形、连线、分裂或聚合来推进讲解，避免只摆放静态文字
+- 公式只展示理解结论不可缺少的关键公式，用 MathTex 配合图形直观解释；不要连续堆砌公式
 - 画面文字只保留关键词、数字、公式、简短标注，每帧不超过 15 个汉字
-- 善用 Create、Write、GrowArrow、DrawBorderThenFill、Transform 等动效让图形活起来
 
-【配色风格——偏深马卡龙】
-- 米白背景上使用饱和度适中、明度略压低的马卡龙色，保证柔和但不发灰、不幼稚
-- 主色推荐：雾霾蓝 #6688A6、鼠尾草绿 #6F9275、陶土粉 #C87878、蜜桃橙 #D49362、薰衣草紫 #8B7EAA、芥末黄 #C6A04A
-- 正文与轮廓使用深灰 #30343B；同一画面控制在 1 个主色、1 个辅助色和 1 个强调色，避免彩虹式混用
+【文字渲染规则（重要）】
+- 所有中文、日文等非 ASCII 文字必须使用 Text()，禁止使用 MathTex() 或 Tex()
+- MathTex() / Tex() 仅用于纯英文/ASCII 数学公式（如 r"E=mc^2"、r"\frac{{1}}{{2}}"）
+- 中英文混排时，中文用 Text()，公式用 MathTex()，再用 VGroup 组合
+- 违反此规则会导致 LaTeX 编译报错使视频生成失败
 
 【典型跨镜头示例】
 # === 镜头 0（标题引入）===
-title = Text("为什么天空是蓝色的？").scale(1.2)
-self.play(Write(title), run_time=2)
+# 画布存量：空
+title = Text("为什么天空是蓝色的？", font_size=44, color=ManimColor("#2C2C2C"))
+self.play(Write(title), run_time=1.5)
+self.wait(1)
 
 # === 镜头 1（标题缩小，引入图示）===
-self.play(title.animate.scale(0.5).to_edge(UP), run_time=1)
-sun = Circle(radius=0.5, color=ManimColor("#D49362")).shift(LEFT * 4)
-earth = Circle(radius=0.3, color=ManimColor("#6688A6")).shift(RIGHT * 3)
-light_ray = Arrow(sun.get_right(), earth.get_left(), color=ManimColor("#30343B"))
-self.play(Create(sun), Create(earth), GrowArrow(light_ray), run_time=2)
-# 本镜头无需转场：保留图示，渲染器自动补齐旁白剩余时长
+# 画布存量：title
+# title → 保留，缩小移至顶部
+self.play(title.animate.scale(0.6).to_edge(UP), run_time=0.8)
+sun = Circle(radius=0.5, color=ManimColor("#F07D3E"), fill_opacity=1).shift(LEFT * 4)
+earth = Circle(radius=0.3, color=ManimColor("#4BA3C3"), fill_opacity=1).shift(RIGHT * 3)
+ray = Arrow(sun.get_right(), earth.get_left(), color=ManimColor("#E8524A"), buff=0.1)
+self.play(GrowFromCenter(sun), GrowFromCenter(earth), run_time=1.0)
+self.play(GrowArrow(ray), run_time=0.8)
+# 本镜头无需转场：保留图示，渲染器自动补齐剩余时长
 """,
         "remotion": """\
 【Remotion 代码规范】

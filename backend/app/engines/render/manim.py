@@ -121,10 +121,16 @@ def _build_manim_script(scenes: list[SceneInput]) -> str:
     ]
     for i, scene in enumerate(scenes):
         audio_path = scene.audio.audio_path if scene.audio else f"scene_{i}_audio.mp3"
+        duration = scene.audio.duration_seconds if scene.audio else 0.0
         lines.append(f"        # Scene {i}: {scene.description}")
+        lines.append(f"        _t0_{i} = self.renderer.time")
         lines.append(f'        self.add_sound("{audio_path}")')
         for code_line in scene.code.splitlines():
             lines.append(f"        {code_line}")
+        # Program-injected: pad remaining time to match audio duration
+        lines.append(f"        _rem_{i} = {duration:.3f} - (self.renderer.time - _t0_{i})")
+        lines.append(f"        if _rem_{i} > 0:")
+        lines.append(f"            self.wait(_rem_{i})")
         lines.append("")
     return "\n".join(lines)
 

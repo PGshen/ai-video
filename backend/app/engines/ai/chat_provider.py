@@ -384,8 +384,9 @@ codes 数组长度必须与输入 scenes 数组长度完全一致，按 scene_in
 
 【音画同步规则】
 每个镜头 JSON 包含 duration_seconds 字段，代表该镜头旁白音频的时长（秒）。
-该镜头所有动画的总时长（所有 Animation 的 run_time 与 self.wait 之和）必须 ≤ duration_seconds。
-建议最后用 self.wait() 补足剩余时间，使动画与音频完全对齐。
+动画总时长（所有 run_time 与 self.wait 之和）必须 ≤ duration_seconds。
+渲染引擎会在每个镜头末尾自动补齐剩余时间，因此禁止在镜头末尾添加用于补齐音频时长的 self.wait()。
+动画节奏需要的 self.wait()（如两个动画之间的停顿）照常使用。
 若某镜头 duration_seconds 为 null，则不作时长约束，由你自行估算合适时长。
 
 要求：

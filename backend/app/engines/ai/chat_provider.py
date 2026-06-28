@@ -382,6 +382,12 @@ codes 数组长度必须与输入 scenes 数组长度完全一致，按 scene_in
 所有镜头的 code 片段将被渲染引擎按顺序拼合为单个执行单元，每段之间插入注释分隔符。
 音频由渲染引擎在每个镜头开始时自动注入，code 里不处理音频。
 
+【音画同步规则】
+每个镜头 JSON 包含 duration_seconds 字段，代表该镜头旁白音频的时长（秒）。
+该镜头所有动画的总时长（所有 Animation 的 run_time 与 self.wait 之和）必须 ≤ duration_seconds。
+建议最后用 self.wait() 补足剩余时间，使动画与音频完全对齐。
+若某镜头 duration_seconds 为 null，则不作时长约束，由你自行估算合适时长。
+
 要求：
 - 严格按照每个镜头的 description 实现动画逻辑
 - 充分利用跨镜头变量复用（前面镜头声明的变量在后续镜头中可直接使用）

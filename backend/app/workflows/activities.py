@@ -46,7 +46,7 @@ async def submit_video_generation_task(project_id: str) -> None:
             status="pending",
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="render_completed",
-            max_retries=3,
+            max_retries=0,
         )
         db.add(task)
         db.commit()

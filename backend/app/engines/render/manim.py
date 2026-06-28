@@ -65,11 +65,12 @@ class ManimRenderEngine:
             render_log = stdout.decode(errors="replace") if stdout else ""
 
             if proc.returncode != 0:
+                log_tail = render_log[-1500:].strip() if render_log else ""
                 return RenderResult(
                     success=False,
                     output_path=None,
                     duration_seconds=None,
-                    error_message=f"Manim exited with code {proc.returncode}",
+                    error_message=f"Manim exited with code {proc.returncode}\n{log_tail}",
                     render_log=render_log,
                 )
 

@@ -33,3 +33,14 @@ export function fetchNarrative(projectId: string) {
     `/api/projects/${projectId}/narrative`
   );
 }
+
+export function regenerateSceneTts(
+  projectId: string,
+  sceneIndex: number,
+  narration: string
+) {
+  return api.post<import("@/types").RegenerateTtsResponse>(
+    `/api/projects/${projectId}/narrative/tts`,
+    { sceneIndex, narration }
+  );
+}

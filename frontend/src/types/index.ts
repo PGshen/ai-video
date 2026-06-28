@@ -57,6 +57,10 @@ export interface NarrativeScene {
   narration: string;
   description: string;
   estimatedDurationSeconds: number | null;
+  audioKey: string | null;
+  durationSeconds: number | null;
+  ttsStatus: "ready" | "failed" | "skipped" | "pending" | null;
+  audioPresignedUrl?: string | null;
 }
 
 export interface NarrativeVersion {
@@ -199,4 +203,12 @@ export interface PerformanceRecord {
   commentTags: string[];
   commentSummary: string | null;
   recordedAt: string;
+}
+
+// ═══ TTS 再生成响应 ═══
+export interface RegenerateTtsResponse {
+  audioKey: string | null;
+  durationSeconds: number | null;
+  ttsStatus: string;
+  presignedUrl: string | null;
 }

@@ -42,6 +42,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   // 记录哪些镜头的旁白被用户修改但尚未重新 TTS
   const [dirtyTts, setDirtyTts] = useState<Set<number>>(new Set());
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null);
+  const [regenError, setRegenError] = useState<Map<number, string>>(new Map());
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
 
@@ -53,6 +54,12 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       return next;
     });
     setDirtyTts((prev) => new Set(prev).add(idx));
+    // Clear error when user edits narration
+    setRegenError((prev) => {
+      const next = new Map(prev);
+      next.delete(idx);
+      return next;
+    });
   };
 
   const updateDescription = (idx: number, value: string) => {
@@ -86,6 +93,18 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       setDirtyTts((prev) => {
         const next = new Set(prev);
         next.delete(idx);
+        return next;
+      });
+      // Clear error on success
+      setRegenError((prev) => {
+        const next = new Map(prev);
+        next.delete(idx);
+        return next;
+      });
+    } catch (err) {
+      setRegenError((prev) => {
+        const next = new Map(prev);
+        next.set(idx, err instanceof Error ? err.message : "生成失败，请重试");
         return next;
       });
     } finally {
@@ -160,7 +179,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                     <audio
                       controls
                       src={state.audioPresignedUrl}
-                      className="w-full h-8"
+                      className="w-full h-10"
                     />
                   )}
 
@@ -175,14 +194,19 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                   </div>
 
                   {isDirty && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleRegenerateTts(scene.sceneIndex)}
-                      disabled={isRegenerating}
-                    >
-                      {isRegenerating ? "生成中…" : "重新生成音频"}
-                    </Button>
+                    <div className="space-y-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRegenerateTts(scene.sceneIndex)}
+                        disabled={isRegenerating}
+                      >
+                        {isRegenerating ? "生成中…" : "重新生成音频"}
+                      </Button>
+                      {regenError.get(scene.sceneIndex) && (
+                        <p className="text-xs text-destructive">{regenError.get(scene.sceneIndex)}</p>
+                      )}
+                    </div>
                   )}
 
                   <div className="space-y-1">

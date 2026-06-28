@@ -134,25 +134,10 @@ self.play(GrowArrow(ray), run_time=0.8)
         "remotion": """\
 【Remotion 代码规范】
 
-渲染引擎已生成外层结构，code 字段只写放入 <Sequence> 内部的 JSX 片段：
+渲染引擎已生成外层结构，code 字段只写放入 <Sequence> 内部的 JSX 片段。禁止在 code 里写 export const VideoScene 外层定义。
 
-  export const VideoScene: React.FC = () => {
-    const { fps } = useVideoConfig();
-    return (
-      <>
-        {/* === 镜头 0 === */}
-        <Sequence from={0} durationInFrames={scene0Frames}>
-          <scene 0 的 code>
-        </Sequence>
-        {/* === 镜头 1 === */}
-        <Sequence from={scene1StartFrame} durationInFrames={scene1Frames}>
-          <scene 1 的 code>
-        </Sequence>
-      </>
-    );
-  };
-
-禁止在 code 里写 export const VideoScene 外层定义。
+画布尺寸：1280 × 720 px（16:9），所有元素坐标和尺寸以此为基准，禁止超出边界。
+SVG viewBox 统一使用 "0 0 1280 720"。
 
 【帧与时序规则】
 - 在 code 片段内用 useCurrentFrame() 获取当前 <Sequence> 内的相对帧（从 0 开始）
@@ -161,40 +146,78 @@ self.play(GrowArrow(ray), run_time=0.8)
 - 镜头间过渡用 interpolate + opacity 实现淡入淡出，或用 spring() 做弹性动效
 
 【跨镜头共享元素】
-- 跨多个镜头持续存在的元素（如背景、顶部标题栏）用 <Sequence from={0} durationInFrames={totalFrames}> 包裹，放在最外层
+- 跨多个镜头持续存在的元素（背景、顶部标题栏）用 <Sequence from={0} durationInFrames={totalFrames}> 包裹，放在最外层
 - 每个镜头的 code 只负责该镜头独有的内容
-- 镜头边界不等于清场点；关键元素保持到对应旁白结束，仅在叙事转折、替换或遮挡新重点时淡出
+- 镜头边界不等于清场点；关键元素保持到对应旁白结束，仅在叙事转折或替换时淡出
+
+【配色系统——活力暖色扁平】
+背景：米白 #F5F0E8
+主色（暖色）：草莓红 #E8524A、橘橙 #F07D3E、向日葵黄 #F5C518
+辅助色（冷色）：天蓝 #4BA3C3、草绿 #5BAD6F
+强调色：薰衣草紫 #9B7EC8
+文字：深炭灰 #2C2C2C
+同一画面最多 1 主色 + 1 辅色 + 1 强调色
+
+【字体规范】
+- 主标题：fontSize: 56
+- 节点标签/图形说明：fontSize: 36
+- 正文内容：fontSize: 28
+- 小标注：fontSize: 22
+- 禁止使用无 fontSize 的裸 style 文字
+
+【动画节奏规范】
+入场：spring({ frame, fps, config: { stiffness: 80, damping: 12 } }) 做弹性入场（opacity、translateY、scale）
+线性变化：interpolate(frame, [in, out], [from, to], { extrapolateRight: "clamp" })
+退场：interpolate(frame, [exitStart, exitEnd], [1, 0]) 实现淡出
+强调：scale spring 放大后回弹（stiffness: 200, damping: 10）
+避免：所有动画都用 opacity 线性，缺乏弹性感
 
 【视觉优先】
-- 除纯标题或总结镜头外，每个镜头至少设计一个承载知识含义的 SVG/CSS 图形动画，用路径、位置、大小、连接或形变讲清关系和过程
-- 公式只展示理解核心结论不可缺少的关键公式，并与图形配合；避免连续推导和公式堆砌
-- 文字只用于关键词、数字、公式标注，每帧不超过 15 个汉字
-- 善用 spring() 做元素入场动效，interpolate 做连续属性变化（位置、缩放、透明度）
-- 使用偏深马卡龙色：雾霾蓝 #6688A6、鼠尾草绿 #6F9275、陶土粉 #C87878、蜜桃橙 #D49362、薰衣草紫 #8B7EAA、芥末黄 #C6A04A；正文用 #30343B，背景用 #F5F0E8
+- 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画
+- 用路径、位置、大小、连接或形变展示关系和过程，避免静态文字页
+- 公式只保留支撑核心结论的关键公式，配合图形解释，避免公式堆砌
+- 每帧文字不超过 15 个汉字
+
+【文字渲染规则】
+- 所有文字用 <div> 或 <text>（SVG），统一设置 fontFamily 为无衬线体
+- 中文避免使用系统默认 serif 字体，推荐 style={{ fontFamily: "PingFang SC, Microsoft YaHei, sans-serif" }}
 
 【典型示例】
-// 镜头 0：标题淡入
+// 镜头 0：标题弹性入场
 const frame = useCurrentFrame();
 const { fps } = useVideoConfig();
-const opacity = interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" });
+const progress = spring({ frame, fps, config: { stiffness: 80, damping: 12 } });
+const opacity = interpolate(progress, [0, 1], [0, 1]);
+const translateY = interpolate(progress, [0, 1], [30, 0]);
 return (
   <AbsoluteFill style={{ background: "#F5F0E8", justifyContent: "center", alignItems: "center" }}>
-    <div style={{ opacity, fontSize: 56, color: "#30343B", fontWeight: "bold" }}>
+    <div style={{
+      opacity,
+      transform: `translateY(${translateY}px)`,
+      fontSize: 56,
+      color: "#2C2C2C",
+      fontWeight: "bold",
+      fontFamily: "PingFang SC, Microsoft YaHei, sans-serif"
+    }}>
       为什么天空是蓝色的？
     </div>
   </AbsoluteFill>
 );
 
 // 镜头 1：散射图示动画
+const frame = useCurrentFrame();
 const { fps } = useVideoConfig();
-const progress = spring({ frame, fps, config: { stiffness: 60, damping: 12 } });
-const rayWidth = interpolate(progress, [0, 1], [0, 300]);
+const rayProgress = spring({ frame, fps, config: { stiffness: 60, damping: 14 } });
+const rayLength = interpolate(rayProgress, [0, 1], [0, 400]);
 return (
   <AbsoluteFill style={{ background: "#F5F0E8" }}>
     <svg width="100%" height="100%" viewBox="0 0 1280 720">
-      <circle cx={200} cy={360} r={60} fill="#D49362" />
-      <line x1={260} y1={360} x2={260 + rayWidth} y2={360}
-            stroke="#6688A6" strokeWidth={3} />
+      <circle cx={240} cy={360} r={60} fill="#F07D3E" />
+      <line x1={300} y1={360} x2={300 + rayLength} y2={360}
+            stroke="#4BA3C3" strokeWidth={4} />
+      <line x1={300 + rayLength * 0.7} y1={360}
+            x2={300 + rayLength * 0.7 + rayLength * 0.3 * 0.7} y2={320}
+            stroke="#E8524A" strokeWidth={3} opacity={interpolate(rayProgress, [0.5, 1], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })} />
     </svg>
   </AbsoluteFill>
 );

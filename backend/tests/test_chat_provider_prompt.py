@@ -33,16 +33,23 @@ def test_manim_prompt_keeps_visuals_until_narration_finishes():
     assert "保持最终画面" in prompt
 
 
-def test_narrative_hints_require_graphics_key_formulas_and_macaron_palette():
+def test_narrative_hints_visual_style_and_content_rules():
     for prompt in ChatAIProvider._NARRATIVE_ENGINE_HINTS.values():
-        assert "偏深马卡龙" in prompt
-        assert "#6688A6" in prompt
+        # 新配色关键词（活力暖色）
+        assert "#E8524A" in prompt or "#F07D3E" in prompt or "#4BA3C3" in prompt
+        # 关键叙事规则保留
         assert "关键公式" in prompt
         assert "旁白结束" in prompt
 
     manim_prompt = ChatAIProvider._NARRATIVE_ENGINE_HINTS["manim"]
-    assert "每个镜头至少包含一个有知识含义的图形动画" in manim_prompt
-    assert "不要求每个镜头末尾清场" in manim_prompt
+    # 弱技术层：有图形类型词汇但无类名
+    assert "圆形" in manim_prompt or "箭头" in manim_prompt or "坐标轴" in manim_prompt
+    assert "Circle" not in manim_prompt   # 禁止 Manim 类名
+    assert "VGroup" not in manim_prompt
+    assert ".animate" not in manim_prompt
+    # 退场意图描述
+    assert "退场" in manim_prompt
+    assert "保留" in manim_prompt
 
 
 def test_remotion_prompt_contains_key_rules():
@@ -68,3 +75,53 @@ def test_system_prompt_contains_code_concat_rule():
     # 拼合规则在引擎 prompt 里体现（说明 code 是片段）
     assert "construct()" in manim_prompt
     assert "import" in manim_prompt  # 说明不写 import
+
+
+def test_manim_code_prompt_font_size_rules():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "font_size" in prompt
+    assert "44" in prompt   # 主标题
+    assert "32" in prompt   # 节点标签
+    assert "28" in prompt   # 正文
+    assert "22" in prompt   # 小标注
+
+
+def test_manim_code_prompt_canvas_safety_zone():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "14.2" in prompt or "安全区" in prompt
+    assert "-6.0" in prompt or "[-6" in prompt
+    assert "3.5" in prompt or "[-3" in prompt
+
+
+def test_manim_code_prompt_warm_color_palette():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "#E8524A" in prompt   # 草莓红
+    assert "#F07D3E" in prompt   # 橘橙
+    assert "#4BA3C3" in prompt   # 天蓝
+    assert "#2C2C2C" in prompt   # 深炭灰
+
+
+def test_manim_code_prompt_animation_rhythm():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "GrowFromCenter" in prompt
+    assert "DrawBorderThenFill" in prompt
+    assert "Flash" in prompt or "Circumscribe" in prompt
+
+
+def test_manim_code_prompt_exit_checklist():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "画布存量" in prompt
+    assert "镜头开头" in prompt or "开头" in prompt
+    assert "run_time=0.5" in prompt
+
+
+def test_remotion_code_prompt_warm_colors():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["remotion"]
+    assert "#E8524A" in prompt or "#F07D3E" in prompt
+    assert "#4BA3C3" in prompt
+    assert "#2C2C2C" in prompt
+
+
+def test_remotion_code_prompt_canvas_size():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["remotion"]
+    assert "1280" in prompt or "720" in prompt or "canvas" in prompt.lower() or "画布" in prompt

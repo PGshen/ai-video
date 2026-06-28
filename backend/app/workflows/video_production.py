@@ -198,7 +198,11 @@ class VideoProductionWorkflow:
                 break
 
             # 渲染失败：直接退回脚本审核，不重试
-            await self._update_status(project_id, "script_review")
+            render_error = result.get("error", "")
+            await self._update_status(
+                project_id, "script_review",
+                payload={"render_error": render_error[:800]} if render_error else None,
+            )
             review = await self._wait_signal("script_review")
             verdict = review.get("verdict")
             if verdict == "abandoned":
@@ -223,9 +227,9 @@ class VideoProductionWorkflow:
             return "abandoned"
         return "back_to_script"
 
-    async def _update_status(self, project_id: str, status: str) -> None:
+    async def _update_status(self, project_id: str, status: str, payload: dict | None = None) -> None:
         await workflow.execute_activity(
-            update_project_status, args=[project_id, status], **_STATUS_OPTS
+            update_project_status, args=[project_id, status, payload], **_STATUS_OPTS
         )
 
     async def _wait_signal(self, name: str) -> dict:

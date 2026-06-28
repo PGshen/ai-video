@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { useSubmitReview } from "@/hooks/useProjects";
 import { useRegenerateTts } from "@/hooks/useNarrative";
 import type { NarrativeVersion, NarrativeScene } from "@/types";
+
+type Verdict = "approved" | "rejected" | "needs_revision";
+interface VerdictState { verdict: Verdict; note: string; }
 
 interface SceneState {
   narration: string;
@@ -45,6 +49,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   const [regenError, setRegenError] = useState<Map<number, string>>(new Map());
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [factVerdicts, setFactVerdicts] = useState<Record<number, VerdictState>>({});
 
   const updateNarration = (idx: number, value: string) => {
     setSceneStates((prev) => {
@@ -122,7 +127,20 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   const hasFailedTts = Array.from(sceneStates.values()).some(
     (s) => s.ttsStatus === "failed"
   );
-  const canSubmit = dirtyTts.size === 0 && !hasFailedTts;
+
+  const allFactsMarked = useMemo(() => {
+    if (narrative.factChecks.length === 0) return true;
+    return narrative.factChecks.every((_, i) => factVerdicts[i] !== undefined);
+  }, [narrative.factChecks, factVerdicts]);
+
+  const buildFactVerdictList = () =>
+    Object.entries(factVerdicts).map(([i, v]) => ({
+      index: Number(i),
+      verdict: v.verdict,
+      note: v.note || "",
+    }));
+
+  const canSubmit = dirtyTts.size === 0 && !hasFailedTts && allFactsMarked;
 
   const handleApprove = () => {
     if (!canSubmit) return;
@@ -131,6 +149,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       gate: "narrative",
       verdict: "approved",
       editedScenes: buildEditedScenes(),
+      factCheckVerdicts: buildFactVerdictList(),
     });
   };
 
@@ -142,6 +161,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       verdict: "rejected",
       rejectionDetail,
       editedScenes: buildEditedScenes(),
+      factCheckVerdicts: buildFactVerdictList(),
     });
   };
 
@@ -227,32 +247,31 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
           </div>
         </ScrollArea>
 
-        {/* Right: fact checks */}
-        <ScrollArea className="w-72 shrink-0">
-          <div className="space-y-3 pr-1">
-            <p className="text-xs font-medium text-muted-foreground">
-              事实核查（将在代码审核阶段标注）
-            </p>
-            {narrative.factChecks.map((fc, i) => (
-              <div key={i} className="border rounded-lg p-3 space-y-1">
-                <p className="text-xs">{fc.claimText}</p>
-                <Badge
-                  variant={
-                    fc.confidence === "high"
-                      ? "default"
-                      : fc.confidence === "low"
-                      ? "destructive"
-                      : "secondary"
-                  }
-                  className="text-xs"
-                >
-                  {fc.confidence}
-                </Badge>
-                <p className="text-xs text-muted-foreground">{fc.sourceDescription}</p>
-              </div>
-            ))}
+        {/* Right: fact checks (interactive) */}
+        <div className="w-80 shrink-0 border-l flex flex-col min-h-0 overflow-hidden">
+          <div className="px-3 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
+            事实核查（{narrative.factChecks.length} 条）
           </div>
-        </ScrollArea>
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-3 space-y-3">
+              {narrative.factChecks.length === 0 && (
+                <p className="text-xs text-muted-foreground">暂无事实核查条目</p>
+              )}
+              {narrative.factChecks.map((fc, i) => (
+                <FactCheckCard
+                  key={i}
+                  item={fc}
+                  index={i}
+                  verdict={factVerdicts[i]?.verdict ?? null}
+                  note={factVerdicts[i]?.note ?? ""}
+                  onVerdictChange={(idx, v, n) =>
+                    setFactVerdicts((prev) => ({ ...prev, [idx]: { verdict: v, note: n } }))
+                  }
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
       </div>
 
       {/* Bottom action bar */}
@@ -265,6 +284,11 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         {hasFailedTts && (
           <p className="text-sm text-amber-600">
             有镜头 TTS 生成失败，请重新生成音频后再提交。
+          </p>
+        )}
+        {!allFactsMarked && narrative.factChecks.length > 0 && (
+          <p className="text-sm text-amber-600">
+            请为所有事实核查条目标注审核结果后再提交。
           </p>
         )}
         {showRejectInput && (

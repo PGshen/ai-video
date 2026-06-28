@@ -10,7 +10,7 @@ from app.models.worker_task import WorkerTask
 
 
 @activity.defn
-async def update_project_status(project_id: str, new_status: str) -> None:
+async def update_project_status(project_id: str, new_status: str, payload: dict | None = None) -> None:
     db = get_sync_session()
     try:
         project = db.get(VideoProject, uuid.UUID(project_id))
@@ -24,6 +24,7 @@ async def update_project_status(project_id: str, new_status: str) -> None:
             from_status=old_status,
             to_status=new_status,
             actor="workflow",
+            payload=payload or None,
         )
         db.add(event)
         db.commit()

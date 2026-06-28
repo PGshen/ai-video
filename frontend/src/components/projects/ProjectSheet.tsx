@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel";
 import {
   useProject, useProjectEvents, useProjectScript, useSubmitReview,
@@ -16,9 +15,6 @@ import {
 import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, timeAgo } from "@/lib/format";
 import type { VideoProject, ProjectEvent, NarrativeVersion, ScriptVersion } from "@/types";
-
-type Verdict = "approved" | "rejected" | "needs_revision";
-interface VerdictState { verdict: Verdict; note: string; }
 
 interface Props {
   project: VideoProject | null;
@@ -67,7 +63,6 @@ export function ProjectSheet({ project, onClose }: Props) {
   const submitReview = useSubmitReview();
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
-  const [verdicts, setVerdicts] = useState<Record<number, VerdictState>>({});
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [targetStage, setTargetStage] = useState<"narrative" | "code">("narrative");
@@ -94,18 +89,6 @@ export function ProjectSheet({ project, onClose }: Props) {
   const buildEditedScriptScenes = () =>
     Array.from(editedCode.entries()).map(([sceneIndex, code]) => ({ sceneIndex, code }));
 
-  const allMarked = useMemo(() => {
-    if (!script || script.factChecks.length === 0) return true;
-    return script.factChecks.every((_, i) => verdicts[i] !== undefined);
-  }, [script, verdicts]);
-
-  const buildVerdictList = () =>
-    Object.entries(verdicts).map(([i, v]) => ({
-      index: Number(i),
-      verdict: v.verdict,
-      note: v.note || "",
-    }));
-
   const handleApprove = () => {
     if (!project) return;
     const editedScriptScenes = buildEditedScriptScenes();
@@ -114,7 +97,6 @@ export function ProjectSheet({ project, onClose }: Props) {
         projectId: project.id,
         gate: "script",
         verdict: "approved",
-        factCheckVerdicts: buildVerdictList(),
         ...(editedScriptScenes.length > 0 ? { editedScriptScenes } : {}),
       },
       {
@@ -131,7 +113,7 @@ export function ProjectSheet({ project, onClose }: Props) {
     if (!project) return;
     if (!showRejectInput) { setShowRejectInput(true); return; }
     submitReview.mutate(
-      { projectId: project.id, gate: "script", verdict: "rejected", rejectionDetail, targetStage, factCheckVerdicts: buildVerdictList() },
+      { projectId: project.id, gate: "script", verdict: "rejected", rejectionDetail, targetStage },
       {
         onSuccess: () => { setSubmitted(true); toast.success("已驳回，AI 将重新生成"); },
         onError: () => toast.error("提交失败，请重试"),
@@ -241,9 +223,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               isScriptReview={isScriptReview}
               isRenderFailed={isRenderFailed}
               hasScript={hasScript}
-              verdicts={verdicts}
-              setVerdicts={setVerdicts}
-              allMarked={allMarked}
+
               canReject={canReject}
               showRejectInput={showRejectInput}
               rejectionDetail={rejectionDetail}
@@ -279,9 +259,6 @@ interface RightPanelProps {
   hasScript: boolean;
   editedCode: Map<number, string>;
   setEditedCode: React.Dispatch<React.SetStateAction<Map<number, string>>>;
-  verdicts: Record<number, VerdictState>;
-  setVerdicts: React.Dispatch<React.SetStateAction<Record<number, VerdictState>>>;
-  allMarked: boolean;
   canReject: boolean;
   showRejectInput: boolean;
   rejectionDetail: string;
@@ -301,7 +278,7 @@ interface RightPanelProps {
 
 function RightPanel({
   project, script, scriptLoading, narrative, isScriptReview, isRenderFailed, hasScript,
-  verdicts, setVerdicts, allMarked, canReject,
+  canReject,
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
   submitPending, onApprove, onReject, onAbandon,
@@ -417,10 +394,9 @@ function RightPanel({
         </div>
       )}
 
-      {/* 两列内容区 */}
+      {/* 镜头列表（全宽，代码可编辑） */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* 镜头列表 */}
-        <div className="w-1/2 border-r flex min-h-0 flex-col overflow-hidden">
+        <div className="flex-1 flex min-h-0 flex-col overflow-hidden">
           <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             镜头列表（{script?.scenes.length ?? 0} 个）
           </div>
@@ -435,53 +411,24 @@ function RightPanel({
                   </div>
                   <p className="text-sm font-medium">{scene.description}</p>
                   <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
-                  <details className="text-xs" open={isRenderFailed}>
+                  <details className="text-xs" open>
                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      {isRenderFailed ? "编辑代码" : "查看代码"}
+                      编辑代码
                     </summary>
-                    {isRenderFailed ? (
-                      <Textarea
-                        className="mt-2 font-mono text-xs leading-relaxed min-h-[120px]"
-                        value={editedCode.get(scene.sceneIndex) ?? scene.code ?? ""}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setEditedCode((prev) => {
-                            const next = new Map(prev);
-                            next.set(scene.sceneIndex, val);
-                            return next;
-                          });
-                        }}
-                      />
-                    ) : (
-                      <pre className="mt-2 p-2 bg-muted rounded overflow-x-auto text-xs leading-relaxed">
-                        {scene.code}
-                      </pre>
-                    )}
+                    <Textarea
+                      className="mt-2 font-mono text-xs leading-relaxed min-h-[120px]"
+                      value={editedCode.get(scene.sceneIndex) ?? scene.code ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditedCode((prev) => {
+                          const next = new Map(prev);
+                          next.set(scene.sceneIndex, val);
+                          return next;
+                        });
+                      }}
+                    />
                   </details>
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </div>
-
-        {/* 事实核查 */}
-        <div className="w-1/2 flex min-h-0 flex-col overflow-hidden">
-          <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            事实核查（{script?.factChecks.length ?? 0} 条）
-          </div>
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-4 space-y-3">
-              {script?.factChecks.map((item, idx) => (
-                <FactCheckCard
-                  key={idx}
-                  item={item}
-                  index={idx}
-                  verdict={verdicts[idx]?.verdict ?? null}
-                  note={verdicts[idx]?.note ?? ""}
-                  onVerdictChange={(i, v, n) =>
-                    setVerdicts((prev) => ({ ...prev, [i]: { verdict: v, note: n } }))
-                  }
-                />
               ))}
             </div>
           </ScrollArea>
@@ -524,7 +471,7 @@ function RightPanel({
             </div>
           )}
           <div className="flex gap-2">
-            <Button onClick={onApprove} disabled={!allMarked || submitPending} className="flex-1">
+            <Button onClick={onApprove} disabled={submitPending} className="flex-1">
               {isRenderFailed ? "修复完成，重新生成视频" : "通过"}
             </Button>
             {canReject && (
@@ -536,9 +483,6 @@ function RightPanel({
               废弃
             </Button>
           </div>
-          {!allMarked && script && script.factChecks.length > 0 && (
-            <p className="text-xs text-muted-foreground text-center">请为所有核查条目标注审核结果后再提交</p>
-          )}
         </div>
       )}
     </>
@@ -601,18 +545,19 @@ function EventsSection({
     let scriptCount = 0;
     const verdictConsumed: Record<string, number> = {};
     return (eventsData?.items ?? [])
-      .filter((e) => e.eventType === "status_change") // show only status changes in the timeline
+      .filter((e) => e.eventType === "status_change")
       .map((event) => {
         const contentType = event.toStatus ? CONTENT_STATUS_MAP[event.toStatus] : undefined;
         let versionId: string | null = null;
         let versionNumber: number | null = null;
         let verdict: { verdict: string; rejection_detail?: string; target_stage?: string } | null = null;
+        // render_error is attached to the video_generating→script_review status_change payload
+        const renderError: string | null = (event.payload?.["render_error"] as string | undefined ?? null);
 
         if (contentType === "narrative") {
           narrativeCount++;
           const v = narrativeVersions[narrativeCount - 1];
           if (v) { versionId = v.id; versionNumber = v.versionNumber; }
-          // Attach the corresponding verdict (nth narrative_review → nth narrative verdict)
           const used = verdictConsumed["narrative"] ?? 0;
           const vd = (verdictsByGate["narrative"] ?? [])[used];
           if (vd) { verdict = vd; verdictConsumed["narrative"] = used + 1; }
@@ -624,7 +569,7 @@ function EventsSection({
           const vd = (verdictsByGate["script"] ?? [])[used];
           if (vd) { verdict = vd; verdictConsumed["script"] = used + 1; }
         }
-        return { event, contentType, versionId, versionNumber, verdict };
+        return { event, contentType, versionId, versionNumber, verdict, renderError };
       });
   }, [eventsData, narrativeVersions, scriptVersions, verdictsByGate]);
 
@@ -638,11 +583,12 @@ function EventsSection({
           <p className="text-sm text-muted-foreground">暂无事件记录</p>
         ) : (
           <div className="space-y-0 pr-3">
-            {annotated.map(({ event, contentType, versionId, versionNumber, verdict }, i) => {
+            {annotated.map(({ event, contentType, versionId, versionNumber, verdict, renderError }, i) => {
               const isClickable = !!(contentType && versionId);
               const isSelected =
                 selectedNode?.versionId === versionId && selectedNode?.type === contentType;
               const isLast = i === annotated.length - 1;
+              const isRenderFailedNode = !!renderError;
 
               const verdictLabel = verdict?.verdict === "approved"
                 ? { text: "通过", color: "text-green-600" }
@@ -662,7 +608,9 @@ function EventsSection({
                   <div className="flex flex-col items-center">
                     <div
                       className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 border-2 transition-colors ${
-                        isSelected
+                        isRenderFailedNode
+                          ? "bg-destructive border-destructive"
+                          : isSelected
                           ? "bg-primary border-primary"
                           : isClickable
                           ? "bg-background border-primary cursor-pointer hover:bg-primary/20"
@@ -681,7 +629,7 @@ function EventsSection({
                     onClick={handleClick}
                   >
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className={`text-sm font-medium leading-snug ${isSelected ? "text-primary" : ""}`}>
+                      <p className={`text-sm font-medium leading-snug ${isRenderFailedNode ? "text-destructive" : isSelected ? "text-primary" : ""}`}>
                         {event.toStatus
                           ? (PROJECT_STATUS_LABELS[event.toStatus] ?? event.toStatus)
                           : (EVENT_TYPE_LABELS[event.eventType] ?? event.eventType)}
@@ -693,6 +641,15 @@ function EventsSection({
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {timeAgo(event.createdAt)}
                     </p>
+                    {/* Render failure error message */}
+                    {renderError && (
+                      <details className="mt-1">
+                        <summary className="text-xs text-destructive cursor-pointer">查看错误</summary>
+                        <pre className="mt-1 text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-28 overflow-y-auto bg-destructive/5 rounded p-1.5">
+                          {renderError}
+                        </pre>
+                      </details>
+                    )}
                     {/* Verdict badge + rejection detail */}
                     {verdictLabel && (
                       <div className="mt-1 space-y-0.5">

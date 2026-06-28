@@ -31,6 +31,12 @@ class ChatAIProvider:
 - 每个镜头 code 的所有 self.play(run_time=...) 与 self.wait(...) 之和需与该镜头 estimated_duration_seconds 匹配（误差 ±1s 可接受）
 - 镜头之间用 FadeOut/FadeIn 或 Transform 做过渡，避免画面突然硬切
 
+【坐标系规则（重要）】
+- Manim 内部所有点坐标均为三维 (x, y, z)，z 通常为 0
+- 禁止使用 np.array([x, y]) 等二维坐标，必须写 np.array([x, y, 0])
+- set_points_as_corners、set_anchors_and_handles 等方法参数必须是 shape (n, 3) 的数组
+- 若用 numpy 构建路径点，形如 [[x1,y1,0], [x2,y2,0], ...]，不可省略 z 分量
+
 【视觉优先】
 - 多用 Circle、Square、Arrow、NumberLine、Axes、Graph、VGroup 等几何图形构建图示
 - 公式用 MathTex，避免用 Text 堆砌大段说明文字

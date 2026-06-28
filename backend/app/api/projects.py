@@ -330,7 +330,6 @@ async def regenerate_scene_tts(
         raise HTTPException(status_code=502, detail=f"TTS failed: {result.error_message}")
 
     key = f"audio/{project_id}/{nv.id}/scene_{scene_idx}.mp3"
-    upload_bytes(key, result.audio_bytes, "audio/mpeg")
 
     scenes = list(nv.scenes)
     found = False
@@ -347,6 +346,8 @@ async def regenerate_scene_tts(
             break
     if not found:
         raise HTTPException(status_code=404, detail=f"Scene {scene_idx} not found in narrative")
+
+    upload_bytes(key, result.audio_bytes, "audio/mpeg")
     nv.scenes = scenes
     flag_modified(nv, "scenes")
     await db.commit()

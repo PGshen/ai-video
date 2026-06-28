@@ -2,7 +2,10 @@ import json
 import re
 from collections.abc import AsyncIterator
 
-from app.engines.ai.base import BrainstormResult, ChatClient, CodeGenerationResult, NarrativeResult, ScriptGenerationResult
+from app.engines.ai.base import (
+    BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
+    NarrativeResult, ScriptGenerationResult,
+)
 
 
 class ChatAIProvider:
@@ -22,7 +25,8 @@ class ChatAIProvider:
 
 【变量生命周期规则】
 - scene 0 声明的变量（如 title = Text("...")）在 scene 1、2... 中仍在作用域内，可直接引用
-- 若下一镜头不再需要某元素，必须在本镜头末尾显式移除：self.play(FadeOut(obj))
+- 元素默认可跨镜头保留；镜头边界不等于清场点，不要为了结束当前镜头而机械 FadeOut
+- 仅当元素完成叙事作用、即将被新内容替代或会遮挡后续重点时，才在合适的转场时机用 FadeOut / ReplacementTransform 退场
 - 若下一镜头复用某元素（变形/移动/替换），用 Transform / ReplacementTransform / .animate，不要重新声明同名变量
 - 禁止在不同镜头中对同一逻辑元素重复声明同名变量
 
@@ -30,18 +34,27 @@ class ChatAIProvider:
 - 用 self.wait(n) 控制停留时长，单位秒
 - 每个镜头 code 的所有 self.play(run_time=...) 与 self.wait(...) 之和需与该镜头 estimated_duration_seconds 匹配（误差 ±1s 可接受）
 - 镜头之间用 FadeOut/FadeIn 或 Transform 做过渡，避免画面突然硬切
+- 关键图形和结论必须至少保留到对应旁白讲完；禁止旁白尚未结束就清空画面
+- 渲染器会自动补齐镜头剩余时长。如果本镜头没有必要的退场或转场，代码末尾保持最终画面即可，不要添加 FadeOut 清场
 
 【坐标系规则（重要）】
 - Manim 内部所有点坐标均为三维 (x, y, z)，z 通常为 0
 - 禁止使用 np.array([x, y]) 等二维坐标，必须写 np.array([x, y, 0])
 - set_points_as_corners、set_anchors_and_handles 等方法参数必须是 shape (n, 3) 的数组
 - 若用 numpy 构建路径点，形如 [[x1,y1,0], [x2,y2,0], ...]，不可省略 z 分量
+- Axes 构造函数不支持 x_label / y_label 参数；先创建 axes，再用 axes.get_x_axis_label(Text("横轴")) 和 axes.get_y_axis_label(Text("纵轴")) 创建标签，并将标签与坐标轴一起播放和清场
 
 【视觉优先】
-- 多用 Circle、Square、Arrow、NumberLine、Axes、Graph、VGroup 等几何图形构建图示
-- 公式用 MathTex，避免用 Text 堆砌大段说明文字
+- 除纯标题或总结镜头外，每个镜头至少设计一个承载知识含义的图形动画；多用 Circle、Square、Arrow、NumberLine、Axes、Graph、VGroup 等构建关系、过程、对比或变化
+- 优先让已有图形移动、缩放、变形、连线、分裂或聚合来推进讲解，避免只摆放静态文字和装饰性图形
+- 公式只展示理解结论不可缺少的关键公式，用 MathTex 配合图形直观解释；不要连续堆砌公式、推导步骤或符号墙
 - 画面文字只保留关键词、数字、公式、简短标注，每帧不超过 15 个汉字
 - 善用 Create、Write、GrowArrow、DrawBorderThenFill、Transform 等动效让图形活起来
+
+【配色风格——偏深马卡龙】
+- 米白背景上使用饱和度适中、明度略压低的马卡龙色，保证柔和但不发灰、不幼稚
+- 主色推荐：雾霾蓝 #6688A6、鼠尾草绿 #6F9275、陶土粉 #C87878、蜜桃橙 #D49362、薰衣草紫 #8B7EAA、芥末黄 #C6A04A
+- 正文与轮廓使用深灰 #30343B；同一画面控制在 1 个主色、1 个辅助色和 1 个强调色，避免彩虹式混用
 
 【典型跨镜头示例】
 # === 镜头 0（标题引入）===
@@ -51,12 +64,12 @@ self.wait(1)
 
 # === 镜头 1（标题缩小，引入图示）===
 self.play(title.animate.scale(0.5).to_edge(UP), run_time=1)
-sun = Circle(radius=0.5, color=YELLOW).shift(LEFT * 4)
-earth = Circle(radius=0.3, color=BLUE).shift(RIGHT * 3)
-light_ray = Arrow(sun.get_right(), earth.get_left(), color=WHITE)
+sun = Circle(radius=0.5, color=ManimColor("#D49362")).shift(LEFT * 4)
+earth = Circle(radius=0.3, color=ManimColor("#6688A6")).shift(RIGHT * 3)
+light_ray = Arrow(sun.get_right(), earth.get_left(), color=ManimColor("#30343B"))
 self.play(Create(sun), Create(earth), GrowArrow(light_ray), run_time=2)
 self.wait(2)
-self.play(FadeOut(light_ray), FadeOut(earth))
+# 本镜头无需转场：保留图示，渲染器自动补齐旁白剩余时长
 """,
         "remotion": """\
 【Remotion 代码规范】
@@ -90,11 +103,14 @@ self.play(FadeOut(light_ray), FadeOut(earth))
 【跨镜头共享元素】
 - 跨多个镜头持续存在的元素（如背景、顶部标题栏）用 <Sequence from={0} durationInFrames={totalFrames}> 包裹，放在最外层
 - 每个镜头的 code 只负责该镜头独有的内容
+- 镜头边界不等于清场点；关键元素保持到对应旁白结束，仅在叙事转折、替换或遮挡新重点时淡出
 
 【视觉优先】
-- 用 SVG 路径、几何图形、CSS animation/transform 构建图示，避免大段文字
+- 除纯标题或总结镜头外，每个镜头至少设计一个承载知识含义的 SVG/CSS 图形动画，用路径、位置、大小、连接或形变讲清关系和过程
+- 公式只展示理解核心结论不可缺少的关键公式，并与图形配合；避免连续推导和公式堆砌
 - 文字只用于关键词、数字、公式标注，每帧不超过 15 个汉字
 - 善用 spring() 做元素入场动效，interpolate 做连续属性变化（位置、缩放、透明度）
+- 使用偏深马卡龙色：雾霾蓝 #6688A6、鼠尾草绿 #6F9275、陶土粉 #C87878、蜜桃橙 #D49362、薰衣草紫 #8B7EAA、芥末黄 #C6A04A；正文用 #30343B，背景用 #F5F0E8
 
 【典型示例】
 // 镜头 0：标题淡入
@@ -102,8 +118,8 @@ const frame = useCurrentFrame();
 const { fps } = useVideoConfig();
 const opacity = interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" });
 return (
-  <AbsoluteFill style={{ background: "#0a0a0a", justifyContent: "center", alignItems: "center" }}>
-    <div style={{ opacity, fontSize: 56, color: "white", fontWeight: "bold" }}>
+  <AbsoluteFill style={{ background: "#F5F0E8", justifyContent: "center", alignItems: "center" }}>
+    <div style={{ opacity, fontSize: 56, color: "#30343B", fontWeight: "bold" }}>
       为什么天空是蓝色的？
     </div>
   </AbsoluteFill>
@@ -114,11 +130,11 @@ const { fps } = useVideoConfig();
 const progress = spring({ frame, fps, config: { stiffness: 60, damping: 12 } });
 const rayWidth = interpolate(progress, [0, 1], [0, 300]);
 return (
-  <AbsoluteFill style={{ background: "#0a0a0a" }}>
+  <AbsoluteFill style={{ background: "#F5F0E8" }}>
     <svg width="100%" height="100%" viewBox="0 0 1280 720">
-      <circle cx={200} cy={360} r={60} fill="#FFD700" />
+      <circle cx={200} cy={360} r={60} fill="#D49362" />
       <line x1={260} y1={360} x2={260 + rayWidth} y2={360}
-            stroke="white" strokeWidth={3} />
+            stroke="#6688A6" strokeWidth={3} />
     </svg>
   </AbsoluteFill>
 );
@@ -237,38 +253,45 @@ code 字段只写代码片段，不写外层结构（详见各引擎规范）。
 【Manim 画面描述规范】
 description 字段将由 Manim 渲染引擎解析为 Python 动画代码，描述时必须对应 Manim 的对象和方法：
 
-【配色风格——清新自然】
+【配色风格——偏深马卡龙】
 - 背景：渲染器已全局设置米白色背景（#F5F0E8），description 中无需再设背景色
-- 文字/线条/几何图形：使用深色系，推荐 color=ManimColor('#2D2D2D')（近黑）或 DARK_GRAY
-- 强调色（高亮、关键数据点）：推荐自然色系——橄榄绿 ManimColor('#5C8A5C')、砖红 ManimColor('#B85C38')、深蓝 ManimColor('#3A5F8A')、琥珀 ManimColor('#C4893A')
-- 禁止使用纯 WHITE 文字（白底白字不可见）；避免纯 BLACK 以外颜色的大面积填充
-- 坐标轴/数轴默认颜色改为 ManimColor('#2D2D2D')，刻度标签同色
+- 正文、轮廓、坐标轴与刻度：深灰 ManimColor('#30343B')
+- 主色：雾霾蓝 #6688A6、鼠尾草绿 #6F9275；辅助/强调色：陶土粉 #C87878、蜜桃橙 #D49362、薰衣草紫 #8B7EAA、芥末黄 #C6A04A
+- 颜色要比常见浅马卡龙略深，保证米白背景上的对比度；同一画面控制在 1 个主色、1 个辅助色和 1 个强调色
+- 禁止使用纯 WHITE 文字（白底白字不可见），避免荧光色、高饱和原色和彩虹式混色
 
-【元素与动效】
+【图形与动效——画面必须承担讲解】
 - 用具体 Manim 类描述元素：Circle/Square/Arrow/NumberLine/Axes/Graph/VGroup/MathTex/Text
+- 除纯标题或总结镜头外，每个镜头至少包含一个有知识含义的图形动画，用位置、大小、连接、路径、分裂、聚合或 Transform 展示关系和变化；不要只写静态文字，也不要用无含义的装饰图形凑数
 - 进场标注：用 Create 绘制几何图形、用 Write 书写文字/公式、用 FadeIn 淡入、用 GrowArrow 生长箭头
 - 跨镜头复用：明确写出哪些变量名保留（如"保留 title 对象"），以及如何变形（title.animate.scale(0.5).to_edge(UP) / Transform / ReplacementTransform）
-- 退场标注【强制】：本镜头末尾所有不延续到下一镜头的对象，必须逐一列出并执行 self.play(FadeOut(obj1, obj2, ...))。禁止用 self.remove()——必须用带动画的 FadeOut，确保渲染器不留残影。若镜头内新建了多个对象，描述末尾须写"镜头末尾 FadeOut 全部新建对象：[列举变量名]"
-- 兜底清场：每个镜头描述末尾必须有明确的清场指令，不得依赖"下一镜头会覆盖"的假设——Manim 场景对象会跨 construct() 调用累积，不会自动消失
-- 公式用 MathTex，避免用 Text 堆砌文字；每帧可见文字不超过 15 个汉字
+- 元素可连续保留多个镜头。描述要说明哪些对象继续保留、变形或成为下一镜头的视觉锚点，优先用 Transform / ReplacementTransform 延续视觉逻辑
+- 退场按叙事需要安排，不要求每个镜头末尾清场。仅当对象使命完成、将被替代或会遮挡新重点时才用 FadeOut；禁止旁白未讲完就让对应元素退场
+- 若镜头结尾没有必要转场，明确写“保持最终画面至旁白结束”，让关键图形和结论留在屏幕上
+- 公式只讲支撑核心结论不可缺少的关键公式，用 MathTex 展示并配合图形解释变量含义；避免连续公式、完整推导和符号堆砌
+- 每帧可见文字不超过 15 个汉字
 
 跨镜头示例（米白背景下的深色元素）：
-- 镜头 0："米白背景（已由渲染器设置）。Write 写出 title = Text('为什么天空是蓝色的？', color=ManimColor('#2D2D2D'))，缩放 1.2。结尾保留 title 供下一镜头。"
-- 镜头 1："承接 title，用 title.animate.scale(0.5).to_edge(UP) 移到顶部。Create 绘制 sun = Circle(color=ManimColor('#C4893A'))，GrowArrow 引出 arrow（color=ManimColor('#3A5F8A')）。镜头末尾 FadeOut 全部新建对象：sun、arrow；title 继续保留。"
-- 镜头 2："承接 title。中央展示公式 eq = MathTex(r'...', color=ManimColor('#2D2D2D'))，Write 写入。镜头末尾 FadeOut 全部新建对象：eq、title（本镜头不再延续）。"\
+- 镜头 0："米白背景（已由渲染器设置）。Write 写出 title = Text('为什么天空是蓝色的？', color=ManimColor('#30343B'))，缩放 1.2。保持 title 至旁白结束，并保留供下一镜头变形。"
+- 镜头 1："承接 title，用 title.animate.scale(0.5).to_edge(UP) 移到顶部。Create 绘制 sun = Circle(color=ManimColor('#D49362'))，GrowArrow 引出 arrow（color=ManimColor('#6688A6')），再将射线 Transform 为多条散射路径。保持图示至旁白结束，sun、arrow 和 title 延续到下一镜头。"
+- 镜头 2："承接上一镜头图示，将多条路径聚焦到蓝色短波并高亮。只在结论出现时 Write 一个关键公式 eq；用 ReplacementTransform 将 arrow 变为 eq，避免另起一套画面。本段旁白讲完后再 FadeOut 已完成使命的 title，保留核心图示作为下一镜头视觉锚点。"\
 """,
         "remotion": """\
 【Remotion 画面描述规范】
 description 字段将由 Remotion 渲染引擎解析为 React/TSX 动画代码，描述时对应 Remotion 的组件和 hook：
 - 用 SVG 元素描述几何图形（<circle>/<line>/<path>/<rect>）、用 <div> 描述文字层
+- 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画，通过移动、缩放、路径生长、连接或形变推进讲解，避免静态文字页和无意义装饰
 - 动效标注：用 interpolate(frame, [in, out], [from, to]) 做线性动画，用 spring({frame, fps}) 做弹性入场
 - 跨镜头：Remotion 的每个 <Sequence> 是独立作用域，需要在 description 里明确「该镜头开始时的初始状态」，不能直接引用上一镜头变量
 - 持续存在于多个镜头的元素（背景、标题栏）应在 description 里注明「作为共享层放在外层 Sequence」
+- 元素不必在每个 Sequence 末尾淡出；关键图形需保持到对应旁白结束，并可通过共享层或下一镜头一致的初始状态延续。仅在叙事转折或视觉替换时退场
+- 采用偏深马卡龙色：#6688A6、#6F9275、#C87878、#D49362、#8B7EAA、#C6A04A，正文用 #30343B；单个画面最多使用主色、辅助色、强调色各一种
+- 公式只保留支撑核心结论的关键公式，并配合图形解释，避免公式堆砌
 - 每帧文字不超过 15 个汉字；避免大段段落文字
 
 跨镜头示例：
-- 镜头 0："白色背景 AbsoluteFill。标题文字用 spring 入场（opacity 0→1，translateY 30→0）。"
-- 镜头 1："背景继承上一镜头（共享层）。中央 SVG：左侧黄色圆圈代表太阳，用 interpolate 驱动一条白色射线从圆圈向右延伸至画面 2/3 处。"\
+- 镜头 0："米白背景 AbsoluteFill。深灰标题文字用 spring 入场（opacity 0→1，translateY 30→0），保持至旁白结束。"
+- 镜头 1："背景和缩小后的标题作为共享层延续。中央 SVG：左侧蜜桃橙圆圈代表太阳，用 interpolate 驱动雾霾蓝射线向右延伸并分裂为散射路径；图示保持到旁白结束，不做机械淡出。"\
 """,
     }
     _NARRATIVE_ENGINE_HINT_FALLBACK = (
@@ -309,11 +332,12 @@ JSON 格式示例：
 - 旁白（narration）负责讲解，每句话清晰有力，不空洞，不重复画面文字
 - 目标视频时长 2-3 分钟，需要 15-20 个镜头，每个镜头旁白约 30-50 字、时长 7-10 秒
 - estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得少于 5 秒
+- 先用直观图形和动态关系解释概念，再在确有必要时引入关键公式；公式服务于理解，不追求数量和完整推导
 
 【内容节奏】
 - 镜头 0-1：抛出问题/反直觉现象，吸引注意
 - 镜头 2-5：建立基础知识框架，引入关键概念
-- 镜头 6-14：逐步深入，结合图示/公式/实例展开论证
+- 镜头 6-14：逐步深入，以动态图示和实例展开论证，只在关键节点使用必要公式
 - 镜头 15+：总结升华，给出启示或应用价值
 
 {engine_hint}
@@ -435,6 +459,99 @@ codes 数组长度必须与输入 scenes 数组长度完全一致，按 scene_in
         if not isinstance(codes, list):
             raise ValueError("Code generation response must contain codes array")
         return CodeGenerationResult(codes=codes)
+
+    async def repair_code(
+        self,
+        scenes: list[dict],
+        render_engine: str,
+        error_message: str,
+    ) -> CodeRepairResult:
+        engine_hint = self._ENGINE_CODE_PROMPTS.get(
+            render_engine, self._ENGINE_CODE_PROMPT_FALLBACK
+        )
+        system_prompt = f"""\
+你是知识视频渲染代码修复专家。请严格输出 JSON object，不要输出 Markdown。
+
+你会收到一次整体渲染失败的完整错误信息，以及按执行顺序排列的全部镜头。所有镜头代码会被拼合后一次性执行，因此报错位置可能只是症状，真正原因可能在更早的镜头。
+
+你的任务：
+1. 结合错误信息审查全部镜头，定位直接错误、上游根因和可能由同类写法引发后续失败的镜头。
+2. 尽可能在这一次响应中修复全部可能有错误的镜头，不要只修错误栈直接指向的第一个镜头。
+3. 保持旁白、画面意图、镜头顺序和跨镜头变量关系；只修改需要修复的代码。
+4. repairs 仅列出需要修改的镜头；每个 scene_index 必须来自输入且不得重复。
+5. code 必须是可直接替换原镜头 code 的完整代码片段，不能是 diff、伪代码或省略内容。
+6. explanation 用简短中文说明该镜头的问题和修复方式。
+
+JSON 格式：
+{{
+  "repairs": [
+    {{
+      "scene_index": 0,
+      "code": "修复后的完整代码片段",
+      "explanation": "问题与修复说明"
+    }}
+  ]
+}}
+
+渲染引擎：{render_engine}
+{engine_hint}
+
+只能输出合法 JSON object。\
+"""
+        content = await self.client.create_chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": "请一次性检查并修复所有可能出错的镜头：\n"
+                    + json.dumps(
+                        {
+                            "render_engine": render_engine,
+                            "error_message": error_message,
+                            "scenes": scenes,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=self.script_max_tokens,
+        )
+        payload = parse_json_object(content)
+        repairs = payload.get("repairs")
+        if not isinstance(repairs, list):
+            raise ValueError("Code repair response must contain repairs array")
+
+        valid_indices = {
+            scene.get("scene_index")
+            for scene in scenes
+            if isinstance(scene, dict) and isinstance(scene.get("scene_index"), int)
+        }
+        seen_indices: set[int] = set()
+        normalized: list[dict] = []
+        for repair in repairs:
+            if not isinstance(repair, dict):
+                raise ValueError("Each code repair must be an object")
+            scene_index = repair.get("scene_index")
+            code = repair.get("code")
+            explanation = repair.get("explanation")
+            if (
+                scene_index not in valid_indices
+                or scene_index in seen_indices
+                or not isinstance(code, str)
+                or not code.strip()
+                or not isinstance(explanation, str)
+            ):
+                raise ValueError("Invalid code repair item")
+            seen_indices.add(scene_index)
+            normalized.append(
+                {
+                    "scene_index": scene_index,
+                    "code": code,
+                    "explanation": explanation,
+                }
+            )
+        return CodeRepairResult(repairs=normalized)
 
     async def brainstorm_topics(self, topic_direction: str, count: int) -> BrainstormResult:
         system_prompt = """\

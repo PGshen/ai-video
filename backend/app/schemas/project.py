@@ -111,6 +111,31 @@ class ScriptVersionListResponse(BaseModel):
     items: list[ScriptVersionSchema]
 
 
+class CodeRepairSceneInput(SceneSchema):
+    pass
+
+
+class CodeRepairRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    error_message: str
+    scenes: list[CodeRepairSceneInput]
+
+
+class CodeRepairItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    scene_index: int
+    code: str
+    explanation: str
+
+
+class CodeRepairResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    repairs: list[CodeRepairItem]
+
+
 class EventSchema(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,

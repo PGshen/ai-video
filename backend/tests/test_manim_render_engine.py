@@ -41,6 +41,29 @@ def test_prepare_manim_code_supports_qualified_constructor():
     assert "tex_template=_chinese_tex_template" in prepared
 
 
+def test_prepare_manim_code_injects_template_into_chinese_bulleted_list():
+    code = """
+bullets = BulletedList(
+    "主观时间加速",
+    "童年慢于成年",
+    "中点提前",
+)
+"""
+
+    prepared, changed = _prepare_manim_code(code)
+    tree = ast.parse(prepared)
+    call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "BulletedList"
+    )
+
+    assert changed is True
+    assert any(keyword.arg == "tex_template" for keyword in call.keywords)
+
+
 def test_prepare_manim_code_repairs_double_escaped_latex_commands():
     code = r"""
 formula = MathTex(

@@ -24,6 +24,11 @@ class CodeGenerationResult:
     codes: list[str]
 
 
+@dataclass
+class CodeRepairResult:
+    repairs: list[dict]
+
+
 class ChatClient(Protocol):
     @property
     def engine_name(self) -> str: ...
@@ -72,6 +77,13 @@ class AIProvider(Protocol):
         scenes: list[dict],
         render_engine: str,
     ) -> CodeGenerationResult: ...
+
+    async def repair_code(
+        self,
+        scenes: list[dict],
+        render_engine: str,
+        error_message: str,
+    ) -> CodeRepairResult: ...
 
     async def brainstorm_topics(
         self,

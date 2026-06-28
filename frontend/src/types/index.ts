@@ -161,6 +161,16 @@ export interface ReviewRequest {
   }>;
 }
 
+export interface CodeRepair {
+  sceneIndex: number;
+  code: string;
+  explanation: string;
+}
+
+export interface CodeRepairResponse {
+  repairs: CodeRepair[];
+}
+
 // ═══ 驳回上下文 ═══
 export interface RejectionContext {
   rejectionType: string;

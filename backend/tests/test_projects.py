@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
 from datetime import datetime, timezone
 from app.schemas.project import ProjectResponse
+from app.engines.ai.base import CodeRepairResult
 
 
 def make_project(**kwargs):
@@ -189,3 +190,74 @@ def test_get_script_returns_404_if_project_missing(client, auth_headers, mock_db
     mock_db.get = AsyncMock(return_value=None)
     response = client.get(f"/api/projects/{uuid4()}/script", headers=auth_headers)
     assert response.status_code == 404
+
+
+def test_repair_script_code_sends_all_scenes_and_error_to_ai(
+    client, auth_headers, mock_db,
+):
+    project = make_project(status="script_review", render_engine="manim")
+    mock_db.get = AsyncMock(return_value=project)
+    provider = MagicMock()
+    provider.repair_code = AsyncMock(return_value=CodeRepairResult(repairs=[{
+        "scene_index": 1,
+        "code": "label = Text('18岁')",
+        "explanation": "移除不支持的 label 参数",
+    }]))
+    scenes = [
+        {
+            "sceneIndex": 0,
+            "narration": "第一幕",
+            "description": "标题",
+            "code": "title = Text('标题')",
+            "estimatedDurationSeconds": 5,
+        },
+        {
+            "sceneIndex": 1,
+            "narration": "第二幕",
+            "description": "数轴",
+            "code": "NumberLine(label_direction=DOWN)",
+            "estimatedDurationSeconds": 6,
+        },
+    ]
+
+    with patch("app.api.projects.get_ai_provider", return_value=provider):
+        response = client.post(
+            f"/api/projects/{project.id}/script/repair",
+            headers=auth_headers,
+            json={
+                "errorMessage": "unexpected keyword argument 'label'",
+                "scenes": scenes,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["repairs"][0]["sceneIndex"] == 1
+    call = provider.repair_code.await_args.kwargs
+    assert call["error_message"] == "unexpected keyword argument 'label'"
+    assert call["render_engine"] == "manim"
+    assert [scene["scene_index"] for scene in call["scenes"]] == [0, 1]
+    assert call["scenes"][1]["code"] == "NumberLine(label_direction=DOWN)"
+
+
+def test_repair_script_code_only_allowed_during_script_review(
+    client, auth_headers, mock_db,
+):
+    project = make_project(status="video_generating")
+    mock_db.get = AsyncMock(return_value=project)
+
+    response = client.post(
+        f"/api/projects/{project.id}/script/repair",
+        headers=auth_headers,
+        json={
+            "errorMessage": "render failed",
+            "scenes": [{
+                "sceneIndex": 0,
+                "narration": "旁白",
+                "description": "画面",
+                "code": "broken()",
+                "estimatedDurationSeconds": 5,
+            }],
+        },
+    )
+
+    assert response.status_code == 409

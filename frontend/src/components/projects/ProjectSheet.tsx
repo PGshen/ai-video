@@ -10,11 +10,13 @@ import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel
 import {
   useProject, useProjectEvents, useProjectScript, useSubmitReview,
   useNarrativeVersions, useNarrativeVersion,
-  useScriptVersions, useScriptVersion, useVideoUrl,
+  useScriptVersions, useScriptVersion, useVideoUrl, useRepairScriptCode,
 } from "@/hooks/useProjects";
 import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, timeAgo } from "@/lib/format";
-import type { VideoProject, ProjectEvent, NarrativeVersion, ScriptVersion } from "@/types";
+import type {
+  VideoProject, ProjectEvent, NarrativeVersion, ScriptVersion, CodeRepair,
+} from "@/types";
 
 interface Props {
   project: VideoProject | null;
@@ -61,6 +63,7 @@ export function ProjectSheet({ project, onClose }: Props) {
     projectDetail?.currentVideoAsset?.id ?? null,
   );
   const submitReview = useSubmitReview();
+  const repairScriptCode = useRepairScriptCode();
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [rejectionDetail, setRejectionDetail] = useState("");
@@ -102,9 +105,54 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   // 代码编辑状态（渲染失败时允许修改）
   const [editedCode, setEditedCode] = useState<Map<number, string>>(new Map());
+  const [codeRepairs, setCodeRepairs] = useState<Map<number, CodeRepair>>(new Map());
+  const [appliedRepairs, setAppliedRepairs] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setEditedCode(new Map());
+    setCodeRepairs(new Map());
+    setAppliedRepairs(new Set());
+  }, [displayProject?.id, script?.id]);
 
   const buildEditedScriptScenes = () =>
     Array.from(editedCode.entries()).map(([sceneIndex, code]) => ({ sceneIndex, code }));
+
+  const handleAiRepair = () => {
+    if (!project || !script || !renderFailureError) return;
+    const scenes = script.scenes.map((scene) => ({
+      ...scene,
+      code: editedCode.get(scene.sceneIndex) ?? scene.code ?? "",
+    }));
+    repairScriptCode.mutate(
+      {
+        projectId: project.id,
+        errorMessage: renderFailureError,
+        scenes,
+      },
+      {
+        onSuccess: ({ repairs }) => {
+          setCodeRepairs(new Map(repairs.map((repair) => [repair.sceneIndex, repair])));
+          setAppliedRepairs(new Set());
+          if (repairs.length === 0) {
+            toast.info("AI 未发现需要修改的镜头");
+          } else {
+            toast.success(`AI 已给出 ${repairs.length} 个镜头的修复建议`);
+          }
+        },
+        onError: () => toast.error("AI 修复失败，请重试"),
+      },
+    );
+  };
+
+  const handleApplyRepair = (repair: CodeRepair) => {
+    setEditedCode((prev) => {
+      const next = new Map(prev);
+      next.set(repair.sceneIndex, repair.code);
+      return next;
+    });
+    setAppliedRepairs((prev) => new Set(prev).add(repair.sceneIndex));
+    toast.success(`已将 AI 修复应用到镜头 ${repair.sceneIndex}`);
+  };
 
   const handleApprove = () => {
     if (!project) return;
@@ -259,6 +307,11 @@ export function ProjectSheet({ project, onClose }: Props) {
               onVideoAbandon={handleVideoAbandon}
               editedCode={editedCode}
               setEditedCode={setEditedCode}
+              codeRepairs={codeRepairs}
+              appliedRepairs={appliedRepairs}
+              repairPending={repairScriptCode.isPending}
+              onAiRepair={handleAiRepair}
+              onApplyRepair={handleApplyRepair}
             />
           )}
         </div>
@@ -278,6 +331,11 @@ interface RightPanelProps {
   hasScript: boolean;
   editedCode: Map<number, string>;
   setEditedCode: React.Dispatch<React.SetStateAction<Map<number, string>>>;
+  codeRepairs: Map<number, CodeRepair>;
+  appliedRepairs: Set<number>;
+  repairPending: boolean;
+  onAiRepair: () => void;
+  onApplyRepair: (repair: CodeRepair) => void;
   canReject: boolean;
   showRejectInput: boolean;
   rejectionDetail: string;
@@ -303,6 +361,7 @@ function RightPanel({
   submitPending, onApprove, onReject, onAbandon,
   currentVideoAsset, videoUrl, onVideoApprove, onVideoRetry, onVideoAbandon,
   editedCode, setEditedCode,
+  codeRepairs, appliedRepairs, repairPending, onAiRepair, onApplyRepair,
 }: RightPanelProps) {
   if (project.status === "video_generating") {
     return (
@@ -319,7 +378,7 @@ function RightPanel({
       <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8">
         <p className="text-destructive font-medium">视频生成失败</p>
         {asset?.errorMessage && (
-          <p className="text-sm text-muted-foreground text-center max-w-sm">{asset.errorMessage}</p>
+          <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-all leading-relaxed max-h-64 overflow-y-auto w-full border rounded p-2 bg-muted/30">{asset.errorMessage}</pre>
         )}
         <div className="flex gap-2">
           <Button onClick={onVideoRetry} disabled={submitPending}>重试视频生成</Button>
@@ -406,8 +465,21 @@ function RightPanel({
       {/* 渲染失败错误提示 */}
       {isRenderFailed && (renderFailureError || currentVideoAsset?.errorMessage) && (
         <div className="mx-4 mt-3 p-3 rounded-lg border border-destructive/40 bg-destructive/5">
-          <p className="text-xs font-semibold text-destructive mb-1">视频生成失败 — 请修改代码后重新提交</p>
-          <pre className="text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-36 overflow-y-auto">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-destructive">
+              视频生成失败 — 请修改代码后重新提交
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 border-destructive/40 text-xs"
+              onClick={onAiRepair}
+              disabled={repairPending || !script}
+            >
+              {repairPending ? "AI 修复中…" : "AI 修复"}
+            </Button>
+          </div>
+          <pre className="text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-64 overflow-y-auto">
             {renderFailureError || currentVideoAsset?.errorMessage}
           </pre>
         </div>
@@ -422,33 +494,59 @@ function RightPanel({
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-3">
               {scriptLoading && <p className="text-sm text-muted-foreground">加载脚本…</p>}
-              {script?.scenes.map((scene) => (
-                <div key={scene.sceneIndex} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">镜头 {scene.sceneIndex}</Badge>
-                    <span className="text-xs text-muted-foreground">~{scene.estimatedDurationSeconds}s</span>
+              {script?.scenes.map((scene) => {
+                const repair = codeRepairs.get(scene.sceneIndex);
+                const repairApplied = appliedRepairs.has(scene.sceneIndex);
+                return (
+                  <div key={scene.sceneIndex} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">镜头 {scene.sceneIndex}</Badge>
+                      <span className="text-xs text-muted-foreground">~{scene.estimatedDurationSeconds}s</span>
+                    </div>
+                    <p className="text-sm font-medium">{scene.description}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
+                    <details className="text-xs" open>
+                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                        编辑代码
+                      </summary>
+                      <Textarea
+                        className="mt-2 font-mono text-xs leading-relaxed min-h-[120px]"
+                        value={editedCode.get(scene.sceneIndex) ?? scene.code ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditedCode((prev) => {
+                            const next = new Map(prev);
+                            next.set(scene.sceneIndex, val);
+                            return next;
+                          });
+                        }}
+                      />
+                    </details>
+                    {repair && (
+                      <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-primary">AI 修复结果</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{repair.explanation}</p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={repairApplied ? "secondary" : "default"}
+                            className="h-7 shrink-0 text-xs"
+                            onClick={() => onApplyRepair(repair)}
+                            disabled={repairApplied}
+                          >
+                            {repairApplied ? "已使用" : "使用修复"}
+                          </Button>
+                        </div>
+                        <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 font-mono text-xs leading-relaxed">
+                          {repair.code}
+                        </pre>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm font-medium">{scene.description}</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
-                  <details className="text-xs" open>
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      编辑代码
-                    </summary>
-                    <Textarea
-                      className="mt-2 font-mono text-xs leading-relaxed min-h-[120px]"
-                      value={editedCode.get(scene.sceneIndex) ?? scene.code ?? ""}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setEditedCode((prev) => {
-                          const next = new Map(prev);
-                          next.set(scene.sceneIndex, val);
-                          return next;
-                        });
-                      }}
-                    />
-                  </details>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </ScrollArea>
         </div>

@@ -22,7 +22,27 @@ def test_manim_prompt_contains_key_rules():
     assert "construct()" in prompt
     assert "FadeOut" in prompt
     assert "Transform" in prompt
+    assert "Axes 构造函数不支持 x_label / y_label" in prompt
     assert "class " not in prompt  # 不应包含 class 定义示例外的 class 关键词指导模型写 class
+
+
+def test_manim_prompt_keeps_visuals_until_narration_finishes():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "镜头边界不等于清场点" in prompt
+    assert "禁止旁白尚未结束就清空画面" in prompt
+    assert "保持最终画面" in prompt
+
+
+def test_narrative_hints_require_graphics_key_formulas_and_macaron_palette():
+    for prompt in ChatAIProvider._NARRATIVE_ENGINE_HINTS.values():
+        assert "偏深马卡龙" in prompt
+        assert "#6688A6" in prompt
+        assert "关键公式" in prompt
+        assert "旁白结束" in prompt
+
+    manim_prompt = ChatAIProvider._NARRATIVE_ENGINE_HINTS["manim"]
+    assert "每个镜头至少包含一个有知识含义的图形动画" in manim_prompt
+    assert "不要求每个镜头末尾清场" in manim_prompt
 
 
 def test_remotion_prompt_contains_key_rules():

@@ -20,9 +20,11 @@ from app.models.video_asset import VideoAsset
 from app.storage import get_presigned_url, upload_bytes
 from app.engines.tts.factory import get_tts_engine
 from app.engines.tts.base import TTSRequest
+from app.engines.ai.factory import get_ai_provider
 from app.schemas.project import (
     ProjectCreate, ProjectResponse, ProjectListResponse,
     ProjectDetailResponse, EventListResponse, ScriptVersionSchema,
+    CodeRepairRequest, CodeRepairResponse,
 )
 from app.workflows.video_production import VideoProductionWorkflow
 from app.config import settings
@@ -174,6 +176,42 @@ async def get_current_script(
     if sv is None:
         raise HTTPException(status_code=404, detail="Script version not found")
     return sv
+
+
+@router.post("/{project_id}/script/repair", response_model=CodeRepairResponse)
+async def repair_script_code(
+    project_id: UUID,
+    body: CodeRepairRequest,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    project = await db.get(VideoProject, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if project.status != "script_review":
+        raise HTTPException(
+            status_code=409,
+            detail="Code repair is only available during script review",
+        )
+    if not body.error_message.strip():
+        raise HTTPException(status_code=422, detail="Render error message is required")
+    if not body.scenes:
+        raise HTTPException(status_code=422, detail="At least one scene is required")
+
+    scene_indices = [scene.scene_index for scene in body.scenes]
+    if len(scene_indices) != len(set(scene_indices)):
+        raise HTTPException(status_code=422, detail="Scene indices must be unique")
+
+    provider = get_ai_provider()
+    try:
+        result = await provider.repair_code(
+            scenes=[scene.model_dump() for scene in body.scenes],
+            render_engine=project.render_engine,
+            error_message=body.error_message,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI code repair failed: {exc}") from exc
+    return CodeRepairResponse(repairs=result.repairs)
 
 
 @router.get("/{project_id}/narrative", response_model=NarrativeVersionSchema)

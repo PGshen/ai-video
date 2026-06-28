@@ -15,6 +15,13 @@ _CHINESE_TEX_TEMPLATE_LINES = [
     r'_chinese_tex_template.add_to_preamble(r"\usepackage[UTF8,fontset=fandol]{ctex}")',
 ]
 _DOUBLE_ESCAPED_TEX_COMMAND = re.compile(r"\\\\(?=[A-Za-z])")
+_TEX_CONSTRUCTORS = {
+    "BulletedList",
+    "MathTex",
+    "SingleStringMathTex",
+    "Tex",
+    "Title",
+}
 
 
 class _TexStringNormalizer(ast.NodeTransformer):
@@ -68,9 +75,9 @@ class _TexTemplateInjector(ast.NodeTransformer):
 
 def _is_tex_constructor(node: ast.expr) -> bool:
     if isinstance(node, ast.Name):
-        return node.id in {"Tex", "MathTex"}
+        return node.id in _TEX_CONSTRUCTORS
     if isinstance(node, ast.Attribute):
-        return node.attr in {"Tex", "MathTex"}
+        return node.attr in _TEX_CONSTRUCTORS
     return False
 
 
@@ -154,12 +161,11 @@ class ManimRenderEngine:
             render_log = stdout.decode(errors="replace") if stdout else ""
 
             if proc.returncode != 0:
-                log_tail = render_log[-1500:].strip() if render_log else ""
                 return RenderResult(
                     success=False,
                     output_path=None,
                     duration_seconds=None,
-                    error_message=f"Manim exited with code {proc.returncode}\n{log_tail}",
+                    error_message=f"Manim exited with code {proc.returncode}\n{render_log.strip() if render_log else ''}",
                     render_log=render_log,
                 )
 

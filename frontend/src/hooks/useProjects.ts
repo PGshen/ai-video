@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { VideoProject, ProjectEvent, ReviewRequest, ScriptVersion, NarrativeVersion } from "@/types";
+import type {
+  VideoProject, ProjectEvent, ReviewRequest, ScriptVersion, NarrativeVersion,
+  Scene, CodeRepairResponse,
+} from "@/types";
 
 interface ProjectListResponse {
   items: VideoProject[];
@@ -99,6 +102,24 @@ export function useProjectScript(projectId: string) {
     queryFn: () => api.get<ScriptVersion>(`/api/projects/${projectId}/script`),
     enabled: !!projectId,
     retry: false,
+  });
+}
+
+export function useRepairScriptCode() {
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      errorMessage,
+      scenes,
+    }: {
+      projectId: string;
+      errorMessage: string;
+      scenes: Scene[];
+    }) =>
+      api.post<CodeRepairResponse>(`/api/projects/${projectId}/script/repair`, {
+        errorMessage,
+        scenes,
+      }),
   });
 }
 

@@ -35,6 +35,12 @@ class RenderResult:
     render_log: str
 
 
+class RenderResultWithBytes(RenderResult):
+    def __init__(self, *args, video_bytes: bytes, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.video_bytes = video_bytes
+
+
 class RenderEngine(Protocol):
     @property
     def engine_name(self) -> str: ...

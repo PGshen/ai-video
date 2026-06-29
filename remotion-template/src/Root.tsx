@@ -1,13 +1,13 @@
 import { Composition } from "remotion";
-import { VideoScene, totalFrames } from "./VideoScene";
+import { VideoScene, totalFrames, fps, width, height } from "./VideoScene";
 
 export const Root = () => (
   <Composition
     id="VideoScene"
     component={VideoScene}
     durationInFrames={totalFrames}
-    fps={30}
-    width={1280}
-    height={720}
+    fps={fps}
+    width={width}
+    height={height}
   />
 );

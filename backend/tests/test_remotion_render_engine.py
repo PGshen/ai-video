@@ -1,4 +1,7 @@
-from app.engines.render.base import SceneInput, SceneAudio
+import pytest
+from unittest.mock import MagicMock, patch
+
+from app.engines.render.base import RenderRequest, SceneAudio, SceneInput
 from app.engines.render.remotion import _build_remotion_tsx
 
 
@@ -56,8 +59,6 @@ def test_build_remotion_tsx_no_audio_uses_estimated_duration():
         code="return <div/>",
         audio=None,
     )
-    # When no audio, scenes dict may carry estimated_duration_seconds separately.
-    # _build_remotion_tsx receives SceneInput; without audio it falls back to 5.0s default.
     tsx = _build_remotion_tsx([scene], fps=30)
     # fallback 5.0s * 30fps = 150
     assert "durationInFrames={150}" in tsx
@@ -79,11 +80,6 @@ def test_build_remotion_tsx_imports_remotion_apis():
     assert "AbsoluteFill" in tsx
     assert "Sequence" in tsx
     assert "Audio" in tsx
-
-
-import pytest
-from unittest.mock import MagicMock, patch
-from app.engines.render.base import RenderRequest, SceneAudio
 
 
 def _async_line_iter(lines: list[bytes]):

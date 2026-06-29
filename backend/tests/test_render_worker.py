@@ -53,7 +53,7 @@ def make_task(project_id):
 @pytest.mark.asyncio
 async def test_render_worker_success():
     from app.workers.render_worker import RenderWorker
-    from app.engines.render.manim import _RenderResultWithBytes
+    from app.engines.render.base import RenderResultWithBytes as _RenderResultWithBytes
 
     project = make_project()
     sv = make_script_version(project.id)
@@ -94,7 +94,7 @@ async def test_render_worker_success():
 async def test_render_worker_scene_without_audio_key():
     """Scene with no audio_key (tts_status=skipped) should produce audio=None in SceneInput."""
     from app.workers.render_worker import RenderWorker
-    from app.engines.render.manim import _RenderResultWithBytes
+    from app.engines.render.base import RenderResultWithBytes as _RenderResultWithBytes
     from app.engines.render.base import SceneInput
 
     project = make_project()

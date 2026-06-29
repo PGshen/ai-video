@@ -6,8 +6,7 @@ import tempfile
 from pathlib import Path
 
 from app.config import settings
-from app.engines.render.base import RenderRequest, RenderResult, SceneInput
-from app.engines.render.manim import _RenderResultWithBytes
+from app.engines.render.base import RenderRequest, RenderResult, RenderResultWithBytes, SceneInput
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +29,9 @@ import {
 } from 'remotion';"""
 
 
-def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30) -> str:
+def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tuple[int, int] = (1280, 720)) -> str:
     """Generate a complete VideoScene.tsx from a list of SceneInput."""
+    request_width, request_height = resolution
     durations: list[int] = []
     for scene in scenes:
         if scene.audio:
@@ -45,6 +45,9 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30) -> str:
         _REMOTION_IMPORTS,
         "",
         f"export const totalFrames = {total};",
+        f"export const fps = {fps};",
+        f"export const width = {request_width};",
+        f"export const height = {request_height};",
         "",
         "export const VideoScene: React.FC = () => {",
         "  const frame = useCurrentFrame();",
@@ -127,7 +130,7 @@ class RemotionRenderEngine:
             os.symlink(str(node_modules_src), str(node_modules_link))
 
         # Write generated VideoScene.tsx
-        tsx_content = _build_remotion_tsx(request.scenes, fps=request.fps)
+        tsx_content = _build_remotion_tsx(request.scenes, fps=request.fps, resolution=request.resolution)
         (src_dir / "VideoScene.tsx").write_text(tsx_content, encoding="utf-8")
 
         output_path = str(Path(tmpdir) / "output.mp4")
@@ -182,7 +185,7 @@ class RemotionRenderEngine:
             )
 
         video_bytes = Path(actual_output).read_bytes()
-        return _RenderResultWithBytes(
+        return RenderResultWithBytes(
             success=True,
             output_path=actual_output,
             duration_seconds=None,

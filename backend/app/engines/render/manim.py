@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from app.config import settings
-from app.engines.render.base import RenderEngine, RenderRequest, RenderResult, SceneInput
+from app.engines.render.base import RenderEngine, RenderRequest, RenderResult, RenderResultWithBytes, SceneInput
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ class ManimRenderEngine:
                 )
 
             video_bytes = Path(actual_output).read_bytes()
-            return _RenderResultWithBytes(
+            return RenderResultWithBytes(
                 success=True,
                 output_path=actual_output,
                 duration_seconds=None,
@@ -207,11 +207,6 @@ class ManimRenderEngine:
         await proc.communicate()
         return proc.returncode == 0
 
-
-class _RenderResultWithBytes(RenderResult):
-    def __init__(self, *args, video_bytes: bytes, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.video_bytes = video_bytes
 
 
 def _build_manim_script(scenes: list[SceneInput]) -> str:

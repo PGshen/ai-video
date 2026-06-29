@@ -49,14 +49,9 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tup
         f"export const width = {request_width};",
         f"export const height = {request_height};",
         "",
-        "export const VideoScene: React.FC = () => {",
-        "  const frame = useCurrentFrame();",
-        "  const { fps } = useVideoConfig();",
-        "  return (",
-        "    <AbsoluteFill>",
     ]
 
-    # Generate named sub-components (hooks-compliant, one per scene)
+    # Named sub-components must be defined BEFORE VideoScene (outside JSX)
     for i, (scene, dur) in enumerate(zip(scenes, durations)):
         lines.append(f"const _Scene{i} = () => {{")
         lines.append(f"  const durationInFrames = {dur};")
@@ -65,24 +60,28 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tup
         lines.append("};")
         lines.append("")
 
+    lines += [
+        "export const VideoScene = () => (",
+        "  <AbsoluteFill>",
+    ]
+
     offset = 0
     for i, (scene, dur) in enumerate(zip(scenes, durations)):
         audio_line = ""
         if scene.audio and scene.audio.audio_path:
             audio_line = f'      <Audio src="file://{scene.audio.audio_path}" />'
 
-        lines.append(f"      {{/* Scene {i}: {scene.description} */}}")
-        lines.append(f"      <Sequence from={{{offset}}} durationInFrames={{{dur}}}>")
+        lines.append(f"    {{/* Scene {i}: {scene.description} */}}")
+        lines.append(f"    <Sequence from={{{offset}}} durationInFrames={{{dur}}}>")
         if audio_line:
             lines.append(audio_line)
-        lines.append(f"        <_Scene{i} />")
-        lines.append("      </Sequence>")
+        lines.append(f"      <_Scene{i} />")
+        lines.append("    </Sequence>")
         offset += dur
 
     lines += [
-        "    </AbsoluteFill>",
-        "  );",
-        "};",
+        "  </AbsoluteFill>",
+        ");",
         "",
     ]
     return "\n".join(lines)

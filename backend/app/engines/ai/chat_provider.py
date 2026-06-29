@@ -101,7 +101,6 @@ Axes 是最容易导致内容溢出的对象，必须遵守以下规则：
 # 结构辅助色
 - 坐标轴 / 网格（深底）：#4A3880
 - 坐标轴 / 网格（亮底）：#D4C5F0
-- 深辅助面：#2E2255
 # 配色使用原则
 1. 以亮底 #F7F3FF 为主场景
 2. 红色专用于「偏差/错误」，绿色专用于「正确/结论」，不可混用
@@ -214,6 +213,32 @@ self.play(Create(ray), run_time=0.8)
 画布尺寸：1280 × 720 px（16:9），所有元素坐标和尺寸以此为基准，禁止超出边界。
 SVG viewBox 统一使用 "0 0 1280 720"。
 
+【布局与坐标规范（重要）】
+坐标系：原点在左上角，x 向右，y 向下；画布中心为 (640, 360)。
+
+定位原则——先声明位置常量，再从常量推导所有相关坐标：
+```
+// ✅ 正确：先定义盒子中心，再推导连线端点
+const L_CX = 280, L_CY = 360, BOX_W = 200, BOX_H = 160;
+const R_CX = 1000, R_CY = 360;
+// 连线从左盒右边缘 → 右盒左边缘，完全由常量推导
+const lineX1 = L_CX + BOX_W / 2;
+const lineX2 = R_CX - BOX_W / 2;
+
+// ❌ 错误：凭感觉写魔法数字，导致连线对不上元素
+<line x1={420} y1={360} x2={700} y2={340} />  // 700 远未到右盒
+```
+
+常用布局参考（不超出边界）：
+- 左右两列：左中心 x=320，右中心 x=960，各留 ≥80px 边距
+- 三列均分：x=213、640、1067
+- 上下两区：上中心 y=210，下中心 y=510
+- 全屏居中：cx=640，cy=360
+- 顶部标题栏：y=60，高度 80px；正文区：y=140–680
+
+连线/曲线必须从元素位置常量计算，禁止凭感觉估算 x/y 魔法数字。
+带弯曲的连线用 SVG `<path d="M {x1} {y1} Q {midX} {controlY} {x2} {y2}" />`，控制点 midX=(x1+x2)/2。
+
 【帧与时序规则】
 - code 片段在 React 组件函数体内执行，可直接调用 Hooks：useCurrentFrame()、useVideoConfig()
 - useCurrentFrame() 返回当前镜头内的相对帧（从 0 开始）
@@ -246,7 +271,6 @@ SVG viewBox 统一使用 "0 0 1280 720"。
 # 结构辅助色
 - 坐标轴 / 网格（深底）：#4A3880
 - 坐标轴 / 网格（亮底）：#D4C5F0
-- 深辅助面：#2E2255
 # 配色使用原则
 1. 以亮底 #F7F3FF 为主场景
 2. 红色专用于「偏差/错误」，绿色专用于「正确/结论」，不可混用
@@ -325,20 +349,37 @@ return (
   </AbsoluteFill>
 );
 
-// 镜头 1：散射图示动画
+// 镜头 1：两列对比 + 曲线连接（布局常量推导示例）
 const frame = useCurrentFrame();
 const { fps } = useVideoConfig();
-const rayProgress = spring({ frame, fps, config: { stiffness: 60, damping: 14 } });
-const rayLength = interpolate(rayProgress, [0, 1], [0, 400]);
+// ① 先声明所有位置常量
+const BOX_W = 220, BOX_H = 160, CY = 360;
+const L_CX = 280, R_CX = 1000;
+// ② 连线端点从常量推导，绝不猜数字
+const lineX1 = L_CX + BOX_W / 2;
+const lineX2 = R_CX - BOX_W / 2;
+const midX = (lineX1 + lineX2) / 2;
+const sp = spring({ frame, fps, config: { stiffness: 60, damping: 14 } });
+const progress = interpolate(sp, [0, 1], [0, 1]);
+const boxSpring = spring({ frame: Math.max(0, frame - 4), fps, config: { stiffness: 70, damping: 14 } });
 return (
   <AbsoluteFill style={{ background: "#F7F3FF" }}>
     <svg width="100%" height="100%" viewBox="0 0 1280 720">
-      <circle cx={240} cy={360} r={60} fill="#FFB347" />
-      <line x1={300} y1={360} x2={300 + rayLength} y2={360}
-            stroke="#4ECDC4" strokeWidth={4} />
-      <line x1={300 + rayLength * 0.7} y1={360}
-            x2={300 + rayLength * 0.7 + rayLength * 0.3 * 0.7} y2={320}
-            stroke="#6C4FD4" strokeWidth={3} opacity={interpolate(rayProgress, [0.5, 1], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })} />
+      {/* 左盒 */}
+      <rect x={L_CX - BOX_W/2} y={CY - BOX_H/2} width={BOX_W} height={BOX_H}
+            rx={12} fill="#A98EE820" stroke="#6C4FD4" strokeWidth={2}
+            opacity={interpolate(boxSpring, [0,1],[0,1])} />
+      <text x={L_CX} y={CY + 8} textAnchor="middle" fontSize={28}
+            fill="#1C1433" fontFamily="PingFang SC, sans-serif">18岁前</text>
+      {/* 右盒 */}
+      <rect x={R_CX - BOX_W/2} y={CY - BOX_H/2} width={BOX_W} height={BOX_H}
+            rx={12} fill="#4ECDC420" stroke="#4ECDC4" strokeWidth={2}
+            opacity={interpolate(boxSpring, [0,1],[0,1])} />
+      <text x={R_CX} y={CY + 8} textAnchor="middle" fontSize={28}
+            fill="#1C1433" fontFamily="PingFang SC, sans-serif">18岁后</text>
+      {/* 曲线：端点完全由常量推导 */}
+      <path d={`M ${lineX1} ${CY} Q ${midX} ${CY - 80} ${interpolate(progress, [0,1],[lineX1, lineX2])} ${CY}`}
+            fill="none" stroke="#FFB347" strokeWidth={3} strokeDasharray="8 5" />
     </svg>
   </AbsoluteFill>
 );

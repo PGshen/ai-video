@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.db import get_async_session
 from app.engines.ai.factory import get_ai_provider
+from app.models.project import VideoProject
 from app.models.topic import Topic
 from app.schemas.topic import (
     TopicCreate, TopicUpdate, TopicResponse, TopicListResponse,
@@ -97,6 +98,29 @@ async def update_topic(
     await db.commit()
     await db.refresh(topic)
     return topic
+
+
+@router.delete("/{topic_id}", status_code=204)
+async def delete_topic(
+    topic_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(verify_api_key),
+):
+    topic = await db.get(Topic, topic_id)
+    if topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    project_result = await db.execute(
+        select(VideoProject.id).where(VideoProject.topic_id == topic_id).limit(1)
+    )
+    if project_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="该选题已关联视频项目，请先删除相关项目",
+        )
+
+    await db.delete(topic)
+    await db.commit()
 
 
 DEFAULT_RESEARCH_SYSTEM_PROMPT = """\

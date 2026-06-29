@@ -77,6 +77,22 @@ export function useCreateProject() {
   });
 }
 
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/projects/${id}`),
+    onSuccess: (_data, id) => {
+      qc.removeQueries({ queryKey: ["projects", id] });
+      qc.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === "projects" &&
+          Array.isArray((query.state.data as ProjectListResponse | undefined)?.items),
+      });
+      qc.invalidateQueries({ queryKey: ["topics"] });
+    },
+  });
+}
+
 export function useSubmitReview() {
   const qc = useQueryClient();
   return useMutation({

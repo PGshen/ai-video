@@ -62,11 +62,17 @@ Axes 是最容易导致内容溢出的对象，必须遵守以下规则：
 - 跨镜头保留的文字（如标题）在移动到新位置后同样必须满足安全区约束
 - .to_corner() / .to_edge() 自带 buff=0.5，安全；但 .move_to() / .shift() 到边缘位置时须手动验证不超界
 
-【坐标系规则（重要）】
-- Manim 内部所有点坐标均为三维 (x, y, z)，z 通常为 0
-- 禁止使用 np.array([x, y]) 等二维坐标，必须写 np.array([x, y, 0])
+【坐标系规则（重要）——高频报错根源】
+- Manim 所有"点"均为三维 (x, y, z)，z 通常为 0；这是全局约束，无例外
+- 凡是传递坐标/顶点/路径点的地方，一律用 3 元素格式：[x, y, 0] 或 np.array([x, y, 0])
+  涵盖但不限于：Polygon 顶点、set_points_as_corners、set_anchors_and_handles、Dot 位置、Line 端点、任何接受 Point3D 的参数
+- 严禁任何形式的 2D 坐标：[x, y]、np.array([x, y]) 均会导致 shape broadcast 错误
+  错误示范：Dot(point=[1, 2])、move_to([1, 2])、Line([0,0], [1,1])、.shift(np.random.uniform(-1,1,2))
+  正确示范：Dot(point=[1, 2, 0])、move_to([1, 2, 0])、Line([0,0,0], [1,1,0])、.shift(np.append(np.random.uniform(-1,1,2), 0))
+- np.random.uniform / np.random.randn 等随机向量默认是 2D，用于 shift/move_to 前必须补 z=0
 - set_points_as_corners、set_anchors_and_handles 等方法参数必须是 shape (n, 3) 的数组
 - Axes 构造函数不支持 x_label / y_label 参数；先创建 axes，再用 axes.get_x_axis_label(Text("横轴")) 和 axes.get_y_axis_label(Text("纵轴")) 创建标签
+- NumberLine/Axes 的 number_to_point() 返回 3D numpy 数组，不是标量；需要取宽度时必须用 [0] 分量：width = (nl.number_to_point(b) - nl.number_to_point(a))[0]，禁止直接把 number_to_point() 的差值传给 width/height 参数
 
 【字体大小规范（重要）】
 - 主标题（视频大标题）：font_size=44
@@ -88,7 +94,7 @@ Axes 是最容易导致内容溢出的对象，必须遵守以下规则：
 入场动画（按优先级）：
 - 图形：GrowFromCenter（弹性感首选）或 DrawBorderThenFill
 - 文字：Write
-- 箭头：GrowArrow
+- 箭头：Create（GrowArrow 在当前版本有 bug，禁止使用）
 - 次要/背景元素：FadeIn（非首选）
 
 强调动画（关键结论必须使用）：
@@ -153,7 +159,7 @@ sun = Circle(radius=0.5, color=ManimColor("#F07D3E"), fill_opacity=1).shift(LEFT
 earth = Circle(radius=0.3, color=ManimColor("#4BA3C3"), fill_opacity=1).shift(RIGHT * 3)
 ray = Arrow(sun.get_right(), earth.get_left(), color=ManimColor("#E8524A"), buff=0.1)
 self.play(GrowFromCenter(sun), GrowFromCenter(earth), run_time=1.0)
-self.play(GrowArrow(ray), run_time=0.8)
+self.play(Create(ray), run_time=0.8)
 # 本镜头无需转场：保留图示，渲染器自动补齐剩余时长
 """,
         "remotion": """\

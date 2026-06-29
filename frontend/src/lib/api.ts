@@ -16,9 +16,15 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    const errorBody = await response.json().catch(() => null);
+    const detail =
+      errorBody && typeof errorBody.detail === "string"
+        ? errorBody.detail
+        : `API error: ${response.status} ${response.statusText}`;
+    throw new Error(detail);
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -26,6 +32,7 @@ export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
+  delete: (path: string) => request<void>("DELETE", path),
 };
 
 export function fetchNarrative(projectId: string) {

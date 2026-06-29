@@ -33,6 +33,7 @@ interface SelectedNode {
   type: "narrative" | "script";
   versionId: string;
   versionNumber: number;
+  eventId: number;
 }
 
 export function ProjectSheet({ project, onClose }: Props) {
@@ -714,8 +715,7 @@ function EventsSection({
           <div className="space-y-0 pr-3">
             {annotated.map(({ event, contentType, versionId, versionNumber, verdict, renderError }, i) => {
               const isClickable = !!(contentType && versionId);
-              const isSelected =
-                selectedNode?.versionId === versionId && selectedNode?.type === contentType;
+              const isSelected = selectedNode?.eventId === event.id;
               const isLast = i === annotated.length - 1;
               const isRenderFailedNode = event.toStatus === "video_failed" || !!renderError;
 
@@ -731,7 +731,7 @@ function EventsSection({
 
               const handleClick = () => {
                 if (!isClickable) return;
-                onSelectNode(isSelected ? null : { type: contentType!, versionId: versionId!, versionNumber: versionNumber! });
+                onSelectNode(isSelected ? null : { type: contentType!, versionId: versionId!, versionNumber: versionNumber!, eventId: event.id });
               };
 
               return (

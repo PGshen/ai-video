@@ -91,6 +91,37 @@ def test_update_topic_not_found(client, auth_headers, mock_db):
     assert response.status_code == 404
 
 
+def test_delete_topic(client, auth_headers, mock_db):
+    topic = make_topic()
+    mock_db.get.return_value = topic
+    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+
+    response = client.delete(f"/api/topics/{topic.id}", headers=auth_headers)
+
+    assert response.status_code == 204
+    mock_db.delete.assert_awaited_once_with(topic)
+    mock_db.commit.assert_awaited_once()
+
+
+def test_delete_topic_rejects_topic_with_project(client, auth_headers, mock_db):
+    topic = make_topic()
+    mock_db.get.return_value = topic
+    mock_db.execute.return_value.scalar_one_or_none.return_value = uuid4()
+
+    response = client.delete(f"/api/topics/{topic.id}", headers=auth_headers)
+
+    assert response.status_code == 409
+    mock_db.delete.assert_not_awaited()
+
+
+def test_delete_topic_not_found(client, auth_headers, mock_db):
+    mock_db.get.return_value = None
+
+    response = client.delete(f"/api/topics/{uuid4()}", headers=auth_headers)
+
+    assert response.status_code == 404
+
+
 def test_brainstorm_returns_candidates(client, auth_headers):
     response = client.post(
         "/api/topics/brainstorm",

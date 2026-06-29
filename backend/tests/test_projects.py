@@ -4,6 +4,7 @@ from uuid import uuid4
 from datetime import datetime, timezone
 from app.schemas.project import ProjectResponse
 from app.engines.ai.base import CodeRepairResult
+from temporalio.client import WorkflowExecutionStatus
 
 
 def make_project(**kwargs):
@@ -79,6 +80,65 @@ def test_create_project_missing_fields(client, auth_headers):
 def test_get_project_not_found(client, auth_headers, mock_db):
     mock_db.get.return_value = None
     response = client.get(f"/api/projects/{uuid4()}", headers=auth_headers)
+    assert response.status_code == 404
+
+
+def test_delete_project_cleans_related_data_and_restores_topic(
+    client, auth_headers, mock_db, mock_temporal,
+):
+    project = make_project(
+        status="script_review",
+        temporal_workflow_id="video-production-delete",
+    )
+    topic = make_topic(id=project.topic_id)
+    topic.status = "in_production"
+    mock_db.get = AsyncMock(
+        side_effect=lambda model, pk: project if pk == project.id else topic
+    )
+    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+    handle = AsyncMock()
+    handle.describe.return_value.status = WorkflowExecutionStatus.RUNNING
+    mock_temporal.get_workflow_handle = MagicMock(return_value=handle)
+
+    response = client.delete(f"/api/projects/{project.id}", headers=auth_headers)
+
+    assert response.status_code == 204
+    handle.terminate.assert_awaited_once_with(reason="Project deleted by user")
+    assert mock_db.execute.await_count == 7
+    mock_db.delete.assert_awaited_once_with(project)
+    assert topic.status == "stocked"
+    mock_db.commit.assert_awaited_once()
+
+
+def test_delete_completed_project_does_not_terminate_workflow(
+    client, auth_headers, mock_db, mock_temporal,
+):
+    project = make_project(
+        status="published",
+        temporal_workflow_id="video-production-complete",
+    )
+    topic = make_topic(id=project.topic_id)
+    topic.status = "used"
+    mock_db.get = AsyncMock(
+        side_effect=lambda model, pk: project if pk == project.id else topic
+    )
+    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+    handle = AsyncMock()
+    handle.describe.return_value.status = WorkflowExecutionStatus.COMPLETED
+    mock_temporal.get_workflow_handle = MagicMock(return_value=handle)
+
+    response = client.delete(f"/api/projects/{project.id}", headers=auth_headers)
+
+    assert response.status_code == 204
+    handle.terminate.assert_not_awaited()
+    assert topic.status == "used"
+
+
+def test_delete_project_not_found(client, auth_headers, mock_db):
+    mock_db.get.return_value = None
+
+    response = client.delete(f"/api/projects/{uuid4()}", headers=auth_headers)
+
     assert response.status_code == 404
 
 

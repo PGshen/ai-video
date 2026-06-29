@@ -3,10 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
-from temporalio.client import Client as TemporalClient
+from temporalio.client import Client as TemporalClient, WorkflowExecutionStatus
 from app.auth import verify_api_key
 from app.db import get_async_session
 from app.deps import get_temporal_client
@@ -17,6 +17,8 @@ from app.schemas.narrative import NarrativeVersionSchema
 from app.models.topic import Topic
 from app.models.project_event import ProjectEvent
 from app.models.video_asset import VideoAsset
+from app.models.worker_task import WorkerTask
+from app.models.performance_record import PerformanceRecord
 from app.storage import get_presigned_url, upload_bytes
 from app.engines.tts.factory import get_tts_engine
 from app.engines.tts.base import TTSRequest
@@ -86,6 +88,60 @@ async def list_projects(
         items.append(r)
 
     return ProjectListResponse(items=items, total=len(items))
+
+
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_async_session),
+    temporal: TemporalClient = Depends(get_temporal_client),
+    _=Depends(verify_api_key),
+):
+    project = await db.get(VideoProject, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Temporal is authoritative for workflow state; only terminate a live run.
+    if project.temporal_workflow_id:
+        handle = temporal.get_workflow_handle(project.temporal_workflow_id)
+        try:
+            description = await handle.describe()
+            if description.status == WorkflowExecutionStatus.RUNNING:
+                await handle.terminate(reason="Project deleted by user")
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="无法停止项目工作流，请稍后重试",
+            ) from exc
+
+    other_project_result = await db.execute(
+        select(VideoProject.id)
+        .where(
+            VideoProject.topic_id == project.topic_id,
+            VideoProject.id != project_id,
+        )
+        .limit(1)
+    )
+    has_other_project = other_project_result.scalar_one_or_none() is not None
+
+    # The schema intentionally has no foreign keys, so maintain associations here.
+    for model in (
+        WorkerTask,
+        ProjectEvent,
+        PerformanceRecord,
+        VideoAsset,
+        ScriptVersion,
+        NarrativeVersion,
+    ):
+        await db.execute(delete(model).where(model.project_id == project_id))
+    await db.delete(project)
+
+    if not has_other_project:
+        topic = await db.get(Topic, project.topic_id)
+        if topic is not None and topic.status == "in_production":
+            topic.status = "stocked"
+
+    await db.commit()
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)

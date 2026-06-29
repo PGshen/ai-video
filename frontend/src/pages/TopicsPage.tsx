@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Plus, Sparkles } from "lucide-react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useTopics } from "@/hooks/useTopics";
+import { useDeleteTopic, useTopics } from "@/hooks/useTopics";
 import { BrainstormDialog } from "@/components/topics/BrainstormDialog";
 import { CreateTopicDialog } from "@/components/topics/CreateTopicDialog";
 import { TopicSheet } from "@/components/topics/TopicSheet";
@@ -38,6 +39,18 @@ export default function TopicsPage() {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
 
   const { data, isLoading } = useTopics(statusFilter === "all" ? undefined : statusFilter);
+  const deleteTopic = useDeleteTopic();
+
+  const handleDelete = (topic: Topic) => {
+    if (!window.confirm(`确认删除选题「${topic.title}」？此操作不可撤销。`)) return;
+    deleteTopic.mutate(topic.id, {
+      onSuccess: () => {
+        if (selectedTopic?.id === topic.id) setSelectedTopic(null);
+        toast.success("选题已删除");
+      },
+      onError: (error) => toast.error(error.message || "删除失败，请重试"),
+    });
+  };
 
   return (
     <div className="p-6 space-y-4">
@@ -76,7 +89,7 @@ export default function TopicsPage() {
               <TableHead>状态</TableHead>
               <TableHead>标签</TableHead>
               <TableHead>创建时间</TableHead>
-              <TableHead className="w-[80px]"></TableHead>
+              <TableHead className="w-[128px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -132,13 +145,26 @@ export default function TopicsPage() {
                   {timeAgo(topic.createdAt)}
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => { e.stopPropagation(); setSelectedTopic(topic); }}
-                  >
-                    打分
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); setSelectedTopic(topic); }}
+                    >
+                      打分
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`删除选题：${topic.title}`}
+                      title="删除选题"
+                      disabled={deleteTopic.isPending}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(topic); }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

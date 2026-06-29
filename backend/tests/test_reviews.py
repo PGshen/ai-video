@@ -33,7 +33,7 @@ def _auth():
     return {"X-API-Key": settings.API_KEY}
 
 
-def test_review_with_verdicts_updates_fact_checks(client, mock_db, mock_temporal):
+def test_review_with_verdicts_creates_new_version(client, mock_db, mock_temporal):
     project = make_project()
     sv = make_script_version()
 
@@ -60,18 +60,32 @@ def test_review_with_verdicts_updates_fact_checks(client, mock_db, mock_temporal
     )
     assert response.status_code == 200
 
-    updated = sv.fact_checks
-    assert updated[0]["reviewer_verdict"] == "approved"
-    assert updated[1]["reviewer_verdict"] == "rejected"
-    assert updated[1]["reviewer_note"] == "来源不可靠"
+    # Original record should NOT be mutated; a new ScriptVersion is passed to db.add
+    assert mock_db.add.called
+    new_sv_calls = [
+        call.args[0]
+        for call in mock_db.add.call_args_list
+        if hasattr(call.args[0], "version_number")
+    ]
+    assert new_sv_calls, "expected a new ScriptVersion to be added"
+    new_sv = new_sv_calls[0]
+    assert new_sv.version_number == sv.version_number + 1
+    assert new_sv.fact_checks[0]["reviewer_verdict"] == "approved"
+    assert new_sv.fact_checks[1]["reviewer_verdict"] == "rejected"
+    assert new_sv.fact_checks[1]["reviewer_note"] == "来源不可靠"
 
     mock_handle.signal.assert_called_once()
-    event = mock_db.add.call_args.args[0]
+    event_calls = [
+        call.args[0]
+        for call in mock_db.add.call_args_list
+        if hasattr(call.args[0], "event_type")
+    ]
+    assert event_calls
+    event = event_calls[0]
     assert event.event_type == "review_verdict"
     assert event.from_status == "script_review"
     assert event.payload["verdict"] == "approved"
-    assert event.payload["content_version_id"] == str(sv.id)
-    assert event.payload["content_version_number"] == 3
+    assert event.payload["content_version_number"] == sv.version_number + 1
 
 
 def test_review_without_verdicts_still_sends_signal(client, mock_db, mock_temporal):

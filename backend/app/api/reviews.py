@@ -31,7 +31,6 @@ async def submit_review(
 
     if body.gate == "narrative":
         reviewed_version = None
-        # 若有内联编辑，更新叙事版本的 scenes
         if project.current_narrative_version_id:
             nv = await db.get(NarrativeVersion, project.current_narrative_version_id)
             reviewed_version = nv
@@ -51,8 +50,18 @@ async def submit_review(
                         })
                     else:
                         updated_scenes.append(scene)
-                nv.scenes = updated_scenes
-                flag_modified(nv, "scenes")
+                new_nv = NarrativeVersion(
+                    project_id=nv.project_id,
+                    version_number=nv.version_number + 1,
+                    scenes=updated_scenes,
+                    fact_checks=nv.fact_checks,
+                    ai_model=nv.ai_model,
+                    rejection_context=nv.rejection_context,
+                )
+                db.add(new_nv)
+                await db.flush()
+                project.current_narrative_version_id = new_nv.id
+                reviewed_version = new_nv
                 await db.commit()
 
         signal_name = "narrative_review"
@@ -61,32 +70,37 @@ async def submit_review(
         sv = await db.get(ScriptVersion, project.current_script_version_id)
         reviewed_version = sv
         if sv:
-            updated = False
-            # 写回 fact_check verdicts
-            if body.fact_check_verdicts and isinstance(sv.fact_checks, list):
-                fact_checks = list(sv.fact_checks)
-                for v in body.fact_check_verdicts:
-                    if 0 <= v.index < len(fact_checks):
-                        fact_checks[v.index] = {
-                            **dict(fact_checks[v.index]),
-                            "reviewer_verdict": v.verdict,
-                            "reviewer_note": v.note or None,
-                        }
-                sv.fact_checks = fact_checks
-                flag_modified(sv, "fact_checks")
-                updated = True
-            # 写回用户编辑的代码（渲染失败后修改代码重提交）
-            if body.edited_script_scenes and isinstance(sv.scenes, list):
-                code_map = {s.scene_index: s.code for s in body.edited_script_scenes}
-                scenes = list(sv.scenes)
-                for i, scene in enumerate(scenes):
-                    idx = scene.get("scene_index", -1)
-                    if idx in code_map:
-                        scenes[i] = {**scene, "code": code_map[idx]}
-                sv.scenes = scenes
-                flag_modified(sv, "scenes")
-                updated = True
-            if updated:
+            has_edits = bool(body.fact_check_verdicts or body.edited_script_scenes)
+            if has_edits:
+                fact_checks = list(sv.fact_checks) if isinstance(sv.fact_checks, list) else (sv.fact_checks or [])
+                if body.fact_check_verdicts:
+                    for v in body.fact_check_verdicts:
+                        if 0 <= v.index < len(fact_checks):
+                            fact_checks[v.index] = {
+                                **dict(fact_checks[v.index]),
+                                "reviewer_verdict": v.verdict,
+                                "reviewer_note": v.note or None,
+                            }
+                scenes = list(sv.scenes) if isinstance(sv.scenes, list) else (sv.scenes or [])
+                if body.edited_script_scenes:
+                    code_map = {s.scene_index: s.code for s in body.edited_script_scenes}
+                    for i, scene in enumerate(scenes):
+                        idx = scene.get("scene_index", -1)
+                        if idx in code_map:
+                            scenes[i] = {**scene, "code": code_map[idx]}
+                new_sv = ScriptVersion(
+                    project_id=sv.project_id,
+                    version_number=sv.version_number + 1,
+                    scenes=scenes,
+                    fact_checks=fact_checks,
+                    render_engine=sv.render_engine,
+                    ai_model=sv.ai_model,
+                    rejection_context=sv.rejection_context,
+                )
+                db.add(new_sv)
+                await db.flush()
+                project.current_script_version_id = new_sv.id
+                reviewed_version = new_sv
                 await db.commit()
 
         signal_name = "script_review"

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useProjects } from "@/hooks/useProjects";
+import { useDeleteProject, useProjects } from "@/hooks/useProjects";
 import { ProjectSheet } from "@/components/projects/ProjectSheet";
 import {
   timeAgo,
@@ -16,6 +18,19 @@ export default function ProjectsPage() {
   const [selectedProject, setSelectedProject] = useState<VideoProject | null>(null);
 
   const { data, isLoading } = useProjects(statusFilter === "all" ? undefined : statusFilter);
+  const deleteProject = useDeleteProject();
+
+  const handleDelete = (project: VideoProject) => {
+    const title = project.topicTitle || "未命名项目";
+    if (!window.confirm(`确认删除项目「${title}」？此操作不可撤销。`)) return;
+    deleteProject.mutate(project.id, {
+      onSuccess: () => {
+        if (selectedProject?.id === project.id) setSelectedProject(null);
+        toast.success("项目已删除");
+      },
+      onError: (error) => toast.error(error.message || "删除失败，请重试"),
+    });
+  };
 
   return (
     <div className="p-6 space-y-4">
@@ -43,7 +58,7 @@ export default function ProjectsPage() {
               <TableHead>渲染引擎</TableHead>
               <TableHead>画幅比例</TableHead>
               <TableHead>创建时间</TableHead>
-              <TableHead className="w-[80px]"></TableHead>
+              <TableHead className="w-[128px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -87,13 +102,26 @@ export default function ProjectsPage() {
                   {timeAgo(project.createdAt)}
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => { e.stopPropagation(); setSelectedProject(project); }}
-                  >
-                    详情
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); setSelectedProject(project); }}
+                    >
+                      详情
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`删除项目：${project.topicTitle || "未命名项目"}`}
+                      title="删除项目"
+                      disabled={deleteProject.isPending}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(project); }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

@@ -1,6 +1,7 @@
 import asyncio
 import ast
 import contextlib
+import logging
 import os
 import re
 import tempfile
@@ -8,6 +9,8 @@ from pathlib import Path
 
 from app.config import settings
 from app.engines.render.base import RenderEngine, RenderRequest, RenderResult, SceneInput
+
+logger = logging.getLogger(__name__)
 
 
 _CHINESE_TEX_TEMPLATE_LINES = [
@@ -142,23 +145,28 @@ class ManimRenderEngine:
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=tmpdir,
             )
+
+            log_lines: list[str] = []
             try:
-                stdout, _ = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=settings.MANIM_TIMEOUT_SECONDS,
-                )
+                async with asyncio.timeout(settings.MANIM_TIMEOUT_SECONDS):
+                    async for raw in proc.stdout:
+                        line = raw.decode(errors="replace").rstrip()
+                        log_lines.append(line)
+                        logger.info("[Manim] %s", line)
+                    await proc.wait()
             except asyncio.TimeoutError:
-                proc.terminate()
+                proc.kill()
                 await proc.wait()
+                render_log = "\n".join(log_lines)
                 return RenderResult(
                     success=False,
                     output_path=None,
                     duration_seconds=None,
-                    error_message="Manim render timed out",
-                    render_log="Render timed out after timeout limit",
+                    error_message=f"Manim render timed out after {settings.MANIM_TIMEOUT_SECONDS:.0f}s",
+                    render_log=render_log,
                 )
 
-            render_log = stdout.decode(errors="replace") if stdout else ""
+            render_log = "\n".join(log_lines)
 
             if proc.returncode != 0:
                 return RenderResult(

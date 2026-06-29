@@ -77,3 +77,11 @@ export function useUpdateTopic() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["topics"] }),
   });
 }
+
+export function useDeleteTopic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/topics/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["topics"] }),
+  });
+}

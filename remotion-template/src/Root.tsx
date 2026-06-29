@@ -1,7 +1,7 @@
 import { Composition } from "remotion";
 import { VideoScene, totalFrames } from "./VideoScene";
 
-export const Root: React.FC = () => (
+export const Root = () => (
   <Composition
     id="VideoScene"
     component={VideoScene}

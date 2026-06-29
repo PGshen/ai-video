@@ -54,7 +54,7 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tup
     # Named sub-components must be defined BEFORE VideoScene (outside JSX)
     for i, (scene, dur) in enumerate(zip(scenes, durations)):
         lines.append(f"const _Scene{i} = () => {{")
-        lines.append(f"  const durationInFrames = {dur};")
+        lines.append(f"  const _sceneDuration = {dur};  // total frames for this scene")
         for code_line in scene.code.splitlines():
             lines.append(f"  {code_line}")
         lines.append("};")

@@ -74,13 +74,13 @@ def test_build_remotion_tsx_wraps_code_in_named_component():
     assert "<_Scene0 />" in tsx
 
 
-def test_build_remotion_tsx_injects_duration_in_frames():
+def test_build_remotion_tsx_injects_scene_duration():
     scenes = [
         _make_scene(0, "return <div/>", duration=4.0, audio_path="/tmp/s0.mp3"),
     ]
     tsx = _build_remotion_tsx(scenes, fps=30)
-    # 4.0s * 30fps = 120 frames, injected as variable
-    assert "const durationInFrames = 120;" in tsx
+    # 4.0s * 30fps = 120 frames, injected as _sceneDuration to avoid name collision
+    assert "const _sceneDuration = 120;" in tsx
 
 
 def test_build_remotion_tsx_imports_remotion_apis():

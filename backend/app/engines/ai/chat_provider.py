@@ -245,7 +245,8 @@ const lineX2 = R_CX - BOX_W / 2;
 【帧与时序规则】
 - code 片段在 React 组件函数体内执行，可直接调用 Hooks：useCurrentFrame()、useVideoConfig()
 - useCurrentFrame() 返回当前镜头内的相对帧（从 0 开始）
-- 渲染引擎自动注入 const durationInFrames = N;（N = estimated_duration_seconds × fps），可直接使用
+- 渲染引擎自动注入 const _sceneDuration = N;（N = estimated_duration_seconds × fps），可直接使用
+- 禁止自行声明 durationInFrames（会与 useVideoConfig() 解构冲突导致编译报错）；用 _sceneDuration 代替
 - 动画用 interpolate(frame, [inputRange], [outputRange]) 或 spring({ frame, fps }) 驱动
 - interpolate() 只能插值数字（opacity、translateY、scale、strokeDashoffset 等），禁止传入颜色字符串
 - 颜色过渡必须用 interpolateColors()：interpolateColors(progress, [0, 1], ["#D4C5F0", "#4ECDC4"])

@@ -56,20 +56,26 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tup
         "    <AbsoluteFill>",
     ]
 
+    # Generate named sub-components (hooks-compliant, one per scene)
+    for i, (scene, dur) in enumerate(zip(scenes, durations)):
+        lines.append(f"const _Scene{i} = () => {{")
+        lines.append(f"  const durationInFrames = {dur};")
+        for code_line in scene.code.splitlines():
+            lines.append(f"  {code_line}")
+        lines.append("};")
+        lines.append("")
+
     offset = 0
     for i, (scene, dur) in enumerate(zip(scenes, durations)):
         audio_line = ""
         if scene.audio and scene.audio.audio_path:
-            audio_line = f'        <Audio src="file://{scene.audio.audio_path}" />'
+            audio_line = f'      <Audio src="file://{scene.audio.audio_path}" />'
 
         lines.append(f"      {{/* Scene {i}: {scene.description} */}}")
         lines.append(f"      <Sequence from={{{offset}}} durationInFrames={{{dur}}}>")
         if audio_line:
             lines.append(audio_line)
-        lines.append("        {(() => {")
-        for code_line in scene.code.splitlines():
-            lines.append(f"          {code_line}")
-        lines.append("        })()}")
+        lines.append(f"        <_Scene{i} />")
         lines.append("      </Sequence>")
         offset += dur
 

@@ -64,13 +64,23 @@ def test_build_remotion_tsx_no_audio_uses_estimated_duration():
     assert "durationInFrames={150}" in tsx
 
 
-def test_build_remotion_tsx_wraps_code_in_iife():
+def test_build_remotion_tsx_wraps_code_in_named_component():
     scenes = [
         _make_scene(0, "const x = 1;\nreturn <div>{x}</div>", duration=2.0, audio_path="/tmp/s0.mp3"),
     ]
     tsx = _build_remotion_tsx(scenes, fps=30)
-    assert "(() => {" in tsx
+    assert "const _Scene0 = () => {" in tsx
     assert "const x = 1;" in tsx
+    assert "<_Scene0 />" in tsx
+
+
+def test_build_remotion_tsx_injects_duration_in_frames():
+    scenes = [
+        _make_scene(0, "return <div/>", duration=4.0, audio_path="/tmp/s0.mp3"),
+    ]
+    tsx = _build_remotion_tsx(scenes, fps=30)
+    # 4.0s * 30fps = 120 frames, injected as variable
+    assert "const durationInFrames = 120;" in tsx
 
 
 def test_build_remotion_tsx_imports_remotion_apis():

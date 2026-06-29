@@ -208,15 +208,17 @@ self.play(Create(ray), run_time=0.8)
         "remotion": """\
 【Remotion 代码规范】
 
-渲染引擎已生成外层结构，code 字段只写放入 <Sequence> 内部的 JSX 片段。禁止在 code 里写 export const VideoScene 外层定义。
+渲染引擎为每个镜头生成一个具名 React 组件（如 _Scene0、_Scene1），code 字段即该组件的函数体。
+禁止在 code 里写 export、const _SceneN、const VideoScene 等外层定义——这些由渲染引擎自动生成。
 
 画布尺寸：1280 × 720 px（16:9），所有元素坐标和尺寸以此为基准，禁止超出边界。
 SVG viewBox 统一使用 "0 0 1280 720"。
 
 【帧与时序规则】
-- 在 code 片段内用 useCurrentFrame() 获取当前 <Sequence> 内的相对帧（从 0 开始）
+- code 片段在 React 组件函数体内执行，可直接调用 Hooks：useCurrentFrame()、useVideoConfig()
+- useCurrentFrame() 返回当前镜头内的相对帧（从 0 开始）
+- 渲染引擎自动注入 const durationInFrames = N;（N = estimated_duration_seconds × fps），可直接使用
 - 动画用 interpolate(frame, [inputRange], [outputRange]) 或 spring({ frame, fps }) 驱动
-- estimated_duration_seconds × fps（默认 30）= 该镜头 durationInFrames，渲染引擎自动计算，code 里不要硬编码绝对帧数
 - 镜头间过渡用 interpolate + opacity 实现淡入淡出，或用 spring() 做弹性动效
 
 【跨镜头共享元素】
@@ -279,12 +281,12 @@ SVG viewBox 统一使用 "0 0 1280 720"。
 - 主体图形：spring({ frame, fps, config: { stiffness: 70, damping: 14 } }) 驱动 scale + opacity
 - 文字标题：spring({ stiffness: 80, damping: 12 }) 驱动 translateY（从 +30px）+ opacity
 - 多元素错落入场：每个元素用 Math.max(0, frame - delay) 作为偏移帧，delay 间隔 4–6 帧，制造层次感
-- 连线/路径生长：interpolate(frame, [0, durationFrames * 0.6], [0, totalLength]) 驱动 strokeDashoffset
+- 连线/路径生长：interpolate(frame, [0, durationInFrames * 0.6], [0, totalLength]) 驱动 strokeDashoffset
 
 强调动画：
 - 关键结论：scale spring 放大至 1.15 后回弹（stiffness: 200, damping: 10）
 - 颜色切换：interpolate(frame, [highlightStart, highlightStart+8], [0, 1]) 驱动颜色插值
-- 数字滚动：interpolate(frame, [0, durationFrames*0.7], [startVal, endVal], { extrapolateRight: "clamp" }) 配合 Math.round
+- 数字滚动：interpolate(frame, [0, durationInFrames*0.7], [startVal, endVal], { extrapolateRight: "clamp" }) 配合 Math.round
 
 退场：
 - interpolate(frame, [exitStart, exitStart+10], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })

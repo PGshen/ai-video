@@ -11,6 +11,16 @@ from app.engines.render.manim import _RenderResultWithBytes
 
 logger = logging.getLogger(__name__)
 
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _resolve_template_dir() -> Path:
+    p = Path(settings.REMOTION_TEMPLATE_DIR)
+    if p.is_absolute():
+        return p
+    return _REPO_ROOT / p
+
+
 _REMOTION_IMPORTS = """\
 import React from 'react';
 import {
@@ -100,7 +110,7 @@ class RemotionRenderEngine:
             return await self._render_in_dir(request, tmpdir)
 
     async def _render_in_dir(self, request: RenderRequest, tmpdir: str) -> RenderResult:
-        template_dir = Path(settings.REMOTION_TEMPLATE_DIR).resolve()
+        template_dir = _resolve_template_dir()
         node_modules_src = template_dir / "node_modules"
 
         # Copy template files into tmpdir
@@ -113,7 +123,7 @@ class RemotionRenderEngine:
 
         # Symlink node_modules
         node_modules_link = Path(tmpdir) / "node_modules"
-        if not node_modules_link.exists():
+        if not node_modules_link.exists() and not node_modules_link.is_symlink():
             os.symlink(str(node_modules_src), str(node_modules_link))
 
         # Write generated VideoScene.tsx
@@ -182,5 +192,6 @@ class RemotionRenderEngine:
         )
 
     async def health_check(self) -> bool:
-        remotion_bin = Path(settings.REMOTION_TEMPLATE_DIR).resolve() / "node_modules" / ".bin" / "remotion"
+        template_dir = _resolve_template_dir()
+        remotion_bin = template_dir / "node_modules" / ".bin" / "remotion"
         return remotion_bin.exists()

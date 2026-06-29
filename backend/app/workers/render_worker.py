@@ -60,7 +60,7 @@ class RenderWorker(BaseWorker):
             db.close()
 
         # Step 2: 下载音频并渲染
-        logger.info("[RenderWorker] Starting Manim render for asset %s", asset_id_str)
+        logger.info("[RenderWorker] Starting %s render for asset %s", render_engine_name, asset_id_str)
         with tempfile.TemporaryDirectory() as tmpdir:
             scene_inputs = []
             for i, s in enumerate(scenes_data):

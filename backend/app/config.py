@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     TTS_ENGINE: str = "volcengine"
     MINIO_BUCKET: str = "video-workflow"
     MANIM_TIMEOUT_SECONDS: float = 600.0
+    REMOTION_TIMEOUT_SECONDS: float = 600.0
+    REMOTION_TEMPLATE_DIR: str = "remotion-template"
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

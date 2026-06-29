@@ -23,7 +23,7 @@ def _resolve_template_dir() -> Path:
 _REMOTION_IMPORTS = """\
 import React from 'react';
 import {
-  AbsoluteFill, Sequence, Audio,
+  AbsoluteFill, Sequence, Audio, staticFile,
   useCurrentFrame, useVideoConfig,
   interpolate, spring,
 } from 'remotion';"""
@@ -69,7 +69,8 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tup
     for i, (scene, dur) in enumerate(zip(scenes, durations)):
         audio_line = ""
         if scene.audio and scene.audio.audio_path:
-            audio_line = f'      <Audio src="file://{scene.audio.audio_path}" />'
+            filename = os.path.basename(scene.audio.audio_path)
+            audio_line = f"      <Audio src={{staticFile('{filename}')}} />"
 
         lines.append(f"    {{/* Scene {i}: {scene.description} */}}")
         lines.append(f"    <Sequence from={{{offset}}} durationInFrames={{{dur}}}>")
@@ -140,7 +141,11 @@ class RemotionRenderEngine:
 
         output_path = str(Path(tmpdir) / "output.mp4")
         remotion_bin = str(node_modules_src / ".bin" / "remotion")
-        cmd = [remotion_bin, "render", "VideoScene", output_path, "--fps", str(request.fps)]
+        cmd = [
+            remotion_bin, "render", "VideoScene", output_path,
+            "--fps", str(request.fps),
+            "--public-dir", tmpdir,
+        ]
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,

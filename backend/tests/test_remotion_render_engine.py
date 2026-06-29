@@ -48,7 +48,7 @@ def test_build_remotion_tsx_audio_src():
         _make_scene(0, "return <div/>", duration=3.0, audio_path="/tmp/my_audio.mp3"),
     ]
     tsx = _build_remotion_tsx(scenes, fps=30)
-    assert 'src="file:///tmp/my_audio.mp3"' in tsx
+    assert "staticFile('my_audio.mp3')" in tsx
 
 
 def test_build_remotion_tsx_no_audio_uses_estimated_duration():

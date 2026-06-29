@@ -25,7 +25,7 @@ import React from 'react';
 import {
   AbsoluteFill, Sequence, Audio, staticFile,
   useCurrentFrame, useVideoConfig,
-  interpolate, spring,
+  interpolate, interpolateColors, spring,
 } from 'remotion';"""
 
 

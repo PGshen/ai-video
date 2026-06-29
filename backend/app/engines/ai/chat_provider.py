@@ -210,6 +210,9 @@ self.play(Create(ray), run_time=0.8)
 渲染引擎为每个镜头生成一个具名 React 组件（如 _Scene0、_Scene1），code 字段即该组件的函数体。
 禁止在 code 里写 export、const _SceneN、const VideoScene 等外层定义——这些由渲染引擎自动生成。
 
+可直接使用的 API（已由渲染引擎导入，无需 import）：
+AbsoluteFill、Sequence、Audio、staticFile、useCurrentFrame、useVideoConfig、interpolate、interpolateColors、spring
+
 画布尺寸：1280 × 720 px（16:9），所有元素坐标和尺寸以此为基准，禁止超出边界。
 SVG viewBox 统一使用 "0 0 1280 720"。
 
@@ -244,6 +247,8 @@ const lineX2 = R_CX - BOX_W / 2;
 - useCurrentFrame() 返回当前镜头内的相对帧（从 0 开始）
 - 渲染引擎自动注入 const durationInFrames = N;（N = estimated_duration_seconds × fps），可直接使用
 - 动画用 interpolate(frame, [inputRange], [outputRange]) 或 spring({ frame, fps }) 驱动
+- interpolate() 只能插值数字（opacity、translateY、scale、strokeDashoffset 等），禁止传入颜色字符串
+- 颜色过渡必须用 interpolateColors()：interpolateColors(progress, [0, 1], ["#D4C5F0", "#4ECDC4"])
 - 镜头间过渡用 interpolate + opacity 实现淡入淡出，或用 spring() 做弹性动效
 
 【跨镜头共享元素】

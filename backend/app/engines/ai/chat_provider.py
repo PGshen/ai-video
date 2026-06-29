@@ -81,35 +81,76 @@ Axes 是最容易导致内容溢出的对象，必须遵守以下规则：
 - 小标注（公式辅助说明）：font_size=22
 - 禁止使用不加 font_size 的裸 Text()（默认值过大，导致布局失控）
 
-【配色系统——活力暖色扁平】
-背景：米白 #F5F0E8（渲染器已全局设置，代码无需处理）
-主色（暖色）：草莓红 #E8524A、橘橙 #F07D3E、向日葵黄 #F5C518
-辅助色（冷色）：天蓝 #4BA3C3、草绿 #5BAD6F
-强调色：薰衣草紫 #9B7EC8
-文字/轮廓：深炭灰 #2C2C2C
-同一画面控制在 1 个主色 + 1 个辅色 + 1 个强调色，避免彩虹式混色
-禁止：荧光色、高饱和原色（纯红/纯蓝/纯绿）、纯白文字（白底白字不可见）
+【配色系统】
+请严格遵循以下配色方案，所有颜色以十六进制表示：
+# 背景
+- 主背景（亮底）：#F7F3FF
+# 正文
+- 亮底上的文字：#1C1433
+- 深底上的文字：#F7F3FF
+- 辅助注释文字：#8E7DC0
+# 核心概念色
+- 偏差概念主体：#6C4FD4（认知紫）
+- 子概念 / 举例说明：#A98EE8（浅紫）
+# 语义强调色
+- 认知陷阱 / 错误判断：#FF6B6B（红）
+- 警示 / 引发注意：#FFB347（橙）
+- 理性思维 / 纠偏方法：#4ECDC4（青）
+- 正确结论 / 突破偏差：#44CF6C（绿）
+- 情感驱动 / 系统1直觉：#FF9EBB（粉）
+# 结构辅助色
+- 坐标轴 / 网格（深底）：#4A3880
+- 坐标轴 / 网格（亮底）：#D4C5F0
+- 深辅助面：#2E2255
+# 配色使用原则
+1. 以亮底 #F7F3FF 为主场景
+2. 红色专用于「偏差/错误」，绿色专用于「正确/结论」，不可混用
+3. 橙色用于引发注意的过渡状态，不表示最终结论
+4. 青色代表理性分析，与粉色（直觉）形成对比，可用于系统1/系统2的视觉对立
+5. 主色饱和度高，确保手机竖屏小尺寸下依然清晰可辨
 
-【动画节奏规范】
-入场动画（按优先级）：
-- 图形：GrowFromCenter（弹性感首选）或 DrawBorderThenFill
-- 文字：Write
+【视觉精致度规范（重要）】
+构图与层次：
+- 每个镜头须有明确的视觉层次：背景装饰层 → 主体图形层 → 文字标注层，三层分离，避免元素平铺堆叠
+- 图形之间保持充足间距（shift 间距 ≥ 1.5 单位），避免拥挤感
+- 半透明背景光晕：在主体元素后方放置 fill_opacity=0.12 的同色系大圆或矩形作衬底，提升视觉厚度
+- 箭头统一 stroke_width=3，tip_length=0.2；避免默认粗箭头显得笨重
+- 数据图表（Axes/Graph）搭配辅助网格线（DashedLine，opacity=0.25）提升专业感
+
+精致细节：
+- 标题镜头：主标题下方配一条细分隔线（Line，stroke_width=1.5，长度与文字同宽，同色系）
+- 关键概念节点使用双圆：外圈 stroke_width=1.5、fill_opacity=0.1，内圈实心小圆叠加
+- 箭头标注文字 font_size=22，偏移 ≥ 0.3 单位，不贴着箭头
+- 多元素左右/上下对比布局时加一条垂直/水平分隔虚线（DashedLine，opacity=0.4）
+- 数字或百分比变化用 DecimalNumber 动态滚动，不要静态文字
+
+【动画节奏规范（大气感）】
+入场动画：
+- 核心图形：GrowFromCenter（弹性感首选）；图表类：Create
+- 文字标题：Write；说明性文字：FadeIn（配合轻微向上偏移）
 - 箭头：Create（GrowArrow 在当前版本有 bug，禁止使用）
-- 次要/背景元素：FadeIn（非首选）
+- 多元素错落入场：必须用 LaggedStart([...], lag_ratio=0.2) 制造层次感，禁止所有元素同帧同时出现
+- 复杂图示（节点+连线+标注）：分三步出现——先节点，再连线，再标注
 
 强调动画（关键结论必须使用）：
 - Flash、Circumscribe、Indicate 突出关键节点
+- 关键数字/结论：Indicate 后保持高亮颜色，不要闪一下就恢复原色
+- 两侧对比：AnimationGroup(Indicate(A), Indicate(B)) 同步触发，视觉冲击更强
 - 避免只用静态颜色高亮
 
 变换动画：
-- 图形演变：ReplacementTransform
-- 属性变化（位置/缩放/颜色）：.animate
+- 图形演变：ReplacementTransform（保持动画连续性）
+- 属性变化（位置/缩放/颜色）：.animate 链式调用，如 .animate.scale(1.2).set_color(...)
+- 分裂/聚合：VGroup.animate.arrange() 展示元素重组过程
 - 禁止：消灭元素后重建同功能元素
 
-退场动画：FadeOut(element, run_time=0.5)，统一 0.5s
+退场动画：
+- 单个元素：FadeOut(element, run_time=0.5)
+- 多元素同时退场：FadeOut(VGroup(a, b, c), run_time=0.6)，整洁利落
 
 run_time 选择：
-- 简单入场：0.8s；标准动画：1.0–1.5s；复杂变换：2.0s；退场：0.5s
+- 简单入场：0.8s；标准动画：1.2s；关键变换/强调结论：1.8–2.0s；退场：0.5s
+- LaggedStart 整体时长控制在 1.5–2.0s，lag_ratio=0.15–0.25
 
 【退场检查清单（每个镜头必须执行）】
 每个镜头代码开头，隐式维护画布存量列表，对每个存活元素判断：
@@ -135,8 +176,10 @@ run_time 选择：
 - 除纯标题或总结镜头外，每个镜头至少设计一个承载知识含义的图形动画
 - 多用 Circle、Square、Arrow、NumberLine、Axes、Graph、VGroup 构建关系、过程、对比或变化
 - 优先让已有图形移动、缩放、变形、连线、分裂或聚合来推进讲解，避免只摆放静态文字
+- 使用 LaggedStart 错落展示多元素，节点+连线+标注分三步入场，避免同帧全部出现
 - 公式只展示理解结论不可缺少的关键公式，用 MathTex 配合图形直观解释；不要连续堆砌公式
 - 画面文字只保留关键词、数字、公式、简短标注，每帧不超过 15 个汉字
+- 每个镜头的图形元素数量控制在 3–6 个，宁可精少，不要密集平铺
 
 【文字渲染规则（重要）】
 - 所有中文、日文等非 ASCII 文字必须使用 Text()，禁止使用 MathTex() 或 Tex()
@@ -147,7 +190,7 @@ run_time 选择：
 【典型跨镜头示例】
 # === 镜头 0（标题引入）===
 # 画布存量：空
-title = Text("为什么天空是蓝色的？", font_size=44, color=ManimColor("#2C2C2C"))
+title = Text("为什么天空是蓝色的？", font_size=44, color=ManimColor("#1C1433"))
 self.play(Write(title), run_time=1.5)
 self.wait(1)
 
@@ -155,9 +198,9 @@ self.wait(1)
 # 画布存量：title
 # title → 保留，缩小移至顶部
 self.play(title.animate.scale(0.6).to_edge(UP), run_time=0.8)
-sun = Circle(radius=0.5, color=ManimColor("#F07D3E"), fill_opacity=1).shift(LEFT * 4)
-earth = Circle(radius=0.3, color=ManimColor("#4BA3C3"), fill_opacity=1).shift(RIGHT * 3)
-ray = Arrow(sun.get_right(), earth.get_left(), color=ManimColor("#E8524A"), buff=0.1)
+sun = Circle(radius=0.5, color=ManimColor("#FFB347"), fill_opacity=1).shift(LEFT * 4)
+earth = Circle(radius=0.3, color=ManimColor("#4ECDC4"), fill_opacity=1).shift(RIGHT * 3)
+ray = Arrow(sun.get_right(), earth.get_left(), color=ManimColor("#6C4FD4"), buff=0.1)
 self.play(GrowFromCenter(sun), GrowFromCenter(earth), run_time=1.0)
 self.play(Create(ray), run_time=0.8)
 # 本镜头无需转场：保留图示，渲染器自动补齐剩余时长
@@ -181,13 +224,33 @@ SVG viewBox 统一使用 "0 0 1280 720"。
 - 每个镜头的 code 只负责该镜头独有的内容
 - 镜头边界不等于清场点；关键元素保持到对应旁白结束，仅在叙事转折或替换时淡出
 
-【配色系统——活力暖色扁平】
-背景：米白 #F5F0E8
-主色（暖色）：草莓红 #E8524A、橘橙 #F07D3E、向日葵黄 #F5C518
-辅助色（冷色）：天蓝 #4BA3C3、草绿 #5BAD6F
-强调色：薰衣草紫 #9B7EC8
-文字：深炭灰 #2C2C2C
-同一画面最多 1 主色 + 1 辅色 + 1 强调色
+【配色系统】
+请严格遵循以下配色方案，所有颜色以十六进制表示：
+# 背景
+- 主背景（亮底）：#F7F3FF
+# 正文
+- 亮底上的文字：#1C1433
+- 深底上的文字：#F7F3FF
+- 辅助注释文字：#8E7DC0
+# 核心概念色
+- 偏差概念主体：#6C4FD4（认知紫）
+- 子概念 / 举例说明：#A98EE8（浅紫）
+# 语义强调色
+- 认知陷阱 / 错误判断：#FF6B6B（红）
+- 警示 / 引发注意：#FFB347（橙）
+- 理性思维 / 纠偏方法：#4ECDC4（青）
+- 正确结论 / 突破偏差：#44CF6C（绿）
+- 情感驱动 / 系统1直觉：#FF9EBB（粉）
+# 结构辅助色
+- 坐标轴 / 网格（深底）：#4A3880
+- 坐标轴 / 网格（亮底）：#D4C5F0
+- 深辅助面：#2E2255
+# 配色使用原则
+1. 以亮底 #F7F3FF 为主场景
+2. 红色专用于「偏差/错误」，绿色专用于「正确/结论」，不可混用
+3. 橙色用于引发注意的过渡状态，不表示最终结论
+4. 青色代表理性分析，与粉色（直觉）形成对比，可用于系统1/系统2的视觉对立
+5. 主色饱和度高，确保手机竖屏小尺寸下依然清晰可辨
 
 【字体规范】
 - 主标题：fontSize: 56
@@ -196,42 +259,67 @@ SVG viewBox 统一使用 "0 0 1280 720"。
 - 小标注：fontSize: 22
 - 禁止使用无 fontSize 的裸 style 文字
 
-【动画节奏规范】
-入场：spring({ frame, fps, config: { stiffness: 80, damping: 12 } }) 做弹性入场（opacity、translateY、scale）
-线性变化：interpolate(frame, [in, out], [from, to], { extrapolateRight: "clamp" })
-退场：interpolate(frame, [exitStart, exitEnd], [1, 0]) 实现淡出
-强调：scale spring 放大后回弹（stiffness: 200, damping: 10）
-避免：所有动画都用 opacity 线性，缺乏弹性感
+【视觉精致度规范（重要）】
+构图与层次：
+- 每个镜头须有明确的视觉层次：背景装饰层 → 主体 SVG 图形层 → 文字标注层，三层分离
+- 元素之间保持充足间距（≥ 40px），避免拥挤感
+- 背景光晕效果：在核心元素后方叠加一个半透明径向渐变圆（opacity: 0.12），提升视觉厚度
+  示例：<circle cx={640} cy={360} r={200} fill="#6C4FD4" opacity={0.1} />
+- 箭头使用 SVG <defs><marker> 自定义箭头头部，strokeWidth=2.5，避免默认粗箭头
+- 数据图表类镜头添加辅助网格线（strokeDasharray="4 6"，opacity=0.2）
+
+精致细节：
+- 标题下方配装饰线：<line> 宽度与文字等宽，strokeWidth=1.5，同色系
+- 关键节点使用双圆叠加：外圈半透明（opacity=0.15），内圈实心
+- 标注文字使用 fontSize=20，偏移文字中心 ≥ 12px，不贴着图形边缘
+- 多元素对比布局加垂直/水平分隔线（strokeDasharray="6 4"，opacity=0.35）
+
+【动画节奏规范（大气感）】
+入场（弹性为主）：
+- 主体图形：spring({ frame, fps, config: { stiffness: 70, damping: 14 } }) 驱动 scale + opacity
+- 文字标题：spring({ stiffness: 80, damping: 12 }) 驱动 translateY（从 +30px）+ opacity
+- 多元素错落入场：每个元素用 Math.max(0, frame - delay) 作为偏移帧，delay 间隔 4–6 帧，制造层次感
+- 连线/路径生长：interpolate(frame, [0, durationFrames * 0.6], [0, totalLength]) 驱动 strokeDashoffset
+
+强调动画：
+- 关键结论：scale spring 放大至 1.15 后回弹（stiffness: 200, damping: 10）
+- 颜色切换：interpolate(frame, [highlightStart, highlightStart+8], [0, 1]) 驱动颜色插值
+- 数字滚动：interpolate(frame, [0, durationFrames*0.7], [startVal, endVal], { extrapolateRight: "clamp" }) 配合 Math.round
+
+退场：
+- interpolate(frame, [exitStart, exitStart+10], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
+- 退场时配合轻微下移（translateY 从 0 → +15px）增加动感
+
+避免：所有动画都用 opacity 线性；元素突然出现无任何过渡；缺乏弹性感
 
 【视觉优先】
 - 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画
-- 用路径、位置、大小、连接或形变展示关系和过程，避免静态文字页
+- 用路径生长、位置移动、大小缩放、连接关系或形变动画推进讲解，避免静态文字页
 - 公式只保留支撑核心结论的关键公式，配合图形解释，避免公式堆砌
 - 每帧文字不超过 15 个汉字
 
 【文字渲染规则】
 - 所有文字用 <div> 或 <text>（SVG），统一设置 fontFamily 为无衬线体
 - 中文避免使用系统默认 serif 字体，推荐 style={{ fontFamily: "PingFang SC, Microsoft YaHei, sans-serif" }}
+- 标题文字加 letterSpacing: 2 提升精致感；正文 letterSpacing: 0.5
 
 【典型示例】
-// 镜头 0：标题弹性入场
+// 镜头 0：标题精致入场（弹性 + 装饰线）
 const frame = useCurrentFrame();
 const { fps } = useVideoConfig();
-const progress = spring({ frame, fps, config: { stiffness: 80, damping: 12 } });
-const opacity = interpolate(progress, [0, 1], [0, 1]);
-const translateY = interpolate(progress, [0, 1], [30, 0]);
+const titleSpring = spring({ frame, fps, config: { stiffness: 80, damping: 12 } });
+const titleOpacity = interpolate(titleSpring, [0, 1], [0, 1]);
+const titleY = interpolate(titleSpring, [0, 1], [30, 0]);
+const lineSpring = spring({ frame: Math.max(0, frame - 8), fps, config: { stiffness: 60, damping: 14 } });
+const lineWidth = interpolate(lineSpring, [0, 1], [0, 360]);
 return (
-  <AbsoluteFill style={{ background: "#F5F0E8", justifyContent: "center", alignItems: "center" }}>
-    <div style={{
-      opacity,
-      transform: `translateY(${translateY}px)`,
-      fontSize: 56,
-      color: "#2C2C2C",
-      fontWeight: "bold",
-      fontFamily: "PingFang SC, Microsoft YaHei, sans-serif"
-    }}>
+  <AbsoluteFill style={{ background: "#F7F3FF", justifyContent: "center", alignItems: "center", flexDirection: "column", gap: 16 }}>
+    <div style={{ opacity: titleOpacity, transform: `translateY(${titleY}px)`, fontSize: 56, color: "#1C1433", fontWeight: "bold", fontFamily: "PingFang SC, Microsoft YaHei, sans-serif", letterSpacing: 2 }}>
       为什么天空是蓝色的？
     </div>
+    <svg width={lineWidth} height={3} style={{ overflow: "visible" }}>
+      <line x1={0} y1={1.5} x2={lineWidth} y2={1.5} stroke="#6C4FD4" strokeWidth={1.5} />
+    </svg>
   </AbsoluteFill>
 );
 
@@ -241,14 +329,14 @@ const { fps } = useVideoConfig();
 const rayProgress = spring({ frame, fps, config: { stiffness: 60, damping: 14 } });
 const rayLength = interpolate(rayProgress, [0, 1], [0, 400]);
 return (
-  <AbsoluteFill style={{ background: "#F5F0E8" }}>
+  <AbsoluteFill style={{ background: "#F7F3FF" }}>
     <svg width="100%" height="100%" viewBox="0 0 1280 720">
-      <circle cx={240} cy={360} r={60} fill="#F07D3E" />
+      <circle cx={240} cy={360} r={60} fill="#FFB347" />
       <line x1={300} y1={360} x2={300 + rayLength} y2={360}
-            stroke="#4BA3C3" strokeWidth={4} />
+            stroke="#4ECDC4" strokeWidth={4} />
       <line x1={300 + rayLength * 0.7} y1={360}
             x2={300 + rayLength * 0.7 + rayLength * 0.3 * 0.7} y2={320}
-            stroke="#E8524A" strokeWidth={3} opacity={interpolate(rayProgress, [0.5, 1], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })} />
+            stroke="#6C4FD4" strokeWidth={3} opacity={interpolate(rayProgress, [0.5, 1], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })} />
     </svg>
   </AbsoluteFill>
 );
@@ -375,9 +463,10 @@ description 字段只写画面意图，由代码生成阶段翻译为 Manim 动�
 
 【配色参考】
 颜色名与 Hex 对照（description 中用颜色名即可，代码生成阶段再转 Hex）：
-- 草莓红 #E8524A、橘橙 #F07D3E、向日葵黄 #F5C518（暖色系）
-- 天蓝 #4BA3C3、草绿 #5BAD6F、薰衣草紫 #9B7EC8（冷色辅助）
-- 深炭灰 #2C2C2C（文字/轮廓）；背景：米白（渲染器已设置）
+- 认知紫 #6C4FD4（核心概念）、浅紫 #A98EE8（子概念/举例）
+- 错误红 #FF6B6B（陷阱/错误）、警示橙 #FFB347（引发注意）
+- 理性青 #4ECDC4（纠偏/分析）、结论绿 #44CF6C（正确结论）、直觉粉 #FF9EBB（情感/系统1）
+- 深炭 #1C1433（文字/轮廓）；背景：淡紫白 #F7F3FF
 
 【跨镜头衔接描述方式】
 - "承接上镜[元素描述]，[动作意图]" —— 元素延续
@@ -392,27 +481,35 @@ description 字段只写画面意图，由代码生成阶段翻译为 Manim 动�
 
 【内容要求】
 - 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的图形动画
-- 优先用位置、大小、连接、分裂、聚合或形变推进讲解，避免只摆放静态文字
+- 优先用位置移动、大小缩放、连线生长、分裂、聚合或形变推进讲解，避免只摆放静态文字
 - 先用直观图形讲清概念，只在支撑核心结论时引入关键公式，不堆砌推导
 - 每帧文字不超过 15 个汉字
+- 图形元素数量控制在 3–6 个，精而有层次；多元素须错落入场，不要同时全部出现
+
+【精致度要求】
+- 标题镜头：主标题下方配装饰细线，主题色渐显
+- 概念节点：建议双圆（外圈半透明光晕 + 内圈实心）或带圆角矩形容器，不要裸文字
+- 连线/箭头：描述粗细（"细箭头"/"粗连线"）和方向感（"从左向右延伸"）
+- 强调结论时：描述"放大高亮"或"周围扩散光环"，让代码生成阶段能对应 Indicate/Flash
 
 【示例】
-镜头 0："米白背景。中央出现主标题文字，动态写入。保留至旁白结束，延续到下一镜头。"
-镜头 1："承接上镜标题，缩小移至顶部保留。左侧出现橙色圆形代表太阳，草莓红箭头从太阳向右延伸，末端散射成多条分支，展示光的散射过程。图示保留至旁白结束。"
-镜头 2："承接上镜图示。蓝色短波分支高亮放大，其余颜色分支淡化。右侧出现标注文字'蓝光波长最短'。标题和散射图示完成使命后退场，保留高亮蓝色分支作为下镜视觉锚点。"\
+镜头 0："淡紫白背景。中央主标题文字逐字写入，下方同步出现认知紫装饰细线从中心向两侧伸展。整体保留至旁白结束，延续到下一镜头。"
+镜头 1："承接上镜标题，缩小移至顶部保留。画面中央：左侧出现警示橙双圆节点（外圈半透明光晕）代表太阳，错落入场后认知紫细箭头从太阳右侧向右生长延伸，末端分裂成多条散射分支，展示光的散射过程。图示保留至旁白结束。"
+镜头 2："承接上镜图示。理性青短波分支放大高亮并周围扩散光环（强调动画），其余颜色分支同时淡化至低透明度。右侧错落入场辅助注释文字'蓝光波长最短'。旁白结束后标题和散射主图完成使命退场，保留高亮青色分支作为下镜视觉锚点。"\
 """,
         "remotion": """\
 【Remotion 画面描述规范——弱技术层】
 description 字段只写画面意图，由代码生成阶段翻译为 React/TSX 动画代码。禁止在 description 中出现组件名、hook 名或代码语法。
 
 【可用图形词汇】
-SVG 图形：圆形、矩形、路径、线条、多边形
-连接关系：箭头、连线
-文字层：标题、说明文字、数字标注、关键公式（文字描述）
+SVG 图形：圆形（含双圆/光晕圆）、矩形（含圆角矩形容器）、路径、线条、多边形、径向渐变背景光晕
+连接关系：箭头（细/粗）、连线（实线/虚线）、路径生长动画
+文字层：标题、说明文字、数字标注、滚动数字、关键公式（文字描述）
+装饰元素：装饰细线、分隔线、背景辅助网格
 
 【配色参考】
 颜色名与 Hex 对照（description 中用颜色名即可）：
-草莓红 #E8524A、橘橙 #F07D3E、向日葵黄 #F5C518；天蓝 #4BA3C3、草绿 #5BAD6F；深炭灰 #2C2C2C；背景：米白
+认知紫 #6C4FD4、浅紫 #A98EE8；错误红 #FF6B6B、警示橙 #FFB347；理性青 #4ECDC4、结论绿 #44CF6C；直觉粉 #FF9EBB；深炭 #1C1433；背景：淡紫白 #F7F3FF
 
 【跨镜头衔接说明】
 Remotion 每个 Sequence 是独立作用域。跨镜头持续存在的元素（背景、顶部标题栏）在 description 中注明"作为共享层延续"。
@@ -421,10 +518,18 @@ Remotion 每个 Sequence 是独立作用域。跨镜头持续存在的元素（�
 - 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画
 - 先图形讲解，关键公式只在支撑核心结论时出现，不堆砌推导
 - 每帧文字不超过 15 个汉字
+- 图形元素数量控制在 3–6 个，精而有层次；多元素须描述"错落依次入场"
+
+【精致度要求】
+- 标题镜头：主标题下方配同色装饰线从中心向两侧伸展
+- 概念节点：建议"双圆节点（外圈半透明光晕+内圈实心）"或"带圆角矩形容器"
+- 连线/路径：描述"从左向右生长延伸"等动态过程，而非"出现一条线"
+- 强调结论：描述"弹性放大后回弹"或"周围扩散光环"
+- 数字变化：描述"数字从0滚动到X"而非静态显示
 
 【示例】
-镜头 0："米白背景。中央主标题文字弹性入场，保留至旁白结束。"
-镜头 1："背景和缩小后的标题作为共享层延续。中央 SVG：左侧橘橙圆形代表太阳，天蓝线条向右延伸后分裂成多条散射路径，图示保留至旁白结束。"\
+镜头 0："淡紫白背景。中央主标题文字弹性入场（从下方轻微上移），下方认知紫装饰细线同步从中心向两侧伸展。整体保留至旁白结束。"
+镜头 1："背景和缩小后的标题作为共享层延续至顶部。画面中央 SVG：左侧警示橙双圆节点（外圈半透明光晕）弹性入场代表太阳，稍后理性青细线从节点右侧向右生长延伸，末端弹性分裂成多条散射路径，展示光的散射过程。图示保留至旁白结束。"\
 """,
     }
     _NARRATIVE_ENGINE_HINT_FALLBACK = (

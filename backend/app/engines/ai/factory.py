@@ -2,6 +2,8 @@ from app.config import settings
 from app.engines.ai.base import AIProvider
 from app.engines.ai.chat_provider import ChatAIProvider
 from app.engines.ai.deepseek import DeepSeekClient
+from app.engines.ai.gemini import GeminiClient
+from app.engines.ai.openrouter import OpenRouterClient
 from app.engines.ai.stub import StubProvider
 
 
@@ -17,5 +19,29 @@ def get_ai_provider() -> AIProvider:
             ),
             script_max_tokens=settings.DEEPSEEK_SCRIPT_MAX_TOKENS,
             json_max_tokens=settings.DEEPSEEK_JSON_MAX_TOKENS,
+        )
+    if provider == "openrouter" and settings.OPENROUTER_API_KEY:
+        return ChatAIProvider(
+            client=OpenRouterClient(
+                api_key=settings.OPENROUTER_API_KEY,
+                base_url=settings.OPENROUTER_BASE_URL,
+                model=settings.OPENROUTER_MODEL,
+                timeout_seconds=settings.OPENROUTER_TIMEOUT_SECONDS,
+                site_url=settings.OPENROUTER_SITE_URL,
+                site_name=settings.OPENROUTER_SITE_NAME,
+            ),
+            script_max_tokens=settings.OPENROUTER_SCRIPT_MAX_TOKENS,
+            json_max_tokens=settings.OPENROUTER_JSON_MAX_TOKENS,
+        )
+    if provider == "gemini" and settings.GEMINI_API_KEY:
+        return ChatAIProvider(
+            client=GeminiClient(
+                api_key=settings.GEMINI_API_KEY,
+                base_url=settings.GEMINI_BASE_URL,
+                model=settings.GEMINI_MODEL,
+                timeout_seconds=settings.GEMINI_TIMEOUT_SECONDS,
+            ),
+            script_max_tokens=settings.GEMINI_SCRIPT_MAX_TOKENS,
+            json_max_tokens=settings.GEMINI_JSON_MAX_TOKENS,
         )
     return StubProvider()

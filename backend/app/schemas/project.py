@@ -10,6 +10,7 @@ class ProjectCreate(BaseModel):
     render_engine: str
     tts_voice: str
     aspect_ratio: str
+    narrative_context: list[dict] = []
 
 
 class SceneSchema(BaseModel):

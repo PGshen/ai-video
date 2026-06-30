@@ -72,6 +72,49 @@ def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temp
     mock_temporal.start_workflow.assert_called_once()
 
 
+def test_create_project_stores_narrative_context(client, auth_headers, mock_db, mock_temporal):
+    topic = make_topic(title="测试")
+    mock_db.get.return_value = topic
+    mock_temporal.start_workflow = AsyncMock()
+
+    captured_projects = []
+
+    original_add = mock_db.add
+    def capture_add(obj):
+        captured_projects.append(obj)
+        return original_add(obj)
+    mock_db.add = capture_add
+
+    with patch("app.api.projects._project_to_response") as mock_resp:
+        now = datetime.now(timezone.utc)
+        mock_resp.return_value = ProjectResponse(
+            id=uuid4(),
+            topic_id=topic.id,
+            topic_title=topic.title,
+            status="draft",
+            render_engine="manim",
+            tts_voice="alloy",
+            aspect_ratio="landscape",
+            retry_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+        response = client.post(
+            "/api/projects",
+            headers=auth_headers,
+            json={
+                "topic_id": str(topic.id),
+                "render_engine": "manim",
+                "tts_voice": "alloy",
+                "aspect_ratio": "landscape",
+                "narrative_context": [{"text": "关键参考片段一"}, {"text": "片段二"}],
+            },
+        )
+    assert response.status_code == 201
+    assert len(captured_projects) == 1
+    assert captured_projects[0].narrative_context == [{"text": "关键参考片段一"}, {"text": "片段二"}]
+
+
 def test_create_project_missing_fields(client, auth_headers):
     response = client.post("/api/projects", headers=auth_headers, json={})
     assert response.status_code == 422

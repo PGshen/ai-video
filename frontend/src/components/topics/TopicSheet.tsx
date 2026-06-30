@@ -66,7 +66,7 @@ export function TopicSheet({ topic, onClose }: Props) {
   const [contextSnippets, setContextSnippets] = useState<string[]>([]);
 
   function handleSnippetSelect(text: string) {
-    setContextSnippets((prev) => [...prev, text]);
+    setContextSnippets((prev) => prev.includes(text) ? prev : [...prev, text]);
   }
 
   useEffect(() => {
@@ -161,7 +161,7 @@ export function TopicSheet({ topic, onClose }: Props) {
                   <div className="space-y-1.5">
                     {contextSnippets.map((snippet, i) => (
                       <div
-                        key={i}
+                        key={snippet}
                         className="flex items-start gap-2 rounded-md bg-muted px-2.5 py-1.5 text-xs"
                       >
                         <span className="flex-1 line-clamp-2 text-muted-foreground">

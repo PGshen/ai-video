@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SendHorizontal } from "lucide-react";
@@ -240,7 +241,7 @@ export function ResearchChat({ topic, onSnippetSelect }: Props) {
         )}
       </div>
 
-      {bubble && (
+      {bubble && createPortal(
         <div
           data-snippet-bubble
           style={{ position: "fixed", left: bubble.x, top: bubble.y }}
@@ -253,7 +254,8 @@ export function ResearchChat({ topic, onSnippetSelect }: Props) {
           }}
         >
           ＋ 加入上下文
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Input area */}

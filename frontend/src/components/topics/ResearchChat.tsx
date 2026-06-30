@@ -181,7 +181,11 @@ export function ResearchChat({ topic, onSnippetSelect }: Props) {
     }
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();
-    setBubble({ x: rect.right, y: rect.top + window.scrollY - 4, text });
+    setBubble({
+      x: Math.min(rect.right, window.innerWidth - 148),
+      y: rect.top - 36,
+      text,
+    });
   }
 
   useEffect(() => {
@@ -239,7 +243,7 @@ export function ResearchChat({ topic, onSnippetSelect }: Props) {
       {bubble && (
         <div
           data-snippet-bubble
-          style={{ position: "fixed", left: bubble.x + 8, top: bubble.y }}
+          style={{ position: "fixed", left: bubble.x, top: bubble.y }}
           className="z-50 bg-foreground text-background text-xs px-2 py-1 rounded shadow-md cursor-pointer whitespace-nowrap"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {

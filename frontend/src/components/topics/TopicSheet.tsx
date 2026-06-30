@@ -142,35 +142,32 @@ export function TopicSheet({ topic, onClose }: Props) {
         {/* Scrollable body */}
         <SidePanelBody className="p-0 overflow-hidden">
           <div className="grid grid-cols-[minmax(0,1fr)_320px] h-full">
-            {/* Left: Research Assistant */}
-            <div className="flex flex-col min-h-0 min-w-0 px-5 py-5 border-r">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                研究助手
-              </p>
-              <ResearchChat topic={displayTopic} onSnippetSelect={handleSnippetSelect} />
-            </div>
-
-            {/* Right: Scoring + Meta */}
-            <div className="min-w-0 overflow-y-auto px-5 py-5 space-y-6">
-              {/* Context Snippets */}
+            {/* Left: Research Assistant + Context Snippets */}
+            <div className="flex min-h-0 border-r">
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 px-5 py-5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                  研究助手
+                </p>
+                <ResearchChat topic={displayTopic} onSnippetSelect={handleSnippetSelect} />
+              </div>
               {contextSnippets.length > 0 && (
-                <section className="space-y-2">
+                <div className="w-52 shrink-0 border-l overflow-y-auto px-4 py-5 space-y-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     上下文片段
                   </p>
                   <div className="space-y-1.5">
-                    {contextSnippets.map((snippet, i) => (
+                    {contextSnippets.map((snippet) => (
                       <div
                         key={snippet}
-                        className="flex items-start gap-2 rounded-md bg-muted px-2.5 py-1.5 text-xs"
+                        className="flex items-start gap-1.5 rounded-md bg-muted px-2 py-1.5 text-xs"
                       >
-                        <span className="flex-1 line-clamp-2 text-muted-foreground">
+                        <span className="flex-1 line-clamp-3 text-muted-foreground leading-relaxed">
                           {snippet}
                         </span>
                         <button
                           type="button"
                           onClick={() =>
-                            setContextSnippets((prev) => prev.filter((_, idx) => idx !== i))
+                            setContextSnippets((prev) => prev.filter((s) => s !== snippet))
                           }
                           className="shrink-0 text-muted-foreground hover:text-foreground mt-0.5"
                           aria-label="删除片段"
@@ -180,8 +177,12 @@ export function TopicSheet({ topic, onClose }: Props) {
                       </div>
                     ))}
                   </div>
-                </section>
+                </div>
               )}
+            </div>
+
+            {/* Right: Scoring + Meta */}
+            <div className="min-w-0 overflow-y-auto px-5 py-5 space-y-6">
               {/* Scoring */}
               <section className="space-y-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">打分</p>

@@ -102,3 +102,51 @@ async def test_narrative_worker_execute_writes_narrative_version():
     mock_db1.add.assert_called_once()
     mock_db1.commit.assert_called_once()
     mock_db2.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_narrative_worker_passes_context_to_provider():
+    task = make_task(input_payload={
+        "topic_title": "T",
+        "topic_description": "D",
+        "render_engine": "manim",
+        "rejection_context": None,
+        "narrative_context": [{"text": "参考片段"}],
+    })
+    project_id = task.project_id
+    captured_kwargs = {}
+
+    async def fake_generate_narrative(**kwargs):
+        captured_kwargs.update(kwargs)
+        return NarrativeResult(
+            scenes=[{"scene_index": 0, "narration": "旁白", "description": "描述"}],
+            fact_checks=[],
+        )
+
+    mock_provider = AsyncMock()
+    mock_provider.model_name = "stub-model"
+    mock_provider.generate_narrative = fake_generate_narrative
+
+    mock_project = MagicMock()
+    mock_project.id = project_id
+    mock_project.tts_voice = "alloy"
+    mock_project.current_narrative_version_id = None
+
+    nv_id = uuid.uuid4()
+    mock_nv = MagicMock()
+    mock_nv.id = nv_id
+    mock_nv.scenes = []
+
+    mock_db = MagicMock()
+    mock_db.get.side_effect = lambda model, pid: mock_project if model.__name__ == "VideoProject" else mock_nv
+    mock_db.execute.return_value.scalar.return_value = None
+
+    with patch("app.workers.narrative_worker.get_ai_provider", return_value=mock_provider), \
+         patch("app.workers.narrative_worker.get_sync_session", return_value=mock_db), \
+         patch("app.workers.narrative_worker._synthesize_scenes_tts", new_callable=AsyncMock) as mock_tts, \
+         patch("app.workers.narrative_worker.upload_bytes"):
+        mock_tts.return_value = [{"scene_index": 0, "tts_status": "ready"}]
+        worker = NarrativeWorker(worker_id="test", temporal_client=AsyncMock())
+        await worker._execute(task)
+
+    assert captured_kwargs.get("narrative_context") == [{"text": "参考片段"}]

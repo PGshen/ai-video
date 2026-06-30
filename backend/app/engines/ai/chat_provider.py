@@ -642,6 +642,7 @@ JSON 格式示例：
         topic_description: str,
         render_engine: str,
         rejection_context: dict | None = None,
+        narrative_context: list[dict] | None = None,
     ) -> NarrativeResult:
         engine_hint = self._NARRATIVE_ENGINE_HINTS.get(
             render_engine, self._NARRATIVE_ENGINE_HINT_FALLBACK
@@ -661,13 +662,25 @@ JSON 格式示例：
         else:
             user_note = ""
 
+        context_note = ""
+        if narrative_context:
+            snippets_text = "\n---\n".join(
+                item["text"] for item in narrative_context if item.get("text")
+            )
+            if snippets_text:
+                context_note = (
+                    "\n\n以下是创作者标注的参考内容，请在叙事中参考这些观点和表述方式：\n\n"
+                    + snippets_text
+                )
+
         content = await self.client.create_chat_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": f"请为以下选题生成知识视频叙事脚本 JSON{user_note}：\n"
-                    + json.dumps(user_payload, ensure_ascii=False),
+                    + json.dumps(user_payload, ensure_ascii=False)
+                    + context_note,
                 },
             ],
             response_format={"type": "json_object"},

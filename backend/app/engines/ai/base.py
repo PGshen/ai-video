@@ -70,6 +70,7 @@ class AIProvider(Protocol):
         topic_description: str,
         render_engine: str,
         rejection_context: dict | None = None,
+        narrative_context: list[dict] | None = None,
     ) -> NarrativeResult: ...
 
     async def generate_code(

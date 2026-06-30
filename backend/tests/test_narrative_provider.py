@@ -48,3 +48,45 @@ def test_narrative_prompt_engine_hints_exist():
     assert "remotion" in ChatAIProvider._NARRATIVE_ENGINE_HINTS
     assert "Manim" in ChatAIProvider._NARRATIVE_ENGINE_HINTS["manim"]
     assert "Remotion" in ChatAIProvider._NARRATIVE_ENGINE_HINTS["remotion"]
+
+
+@pytest.mark.asyncio
+async def test_generate_narrative_with_context_snippets():
+    provider = make_provider()
+    result = await provider.generate_narrative(
+        topic_title="测试",
+        topic_description="描述",
+        render_engine="manim",
+        narrative_context=[{"text": "参考内容：量子纠缠的直觉解释"}],
+    )
+    assert isinstance(result, NarrativeResult)
+
+
+def test_generate_narrative_context_injected_into_user_payload():
+    """When narrative_context is provided, snippets appear in the user message."""
+    from unittest.mock import AsyncMock, MagicMock
+    import asyncio
+
+    captured = {}
+
+    async def fake_completion(messages, **kwargs):
+        captured["messages"] = messages
+        return '{"scenes": [], "fact_checks": []}'
+
+    client = MagicMock()
+    client.engine_name = "stub"
+    client.model_name = "stub-model"
+    client.create_chat_completion = fake_completion
+
+    provider = ChatAIProvider(client=client)
+    asyncio.run(
+        provider.generate_narrative(
+            topic_title="T",
+            topic_description="D",
+            render_engine="manim",
+            narrative_context=[{"text": "片段A"}, {"text": "片段B"}],
+        )
+    )
+    user_msg = captured["messages"][-1]["content"]
+    assert "片段A" in user_msg
+    assert "片段B" in user_msg

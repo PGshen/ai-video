@@ -111,6 +111,7 @@ async def submit_narrative_task(project_id: str) -> None:
                 "topic_description": topic.description if topic else "",
                 "render_engine": project.render_engine,
                 "rejection_context": rejection_context,
+                "narrative_context": project.narrative_context or [],
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="narrative_generated",

@@ -46,8 +46,12 @@ async def test_code_worker_execute_creates_script_version():
     )
     mock_db.execute.return_value.scalar.return_value = None
 
+    mock_engine = AsyncMock()
+    mock_engine.validate_code = AsyncMock(return_value=(True, ""))
+
     with patch("app.workers.code_worker.get_ai_provider", return_value=mock_provider), \
-         patch("app.workers.code_worker.get_sync_session", return_value=mock_db):
+         patch("app.workers.code_worker.get_sync_session", return_value=mock_db), \
+         patch("app.workers.code_worker.get_render_engine", return_value=mock_engine):
         worker = CodeWorker(worker_id="test", temporal_client=AsyncMock())
         result = await worker._execute(task)
 

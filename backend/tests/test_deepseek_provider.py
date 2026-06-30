@@ -73,51 +73,6 @@ async def test_chat_ai_provider_brainstorm_uses_json_mode_and_parses_candidates(
 
 
 @pytest.mark.asyncio
-async def test_chat_ai_provider_generate_script_parses_json_object():
-    def handler(request: httpx.Request) -> httpx.Response:
-        payload = json.loads(request.content)
-        assert "知识视频脚本生成器" in payload["messages"][0]["content"]
-        script_payload = {
-            "scenes": [
-                {
-                    "scene_index": 0,
-                    "narration": "旁白",
-                    "description": "画面",
-                    "code": "self.add_sound('{{AUDIO_SCENE_0}}')",
-                    "estimated_duration_seconds": 3,
-                }
-            ],
-            "fact_checks": [
-                {
-                    "claim_text": "事实",
-                    "scene_index": 0,
-                    "source_url": None,
-                    "source_description": "来源",
-                    "confidence": "high",
-                    "is_hypothesis": False,
-                    "assumptions": None,
-                    "controversy": None,
-                    "reviewer_verdict": None,
-                    "reviewer_note": None,
-                }
-            ],
-        }
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": json.dumps(script_payload, ensure_ascii=False)}}]},
-        )
-
-    result = await ChatAIProvider(make_client(handler)).generate_script(
-        topic_title="测试",
-        topic_description="描述",
-        render_engine="manim",
-    )
-
-    assert len(result.scenes) == 1
-    assert len(result.fact_checks) == 1
-
-
-@pytest.mark.asyncio
 async def test_deepseek_client_stream_yields_delta_content():
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)

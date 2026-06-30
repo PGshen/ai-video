@@ -116,7 +116,7 @@ export function TopicSheet({ topic, onClose }: Props) {
 
   return (
     <>
-      <SidePanel open={!!topic} onClose={onClose} wide>
+      <SidePanel open={!!topic} onClose={onClose} widthClass="w-[70vw] max-w-[85vw]">
         {/* Header */}
         <SidePanelHeader>
           <div className="flex items-start justify-between gap-3 pr-7">
@@ -235,7 +235,7 @@ export function TopicSheet({ topic, onClose }: Props) {
                     type="button"
                     className="w-full"
                     onClick={() => setCreateProjectOpen(true)}
-                    disabled={!isStocked || isUpdating}
+                    disabled={(!isStocked && !isInProduction) || isUpdating}
                   >
                     <PackagePlus className="size-4" />
                     创建项目
@@ -246,7 +246,7 @@ export function TopicSheet({ topic, onClose }: Props) {
                     </p>
                   )}
                   {isInProduction && (
-                    <p className="text-xs text-muted-foreground">项目已创建，选题正在制作中。</p>
+                    <p className="text-xs text-muted-foreground">已有项目制作中，可继续创建新项目。</p>
                   )}
                 </div>
               </section>

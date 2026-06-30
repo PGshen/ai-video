@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 from typing import Optional
 from datetime import datetime
@@ -38,8 +38,15 @@ class FactCheckItemSchema(BaseModel):
     source_description: str
     confidence: str
     is_hypothesis: bool
-    assumptions: Optional[str]
+    assumptions: Optional[str] = None
     controversy: Optional[str]
+
+    @field_validator("assumptions", mode="before")
+    @classmethod
+    def coerce_assumptions(cls, v: object) -> Optional[str]:
+        if isinstance(v, list):
+            return "；".join(str(i) for i in v)
+        return v  # type: ignore[return-value]
     reviewer_verdict: Optional[str]
     reviewer_note: Optional[str]
 

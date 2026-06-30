@@ -6,9 +6,6 @@ class StubAIProvider:
     engine_name = "stub"
     model_name = "stub-model"
 
-    async def generate_script(self, *args, **kwargs):
-        pass
-
     async def research_topic(
         self,
         topic_title,

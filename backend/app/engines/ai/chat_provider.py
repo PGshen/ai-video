@@ -62,6 +62,40 @@ Axes 是最容易导致内容溢出的对象，必须遵守以下规则：
 - 跨镜头保留的文字（如标题）在移动到新位置后同样必须满足安全区约束
 - .to_corner() / .to_edge() 自带 buff=0.5，安全；但 .move_to() / .shift() 到边缘位置时须手动验证不超界
 
+【禁用类名与替代方案（高频 NameError 根源）】
+以下类名在 Manim 中**不存在**，使用即报 NameError，必须改用对应替代：
+
+- ❌ `Polyline`（不存在）→ 开放折线请用 VMobject + set_points_as_corners：
+  ```python
+  poly = VMobject(color=WHITE)
+  poly.set_points_as_corners([[-1.5,0.5,0], [-1.5,-0.5,0], [0.5,-0.5,0], [1.0,0.8,0]])
+  ```
+  或者多段 Line 组成 VGroup；若需要封闭多边形则用 Polygon（顶点自动闭合）。
+- ❌ `GrowArrow` → 改用 `Create`（GrowArrow 有已知 bug，已在动画规范中禁用）
+- ❌ `RoundedRectangle` → 改用 `RoundedRectangle` 从 `manim` 导入（已包含在 `from manim import *` 中，参数是 `corner_radius`，不是 `border_radius`）
+- ❌ `DashedVMobject(obj)` 参数写法错误 → 改用 `DashedVMobject(vmobject, num_dashes=15)`
+- ❌ `SurroundingRectangle(obj, color=X)` 后直接 `.shift()` 改变位置而不更新对象 → shift 后需重新 add 到 scene
+- ❌ `Arc(delta_angle=...)` → `Arc` **不接受** `delta_angle` 参数，会报 TypeError。弧度参数必须用 `angle`：
+  ```python
+  # ✅ 正确
+  arc = Arc(radius=0.6, start_angle=0, angle=PI, color=WHITE)
+  # ❌ 错误（会 TypeError）
+  arc = Arc(radius=0.6, start_angle=0, delta_angle=PI, color=WHITE)
+  ```
+- ❌ `Circle(opacity=0.5)` / `VMobject(opacity=...)` → Manim 构造函数**不接受** `opacity` 参数，会报 TypeError。
+  透明度必须拆开为 `fill_opacity` 和 `stroke_opacity` 两个参数，或在创建后调用 `.set_opacity(0.5)`：
+  ```python
+  # ✅ 正确
+  glow = Circle(radius=2.5, color=GREEN, stroke_width=1.5, fill_opacity=0, stroke_opacity=0.6)
+  # 或创建后设置
+  glow = Circle(radius=2.5, color=GREEN, stroke_width=1.5)
+  glow.set_opacity(0.6)
+  # ❌ 错误（会 TypeError）
+  glow = Circle(radius=2.5, opacity=0.6)
+  ```
+
+**写代码前必须确认：所有使用的类名均来自 `from manim import *` 的命名空间，不要凭直觉命名。**
+
 【坐标系规则（重要）——高频报错根源】
 - Manim 所有"点"均为三维 (x, y, z)，z 通常为 0；这是全局约束，无例外
 - 凡是传递坐标/顶点/路径点的地方，一律用 3 元素格式：[x, y, 0] 或 np.array([x, y, 0])
@@ -242,6 +276,25 @@ const lineX2 = R_CX - BOX_W / 2;
 连线/曲线必须从元素位置常量计算，禁止凭感觉估算 x/y 魔法数字。
 带弯曲的连线用 SVG `<path d="M {x1} {y1} Q {midX} {controlY} {x2} {y2}" />`，控制点 midX=(x1+x2)/2。
 
+【节点与连线对齐规则（高频错位根源）】
+节点（circle/rect）和连线（line/path）必须共享同一套坐标常量，禁止分别硬编码各自的 x/y：
+
+```
+// ✅ 正确：节点圆心 = 路径端点，完全由同一套常量推导
+const NODE_A = { cx: 320, cy: 360 };
+const NODE_B = { cx: 960, cy: 360 };
+// 连线直接引用节点圆心
+<line x1={NODE_A.cx} y1={NODE_A.cy} x2={NODE_B.cx} y2={NODE_B.cy} />
+// 节点圆也用同一常量定位
+<circle cx={NODE_A.cx} cy={NODE_A.cy} r={40} />
+
+// ❌ 错误：节点和连线各用一套魔法数字，位置必然错位
+<circle cx={550} cy={355} r={40} />          // 节点在 (550, 355)
+<line x1={320} y1={360} x2={960} y2={360} /> // 连线端点在 (320, 360)，对不上
+```
+
+折线/路径节点同理：路径的每个顶点坐标必须与对应图形元素的中心坐标完全一致。
+
 【帧与时序规则】
 - code 片段在 React 组件函数体内执行，可直接调用 Hooks：useCurrentFrame()、useVideoConfig()
 - useCurrentFrame() 返回当前镜头内的相对帧（从 0 开始）
@@ -250,6 +303,15 @@ const lineX2 = R_CX - BOX_W / 2;
 - 动画用 interpolate(frame, [inputRange], [outputRange]) 或 spring({ frame, fps }) 驱动
 - interpolate() 只能插值数字（opacity、translateY、scale、strokeDashoffset 等），禁止传入颜色字符串
 - 颜色过渡必须用 interpolateColors()：interpolateColors(progress, [0, 1], ["#D4C5F0", "#4ECDC4"])
+- **interpolate() 的 inputRange 必须严格单调递增**（每个值必须大于前一个值），否则运行时报错。
+  错误示范：interpolate(exitOffset, [0, -500], [1, 0])（exitOffset 是负数，range 变成 [0,-500] 降序，非法）
+  正确做法：用 frame 或 progress（单调递增量）作为插值变量，不要把位移量直接当 inputRange：
+  ```
+  const exitStart = _sceneDuration - 10;
+  const exitProgress = interpolate(frame, [exitStart, exitStart + 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const exitOffset = interpolate(exitProgress, [0, 1], [0, -500]);
+  const exitOpacity = interpolate(exitProgress, [0, 1], [1, 0]);
+  ```
 - 镜头间过渡用 interpolate + opacity 实现淡入淡出，或用 spring() 做弹性动效
 
 【跨镜头共享元素】
@@ -414,90 +476,6 @@ return (
     @property
     def model_name(self) -> str:
         return self.client.model_name
-
-    async def generate_script(
-        self,
-        topic_title: str,
-        topic_description: str,
-        render_engine: str,
-        rejection_context: dict | None = None,
-    ) -> ScriptGenerationResult:
-        engine_hint = self._ENGINE_CODE_PROMPTS.get(
-            render_engine, self._ENGINE_CODE_PROMPT_FALLBACK
-        )
-        system_prompt = f"""\
-你是知识视频脚本生成器。请严格输出 JSON object，不要输出 Markdown。
-
-JSON 格式示例：
-{{
-  "scenes": [
-    {{
-      "scene_index": 0,
-      "narration": "旁白文稿",
-      "description": "画面描述",
-      "code": "渲染代码片段",
-      "estimated_duration_seconds": 12.5
-    }}
-  ],
-  "fact_checks": [
-    {{
-      "claim_text": "需要核查的具体论断",
-      "scene_index": 0,
-      "source_url": null,
-      "source_description": "建议核查来源或说明",
-      "confidence": "medium",
-      "is_hypothesis": false,
-      "assumptions": null,
-      "controversy": null,
-      "reviewer_verdict": null,
-      "reviewer_note": null
-    }}
-  ]
-}}
-
-渲染引擎：{render_engine}
-{engine_hint}
-
-【代码拼合规则】
-所有镜头的 code 字段将被渲染引擎按 scene_index 顺序拼合为单个执行单元，每段之间插入注释分隔符。
-code 字段只写代码片段，不写外层结构（详见各引擎规范）。
-音频由渲染引擎在每个镜头开始时自动注入，code 里不处理音频。
-
-要求：
-- scenes 是镜头数组，scene_index 从 0 连续递增。
-- 每个镜头包含 narration、description、code、estimated_duration_seconds。
-- fact_checks 覆盖脚本中的关键事实论断和可能争议点。
-- 只能输出合法 JSON object。"""
-
-        user_payload: dict = {
-            "topic_title": topic_title,
-            "topic_description": topic_description,
-            "render_engine": render_engine,
-        }
-        if rejection_context:
-            user_payload["rejection_context"] = rejection_context
-            user_note = "（注意：这是一次重新生成，请参考 rejection_context 中的驳回原因修正问题）"
-        else:
-            user_note = ""
-
-        content = await self.client.create_chat_completion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"请为以下选题生成知识视频脚本 JSON{user_note}：\n"
-                    + json.dumps(user_payload, ensure_ascii=False),
-                },
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=self.script_max_tokens,
-        )
-        payload = parse_json_object(content)
-        scenes = payload.get("scenes")
-        fact_checks = payload.get("fact_checks")
-        if not isinstance(scenes, list) or not isinstance(fact_checks, list):
-            raise ValueError("Script response must contain scenes and fact_checks arrays")
-        return ScriptGenerationResult(scenes=scenes, fact_checks=fact_checks)
 
     _NARRATIVE_ENGINE_HINTS: dict[str, str] = {
         "manim": """\
@@ -735,6 +713,11 @@ codes 数组长度必须与输入 scenes 数组长度完全一致，按 scene_in
 - MathTex() / Tex() 仅用于纯英文/ASCII 数学公式（如 r"E=mc^2"、r"\frac{{1}}{{2}}"）
 - 中英文混排时，中文用 Text()，公式用 MathTex()，再用 VGroup 组合
 - 违反此规则会导致 LaTeX 编译报错使视频生成失败
+
+【Arc 参数规则（重要）】
+- Arc 的弧度参数必须用 `angle`，不是 `delta_angle`：
+  Arc(radius=0.6, start_angle=0, angle=PI)  # ✅
+  Arc(radius=0.6, start_angle=0, delta_angle=PI)  # ❌ TypeError
 
 要求：
 - 严格按照每个镜头的 description 实现动画逻辑

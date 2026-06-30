@@ -10,10 +10,7 @@ from app.engines.ai.base import (
 class StubProvider:
     engine_name = "stub"
     model_name = "stub-model"
-
-    async def generate_script(self, *args, **kwargs) -> ScriptGenerationResult:
-        return ScriptGenerationResult(scenes=[], fact_checks=[])
-
+    
     async def generate_narrative(
         self,
         topic_title: str,

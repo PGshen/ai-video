@@ -55,15 +55,7 @@ class AIProvider(Protocol):
 
     @property
     def model_name(self) -> str: ...
-
-    async def generate_script(
-        self,
-        topic_title: str,
-        topic_description: str,
-        render_engine: str,
-        rejection_context: dict | None = None,
-    ) -> ScriptGenerationResult: ...
-
+    
     async def generate_narrative(
         self,
         topic_title: str,

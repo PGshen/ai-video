@@ -30,10 +30,11 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 };
 
 interface SelectedNode {
-  type: "narrative" | "script";
+  type: "narrative" | "script" | "video";
   versionId: string;
   versionNumber: number;
   eventId: number;
+  videoAssetId?: string | null;
 }
 
 export function ProjectSheet({ project, onClose }: Props) {
@@ -46,12 +47,15 @@ export function ProjectSheet({ project, onClose }: Props) {
   const qc = useQueryClient();
   const { data: projectDetail, refetch: refetchProjectDetail } = useProject(displayProject?.id ?? "");
 
-  // 项目状态变化时（如渲染失败退回 script_review）强制刷新 projectDetail
+  // 侧栏打开或项目状态变化时，强制刷新所有关联数据
   useEffect(() => {
-    if (displayProject?.id) {
-      refetchProjectDetail();
-      qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "events"] });
-    }
+    if (!displayProject?.id) return;
+    refetchProjectDetail();
+    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "events"] });
+    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "script"] });
+    qc.invalidateQueries({ queryKey: ["narrative", displayProject.id] });
+    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "narrative-versions"] });
+    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "script-versions"] });
   }, [displayProject?.id, displayProject?.status, qc, refetchProjectDetail]);
 
   const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
@@ -80,6 +84,16 @@ export function ProjectSheet({ project, onClose }: Props) {
   const { data: selectedScriptVersion } = useScriptVersion(
     displayProject?.id ?? "",
     selectedNode?.type === "script" ? selectedNode.versionId : null,
+  );
+  // For historical video node view: use the asset ID stored in the event payload if available,
+  // otherwise fall back to current asset (covers published projects with a single asset).
+  const selectedVideoAssetId =
+    selectedNode?.type === "video"
+      ? (selectedNode.videoAssetId ?? projectDetail?.currentVideoAsset?.id ?? null)
+      : null;
+  const { data: selectedVideoUrlData } = useVideoUrl(
+    displayProject?.id ?? "",
+    selectedVideoAssetId,
   );
 
   const isScriptReview = project?.status === "script_review";
@@ -278,6 +292,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               node={selectedNode}
               narrativeVersion={selectedNarrativeVersion ?? null}
               scriptVersion={selectedScriptVersion ?? null}
+              videoUrl={selectedVideoUrlData?.url ?? null}
               onClose={() => setSelectedNode(null)}
             />
           ) : (
@@ -389,7 +404,7 @@ function RightPanel({
     );
   }
 
-  if (project.status === "video_review") {
+  if (project.status === "video_review" || project.status === "published") {
     return (
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0 p-5">
@@ -405,14 +420,16 @@ function RightPanel({
             </div>
           )}
         </div>
-        <div className="px-5 py-4 border-t flex gap-2">
-          <Button onClick={onVideoApprove} disabled={submitPending} className="flex-1">
-            通过发布
-          </Button>
-          <Button variant="destructive" onClick={onVideoAbandon} disabled={submitPending}>
-            废弃
-          </Button>
-        </div>
+        {project.status === "video_review" && (
+          <div className="px-5 py-4 border-t flex gap-2">
+            <Button onClick={onVideoApprove} disabled={submitPending} className="flex-1">
+              通过发布
+            </Button>
+            <Button variant="destructive" onClick={onVideoAbandon} disabled={submitPending}>
+              废弃
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -628,9 +645,11 @@ function MetaSection({ project }: { project: VideoProject }) {
 }
 
 // Statuses whose entry event is clickable and has associated content
-const CONTENT_STATUS_MAP: Record<string, "narrative" | "script"> = {
+const CONTENT_STATUS_MAP: Record<string, "narrative" | "script" | "video"> = {
   narrative_review: "narrative",
   script_review: "script",
+  video_review: "video",
+  published: "video",
 };
 
 interface EventsSectionProps {
@@ -674,22 +693,36 @@ function EventsSection({
           content_version_number?: number;
         } | undefined;
 
+        // For video nodes, versionId/number come from the event directly; no "version" entity exists.
+        const videoAssetId = contentType === "video"
+          ? ((event.payload?.["video_asset_id"] as string | undefined) ?? null)
+          : undefined;
+        const isVideoNode = contentType === "video";
+
         const versions = contentType === "narrative" ? narrativeVersions : scriptVersions;
-        const fallbackVersion = contentType
+        const fallbackVersion = contentType && !isVideoNode
           ? [...versions]
               .filter((version) => new Date(version.createdAt) <= new Date(event.createdAt))
               .sort((a, b) => b.versionNumber - a.versionNumber)[0]
           : undefined;
-        const versionId =
-          (event.payload?.["content_version_id"] as string | undefined) ??
-          verdict?.content_version_id ??
-          fallbackVersion?.id ??
-          null;
-        const versionNumber =
-          (event.payload?.["content_version_number"] as number | undefined) ??
-          verdict?.content_version_number ??
-          fallbackVersion?.versionNumber ??
-          null;
+        const versionId = isVideoNode
+          ? String(event.id)  // sentinel — video nodes use event id as key
+          : ((event.payload?.["content_version_id"] as string | undefined) ??
+             verdict?.content_version_id ??
+             fallbackVersion?.id ??
+             null);
+        // video_review / published: count how many times video review was entered (1-based)
+        const videoReviewIndex = isVideoNode
+          ? statusEvents.slice(0, statusIndex + 1).filter(
+              (e) => e.toStatus === "video_review" || e.toStatus === "published",
+            ).length
+          : null;
+        const versionNumber = isVideoNode
+          ? videoReviewIndex
+          : ((event.payload?.["content_version_number"] as number | undefined) ??
+             verdict?.content_version_number ??
+             fallbackVersion?.versionNumber ??
+             null);
 
         const rawError =
           event.payload?.["error_message"] ?? event.payload?.["render_error"];
@@ -699,7 +732,7 @@ function EventsSection({
             ? (typeof rawError === "string" ? rawError : null)
             : null;
 
-        return { event, contentType, versionId, versionNumber, verdict: verdict ?? null, renderError };
+        return { event, contentType, versionId, versionNumber, verdict: verdict ?? null, renderError, videoAssetId };
       });
   }, [eventsData, narrativeVersions, scriptVersions]);
 
@@ -713,7 +746,7 @@ function EventsSection({
           <p className="text-sm text-muted-foreground">暂无事件记录</p>
         ) : (
           <div className="space-y-0 pr-3">
-            {annotated.map(({ event, contentType, versionId, versionNumber, verdict, renderError }, i) => {
+            {annotated.map(({ event, contentType, versionId, versionNumber, verdict, renderError, videoAssetId }, i) => {
               const isClickable = !!(contentType && versionId);
               const isSelected = selectedNode?.eventId === event.id;
               const isLast = i === annotated.length - 1;
@@ -731,7 +764,13 @@ function EventsSection({
 
               const handleClick = () => {
                 if (!isClickable) return;
-                onSelectNode(isSelected ? null : { type: contentType!, versionId: versionId!, versionNumber: versionNumber!, eventId: event.id });
+                onSelectNode(isSelected ? null : {
+                  type: contentType!,
+                  versionId: versionId!,
+                  versionNumber: versionNumber!,
+                  eventId: event.id,
+                  ...(contentType === "video" ? { videoAssetId } : {}),
+                });
               };
 
               return (
@@ -801,7 +840,7 @@ function EventsSection({
                     )}
                     {isClickable && (
                       <p className="text-xs text-primary/70 mt-0.5">
-                        {isSelected ? "收起 ↑" : "查看内容 →"}
+                        {isSelected ? "收起 ↑" : contentType === "video" ? "查看视频 →" : "查看内容 →"}
                       </p>
                     )}
                   </div>
@@ -821,25 +860,37 @@ interface HistoricalViewProps {
   node: SelectedNode;
   narrativeVersion: NarrativeVersion | null;
   scriptVersion: ScriptVersion | null;
+  videoUrl: string | null;
   onClose: () => void;
 }
 
-function HistoricalView({ node, narrativeVersion, scriptVersion, onClose }: HistoricalViewProps) {
-  const version = node.type === "narrative" ? narrativeVersion : scriptVersion;
+function HistoricalView({ node, narrativeVersion, scriptVersion, videoUrl, onClose }: HistoricalViewProps) {
+  const version = node.type === "narrative" ? narrativeVersion : node.type === "script" ? scriptVersion : null;
+  const typeLabel = node.type === "narrative" ? "叙事脚本" : node.type === "script" ? "完整脚本" : "视频";
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Banner */}
       <div className="flex items-center justify-between px-5 py-2.5 border-b bg-muted/40 shrink-0">
         <span className="text-xs text-muted-foreground">
-          正在查看历史版本 — {node.type === "narrative" ? "叙事脚本" : "完整脚本"} v{node.versionNumber}（只读）
+          正在查看历史版本 — {typeLabel} v{node.versionNumber}（只读）
         </span>
         <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onClose}>
           返回当前
         </Button>
       </div>
 
-      {!version ? (
+      {node.type === "video" ? (
+        <div className="flex-1 min-h-0 p-5">
+          {videoUrl ? (
+            <video src={videoUrl} controls className="w-full h-full max-h-[60vh] rounded-lg bg-black" />
+          ) : (
+            <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+              视频加载中…
+            </div>
+          )}
+        </div>
+      ) : !version ? (
         <div className="flex items-center justify-center flex-1">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
         </div>

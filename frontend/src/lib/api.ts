@@ -21,7 +21,9 @@ async function request<T>(
       errorBody && typeof errorBody.detail === "string"
         ? errorBody.detail
         : `API error: ${response.status} ${response.statusText}`;
-    throw new Error(detail);
+    const err = new Error(detail) as Error & { status: number };
+    err.status = response.status;
+    throw err;
   }
 
   if (response.status === 204) return undefined as T;

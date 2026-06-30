@@ -115,9 +115,13 @@ export function useSubmitReview() {
 }
 
 export function useProjectScript(projectId: string) {
-  return useQuery<ScriptVersion>({
+  return useQuery<ScriptVersion | undefined>({
     queryKey: ["projects", projectId, "script"],
-    queryFn: () => api.get<ScriptVersion>(`/api/projects/${projectId}/script`),
+    queryFn: () =>
+      api.get<ScriptVersion>(`/api/projects/${projectId}/script`).catch((e: Error & { status?: number }) => {
+        if (e.status === 404) return undefined;
+        throw e;
+      }),
     enabled: !!projectId,
     retry: false,
   });

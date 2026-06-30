@@ -7,6 +7,9 @@ import re
 import tempfile
 from pathlib import Path
 
+import pyflakes.checker
+import pyflakes.messages as pyflakes_messages
+
 from app.config import settings
 from app.engines.render.base import RenderEngine, RenderRequest, RenderResult, RenderResultWithBytes, SceneInput
 
@@ -76,6 +79,35 @@ class _TexTemplateInjector(ast.NodeTransformer):
         return node
 
 
+# Pyflakes message types that are noise when `from manim import *` is present:
+# - ImportStarUsed: always fires for the wildcard import itself
+# - UndefinedName / UndefinedLocal: pyflakes can't see inside the star, so it
+#   falsely flags every Manim name (Circle, Text, Scene, …) as undefined
+_PYFLAKES_STAR_NOISE = (
+    pyflakes_messages.ImportStarUsed,
+    pyflakes_messages.ImportStarUsage,  # "'X' may be undefined, or defined from star imports"
+    pyflakes_messages.UndefinedName,
+    pyflakes_messages.UndefinedLocal,
+)
+
+
+def _static_check(script: str) -> list[str]:
+    """Return actionable pyflakes diagnostics for the assembled Manim script.
+
+    Star-import noise is filtered out because ``from manim import *`` makes it
+    impossible for pyflakes to resolve Manim names statically.
+    """
+    try:
+        tree = ast.parse(script)
+    except SyntaxError as exc:
+        return [f"SyntaxError: {exc}"]
+    w = pyflakes.checker.Checker(tree, "<manim_generated>")
+    return [
+        str(msg) for msg in w.messages
+        if not isinstance(msg, _PYFLAKES_STAR_NOISE)
+    ]
+
+
 def _is_tex_constructor(node: ast.expr) -> bool:
     if isinstance(node, ast.Name):
         return node.id in _TEX_CONSTRUCTORS
@@ -119,7 +151,45 @@ class ManimRenderEngine:
     engine_name = "manim"
 
     async def validate_code(self, scenes: list[SceneInput]) -> tuple[bool, str]:
-        return True, ""
+        script = _build_manim_script(scenes, include_audio=False)
+
+        static_errors = _static_check(script)
+        if static_errors:
+            logger.info("[ManimValidate] static errors: %d\n%s", len(static_errors), "\n".join(static_errors))
+            return False, "\n".join(static_errors)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script_path = os.path.join(tmpdir, "scene.py")
+            with open(script_path, "w") as f:
+                f.write(script)
+
+            cmd = [
+                "python", "-m", "manim", "render",
+                "--dry_run",
+                script_path, "MainScene",
+                "--media_dir", tmpdir,
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=tmpdir,
+            )
+            try:
+                async with asyncio.timeout(120):
+                    output, _ = await proc.communicate()
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return False, "Dry-run timed out after 120s"
+
+            log = output.decode(errors="replace")
+            if proc.returncode != 0:
+                logger.info("[ManimValidate] dry_run failed:\n%s", log[:2000])
+                return False, log
+
+            logger.info("[ManimValidate] dry_run passed")
+            return True, ""
 
     async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:
         with _tmpdir_context(work_dir) as tmpdir:
@@ -209,7 +279,7 @@ class ManimRenderEngine:
 
 
 
-def _build_manim_script(scenes: list[SceneInput]) -> str:
+def _build_manim_script(scenes: list[SceneInput], include_audio: bool = True) -> str:
     prepared_scenes = []
     needs_chinese_tex_template = False
     for scene in scenes:
@@ -228,20 +298,20 @@ def _build_manim_script(scenes: list[SceneInput]) -> str:
         "",
         "class MainScene(Scene):",
         "    def construct(self):",
-        # "        self.camera.background_color = '#F5F0E8'",
     ])
     for i, (scene, prepared_code) in enumerate(prepared_scenes):
-        audio_path = scene.audio.audio_path if scene.audio else f"scene_{i}_audio.mp3"
-        duration = scene.audio.duration_seconds if scene.audio else 0.0
         lines.append(f"        # Scene {i}: {scene.description}")
-        lines.append(f"        _t0_{i} = self.renderer.time")
-        lines.append(f'        self.add_sound("{audio_path}")')
+        if include_audio:
+            audio_path = scene.audio.audio_path if scene.audio else f"scene_{i}_audio.mp3"
+            duration = scene.audio.duration_seconds if scene.audio else 0.0
+            lines.append(f"        _t0_{i} = self.renderer.time")
+            lines.append(f'        self.add_sound("{audio_path}")')
         for code_line in prepared_code.splitlines():
             lines.append(f"        {code_line}")
-        # Program-injected: pad remaining time to match audio duration
-        lines.append(f"        _rem_{i} = {duration:.3f} - (self.renderer.time - _t0_{i})")
-        lines.append(f"        if _rem_{i} > 0:")
-        lines.append(f"            self.wait(_rem_{i})")
+        if include_audio:
+            lines.append(f"        _rem_{i} = {duration:.3f} - (self.renderer.time - _t0_{i})")
+            lines.append(f"        if _rem_{i} > 0:")
+            lines.append(f"            self.wait(_rem_{i})")
         lines.append("")
     return "\n".join(lines)
 

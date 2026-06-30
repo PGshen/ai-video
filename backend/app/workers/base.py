@@ -1,10 +1,13 @@
 import asyncio
 from datetime import datetime, timezone
+import logging
 from typing import Any
+from fastapi import logger
 from temporalio.client import Client
 from sqlalchemy import text
 from app.db import get_sync_session
 
+logger = logging.getLogger(__name__)
 
 class BaseWorker:
     supported_task_types: list[str] = []
@@ -86,6 +89,7 @@ class BaseWorker:
             })
 
         except Exception as e:
+            logger.exception("[BaseWorker] task=%s error: %s", task.id, e)
             db.rollback()
             from app.models.worker_task import WorkerTask
             task_id = task.id

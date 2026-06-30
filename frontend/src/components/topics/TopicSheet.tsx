@@ -142,24 +142,15 @@ export function TopicSheet({ topic, onClose }: Props) {
         {/* Scrollable body */}
         <SidePanelBody className="p-0 overflow-hidden">
           <div
-            className="grid h-full"
-            style={{
-              gridTemplateColumns: contextSnippets.length > 0
-                ? "minmax(0,1fr) 200px 320px"
-                : "minmax(0,1fr) 320px",
-            }}
+            className={
+              contextSnippets.length > 0
+                ? "grid grid-cols-[200px_minmax(0,1fr)_320px] h-full"
+                : "grid grid-cols-[minmax(0,1fr)_320px] h-full"
+            }
           >
-            {/* Left: Research Assistant */}
-            <div className="flex flex-col min-h-0 min-w-0 px-5 py-5 border-r">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                研究助手
-              </p>
-              <ResearchChat topic={displayTopic} onSnippetSelect={handleSnippetSelect} />
-            </div>
-
-            {/* Middle: Context Snippets (only when there are snippets) */}
+            {/* Snippets column — only when non-empty, left of chat */}
             {contextSnippets.length > 0 && (
-              <div className="min-w-0 overflow-y-auto border-r px-4 py-5 space-y-2">
+              <div className="border-r overflow-y-auto px-4 py-5 space-y-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   上下文片段
                 </p>
@@ -187,6 +178,14 @@ export function TopicSheet({ topic, onClose }: Props) {
                 </div>
               </div>
             )}
+
+            {/* Research Assistant */}
+            <div className="flex flex-col min-h-0 min-w-0 px-5 py-5 border-r">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                研究助手
+              </p>
+              <ResearchChat topic={displayTopic} onSnippetSelect={handleSnippetSelect} />
+            </div>
 
             {/* Right: Scoring + Meta */}
             <div className="min-w-0 overflow-y-auto px-5 py-5 space-y-6">

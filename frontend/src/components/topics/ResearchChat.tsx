@@ -61,14 +61,16 @@ function decodeResearchPayload(payload: string): string {
 
 interface Props {
   topic: Topic;
+  onSnippetSelect: (text: string) => void;
 }
 
-export function ResearchChat({ topic }: Props) {
+export function ResearchChat({ topic, onSnippetSelect }: Props) {
   const [entries, setEntries] = useState<ChatEntry[]>(() =>
     toEntries(topic.researchData ?? [])
   );
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [bubble, setBubble] = useState<{ x: number; y: number; text: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -166,6 +168,33 @@ export function ResearchChat({ topic }: Props) {
     }
   }
 
+  function handleMouseUp() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) {
+      setBubble(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    if (!text) {
+      setBubble(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    setBubble({ x: rect.right, y: rect.top + window.scrollY - 4, text });
+  }
+
+  useEffect(() => {
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-snippet-bubble]")) {
+        setBubble(null);
+      }
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, []);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || streaming) return;
@@ -186,6 +215,7 @@ export function ResearchChat({ topic }: Props) {
       <div
         ref={scrollRef}
         className="flex-1 min-w-0 overflow-y-auto space-y-4 pr-1"
+        onMouseUp={handleMouseUp}
       >
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
@@ -205,6 +235,22 @@ export function ResearchChat({ topic }: Props) {
           entries.map((entry) => <MessageBubble key={entry.id} entry={entry} />)
         )}
       </div>
+
+      {bubble && (
+        <div
+          data-snippet-bubble
+          style={{ position: "fixed", left: bubble.x + 8, top: bubble.y }}
+          className="z-50 bg-foreground text-background text-xs px-2 py-1 rounded shadow-md cursor-pointer whitespace-nowrap"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onSnippetSelect(bubble.text);
+            window.getSelection()?.removeAllRanges();
+            setBubble(null);
+          }}
+        >
+          ＋ 加入上下文
+        </div>
+      )}
 
       {/* Input area */}
       <form onSubmit={handleSubmit} className="flex min-w-0 gap-2 pt-3 border-t mt-3">

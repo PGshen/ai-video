@@ -63,6 +63,11 @@ export function TopicSheet({ topic, onClose }: Props) {
   const [scores, setScores] = useState<TopicScores>({});
   const [tagsInput, setTagsInput] = useState("");
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [contextSnippets, setContextSnippets] = useState<string[]>([]);
+
+  function handleSnippetSelect(text: string) {
+    setContextSnippets((prev) => [...prev, text]);
+  }
 
   useEffect(() => {
     if (topic) {
@@ -142,11 +147,41 @@ export function TopicSheet({ topic, onClose }: Props) {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                 研究助手
               </p>
-              <ResearchChat topic={displayTopic} />
+              <ResearchChat topic={displayTopic} onSnippetSelect={handleSnippetSelect} />
             </div>
 
             {/* Right: Scoring + Meta */}
             <div className="min-w-0 overflow-y-auto px-5 py-5 space-y-6">
+              {/* Context Snippets */}
+              {contextSnippets.length > 0 && (
+                <section className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    上下文片段
+                  </p>
+                  <div className="space-y-1.5">
+                    {contextSnippets.map((snippet, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 rounded-md bg-muted px-2.5 py-1.5 text-xs"
+                      >
+                        <span className="flex-1 line-clamp-2 text-muted-foreground">
+                          {snippet}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setContextSnippets((prev) => prev.filter((_, idx) => idx !== i))
+                          }
+                          className="shrink-0 text-muted-foreground hover:text-foreground mt-0.5"
+                          aria-label="删除片段"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               {/* Scoring */}
               <section className="space-y-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">打分</p>
@@ -233,6 +268,7 @@ export function TopicSheet({ topic, onClose }: Props) {
           topic={displayTopic}
           open={createProjectOpen}
           onClose={() => setCreateProjectOpen(false)}
+          contextSnippets={contextSnippets}
           onCreated={() =>
             setDisplayTopic((prev) =>
               prev ? { ...prev, status: "in_production" } : prev

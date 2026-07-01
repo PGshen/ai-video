@@ -59,13 +59,19 @@ async def main():
     )
 
     logger.info("Workers started.")
-    await asyncio.gather(
-        temporal_worker.run(),
-        narrative_worker.run(),
-        code_worker.run(),
-        render_worker.run(),
-    )
+    try:
+        await asyncio.gather(
+            temporal_worker.run(),
+            narrative_worker.run(),
+            code_worker.run(),
+            render_worker.run(),
+        )
+    except asyncio.CancelledError:
+        logger.info("Workers cancelled, shutting down.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Worker stopped by user.")

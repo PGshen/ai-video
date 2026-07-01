@@ -3,12 +3,6 @@ from dataclasses import dataclass
 
 
 @dataclass
-class ScriptGenerationResult:
-    scenes: list[dict]
-    fact_checks: list[dict]
-
-
-@dataclass
 class BrainstormResult:
     candidates: list[dict]
 

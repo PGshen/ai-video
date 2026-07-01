@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from app.engines.ai.base import (
     BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
-    NarrativeResult, ScriptGenerationResult,
+    NarrativeResult,
 )
 
 _SPECS_DIR = Path(__file__).parent / "engine_specs"
@@ -48,57 +48,7 @@ class ChatAIProvider:
     # Class-level attributes for backward compatibility with tests
     _NARRATIVE_ENGINE_HINTS: dict[str, str] = _CLASS_NARRATIVE_HINTS
     _ENGINE_CODE_PROMPTS: dict[str, str] = _CLASS_CODE_PROMPTS
-
-    _NARRATIVE_SYSTEM_PROMPT_TEMPLATE = """\
-你是知识视频叙事脚本生成器。请严格输出 JSON object，不要输出 Markdown。
-
-JSON 格式示例：
-{{
-  "scenes": [
-    {{
-      "scene_index": 0,
-      "narration": "旁白文稿——控制节奏、娓娓道来",
-      "description": "画面描述（明确标注进场/变形/退场/跨镜头衔接）",
-      "estimated_duration_seconds": 8.0
-    }}
-  ],
-  "fact_checks": [
-    {{
-      "claim_text": "需要核查的具体论断",
-      "scene_index": 0,
-      "source_url": null,
-      "source_description": "建议核查来源或说明",
-      "confidence": "medium",
-      "is_hypothesis": false,
-      "assumptions": null,
-      "controversy": null,
-      "reviewer_verdict": null,
-      "reviewer_note": null
-    }}
-  ]
-}}
-
-【叙事要求】
-- 整体娓娓道来，从一个反直觉的问题或现象切入，逐步建立知识体系，结尾给出有价值的启示
-- 旁白（narration）负责讲解，每句话清晰有力，不空洞，不重复画面文字
-- 目标视频时长 2-3 分钟，需要 15-20 个镜头，每个镜头旁白约 30-50 字、时长 7-10 秒
-- estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得少于 5 秒
-- 先用直观图形和动态关系解释概念，再在确有必要时引入关键公式；公式服务于理解，不追求数量和完整推导
-
-【内容节奏】
-- 镜头 0-1：抛出问题/反直觉现象，吸引注意
-- 镜头 2-5：建立基础知识框架，引入关键概念
-- 镜头 6-14：逐步深入，以动态图示和实例展开论证，只在关键节点使用必要公式
-- 镜头 15+：总结升华，给出启示或应用价值
-
-{{engine_hint}}
-
-要求：
-- scenes 是镜头数组，scene_index 从 0 连续递增，数量在 15-20 个
-- 每个镜头包含 narration、description、estimated_duration_seconds
-- fact_checks 覆盖脚本中的关键事实论断和可能争议点
-- 只能输出合法 JSON object"""
-
+    
     _ENGINE_CODE_PROMPT_FALLBACK = (
         "- code 字段填写适合所选渲染引擎的代码片段（非完整文件），"
         "所有镜头的 code 将被顺序拼合为单个执行单元。"
@@ -170,6 +120,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         narrative_style = style_components.get("narrative_style", defaults.get("narrative_style", ""))
         pacing = style_components.get("pacing", defaults.get("pacing", ""))
         scene_structure = style_components.get("scene_structure", defaults.get("scene_structure", ""))
+        color_scheme = style_components.get("color_scheme", defaults.get("color_scheme", ""))
         engine_hint = self._narrative_engine_hints.get(render_engine, self._NARRATIVE_ENGINE_HINT_FALLBACK)
 
         parts = [
@@ -184,6 +135,9 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             parts.append(pacing)
         if scene_structure:
             parts.append(scene_structure)
+        if color_scheme:
+            parts.append(color_scheme)
+            parts.append("颜色名与 Hex 对照（description 中用颜色名即可，代码生成阶段再转 Hex）")
         parts.append(engine_hint)
         parts += [
             "",

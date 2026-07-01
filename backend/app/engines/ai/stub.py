@@ -2,8 +2,8 @@ import asyncio
 import json
 
 from app.engines.ai.base import (
-    BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
-    NarrativeResult, ScriptGenerationResult,
+    BrainstormResult, CodeGenerationResult, CodeRepairResult,
+    NarrativeResult,
 )
 
 

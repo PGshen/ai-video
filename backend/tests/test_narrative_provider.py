@@ -33,15 +33,6 @@ async def test_generate_narrative_with_rejection_context():
     assert isinstance(result, NarrativeResult)
 
 
-def test_narrative_prompt_no_code_field():
-    """叙事 prompt 不应要求 AI 生成 code 字段"""
-    prompt = ChatAIProvider._NARRATIVE_SYSTEM_PROMPT_TEMPLATE
-    assert "旁白" in prompt or "narration" in prompt
-    assert "description" in prompt or "描述" in prompt
-    # 目标时长约束
-    assert "15-20" in prompt or "2-3 分钟" in prompt
-
-
 def test_narrative_prompt_engine_hints_exist():
     """两种引擎都有专属 description 规范"""
     assert "manim" in ChatAIProvider._NARRATIVE_ENGINE_HINTS

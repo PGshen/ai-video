@@ -64,6 +64,7 @@ export function useCreateProject() {
       ttsVoice: string;
       aspectRatio: string;
       narrativeContext: { text: string }[];
+      styleConfig?: Record<string, string>;
     }) =>
       api.post<VideoProject>("/api/projects", {
         topic_id: data.topicId,
@@ -71,6 +72,7 @@ export function useCreateProject() {
         tts_voice: data.ttsVoice,
         aspect_ratio: data.aspectRatio,
         narrative_context: data.narrativeContext,
+        style_config: data.styleConfig ?? {},
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] });

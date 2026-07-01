@@ -37,6 +37,24 @@ export interface BrainstormCandidate {
   tags: string[];
 }
 
+// ═══ 风格组件 ═══
+export interface PromptComponent {
+  id: string;
+  category: string;
+  name: string;
+  description: string | null;
+  promptText: string;
+  isBuiltin: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PromptComponentListResponse {
+  items: PromptComponent[];
+  total: number;
+}
+
 // ═══ 视频项目 ═══
 export type ProjectStatus =
   | "draft"
@@ -83,6 +101,7 @@ export interface VideoProject {
   currentScriptVersion: ScriptVersion | null;
   currentVideoAsset: VideoAsset | null;
   retryCount: number;
+  styleConfig: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

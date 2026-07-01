@@ -6,6 +6,7 @@ import TopicsPage from "@/pages/TopicsPage";
 import ProjectsPage from "@/pages/ProjectsPage";
 import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import PerformancePage from "@/pages/PerformancePage";
+import { StyleLibraryPage } from "@/pages/StyleLibraryPage";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ export default function App() {
               path="/projects/:id/performance"
               element={<PerformancePage />}
             />
+            <Route path="/style-library" element={<StyleLibraryPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -31,8 +31,9 @@ export function useCreatePromptComponent() {
 export function useUpdatePromptComponent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; promptText?: string }) =>
+    mutationFn: ({ id, ...data }: { id: string; category?: string; name?: string; description?: string; promptText?: string }) =>
       api.put<PromptComponent>(`/api/prompt-components/${id}`, {
+        category: data.category,
         name: data.name,
         description: data.description,
         prompt_text: data.promptText,

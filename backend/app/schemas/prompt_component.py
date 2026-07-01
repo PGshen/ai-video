@@ -17,6 +17,7 @@ class PromptComponentCreate(PromptComponentBase):
 
 
 class PromptComponentUpdate(BaseModel):
+    category: Optional[str] = None
     name: Optional[str] = None
     description: Optional[str] = None
     prompt_text: Optional[str] = Field(None, max_length=8000)

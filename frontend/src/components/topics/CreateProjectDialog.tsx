@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,6 +16,24 @@ import { useCreateProject } from "@/hooks/useProjects";
 import { usePromptComponents } from "@/hooks/usePromptComponents";
 import type { Topic } from "@/types";
 import { STYLE_CATEGORIES } from "@/lib/styleCategories";
+
+const RENDER_ENGINE_LABELS: Record<string, string> = {
+  manim: "Manim",
+  remotion: "Remotion",
+};
+
+const TTS_VOICE_LABELS: Record<string, string> = {
+  alloy: "Alloy",
+  echo: "Echo",
+  fable: "Fable",
+  onyx: "Onyx",
+  nova: "Nova",
+};
+
+const ASPECT_RATIO_LABELS: Record<string, string> = {
+  landscape: "横屏 16:9",
+  portrait: "竖屏 9:16",
+};
 
 interface Props {
   topic: Topic;
@@ -31,13 +56,14 @@ function StyleSelect({
 }) {
   const { data } = usePromptComponents(category);
   const items = data?.items ?? [];
+  const selectedItem = items.find((item) => item.id === value);
 
   return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
+    <div className="space-y-2">
+      <Label className="text-xs font-medium">{label}</Label>
       <Select value={value} onValueChange={(v) => onChange(v ?? "")}>
-        <SelectTrigger>
-          <SelectValue placeholder="系统默认" />
+        <SelectTrigger className="w-full bg-background">
+          <SelectValue>{selectedItem?.name ?? "系统默认"}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="">系统默认</SelectItem>
@@ -51,9 +77,9 @@ function StyleSelect({
           ))}
         </SelectContent>
       </Select>
-      {value && items.find((i) => i.id === value)?.description && (
-        <p className="text-xs text-muted-foreground">
-          {items.find((i) => i.id === value)?.description}
+      {selectedItem?.description && (
+        <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+          {selectedItem.description}
         </p>
       )}
     </div>
@@ -108,76 +134,98 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>从选题创建项目</DialogTitle>
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto p-5 sm:max-w-3xl">
+        <DialogHeader className="pr-8">
+          <DialogTitle className="text-lg">从选题创建项目</DialogTitle>
+          <DialogDescription>
+            配置视频生成参数和风格组件，未选择的风格将使用系统默认值。
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-            {topic.title}
+
+        <div className="space-y-5 py-1">
+          <div className="flex items-start gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+            <span className="mt-0.5 shrink-0 rounded-md bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground ring-1 ring-foreground/10">
+              选题
+            </span>
+            <p className="font-medium leading-5">{topic.title}</p>
           </div>
 
-          {/* 基础配置 */}
-          <div className="space-y-1.5">
-            <Label>渲染引擎</Label>
-            <Select value={renderEngine} onValueChange={(v) => v && setRenderEngine(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manim">Manim</SelectItem>
-                <SelectItem value="remotion">Remotion</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>TTS 声音</Label>
-            <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="alloy">Alloy</SelectItem>
-                <SelectItem value="echo">Echo</SelectItem>
-                <SelectItem value="fable">Fable</SelectItem>
-                <SelectItem value="onyx">Onyx</SelectItem>
-                <SelectItem value="nova">Nova</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>画幅比例</Label>
-            <Select value={aspectRatio} onValueChange={(v) => v && setAspectRatio(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="landscape">横屏 16:9</SelectItem>
-                <SelectItem value="portrait">竖屏 9:16</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">基础配置</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">设置视频的生成方式与输出规格</p>
+            </div>
+            <div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">渲染引擎</Label>
+                <Select value={renderEngine} onValueChange={(v) => v && setRenderEngine(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{RENDER_ENGINE_LABELS[renderEngine]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(RENDER_ENGINE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">TTS 声音</Label>
+                <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{TTS_VOICE_LABELS[ttsVoice]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(TTS_VOICE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">画幅比例</Label>
+                <Select value={aspectRatio} onValueChange={(v) => v && setAspectRatio(v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{ASPECT_RATIO_LABELS[aspectRatio]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ASPECT_RATIO_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </section>
 
-          {/* 风格配置 */}
-          <div className="space-y-3 pt-1">
-            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              视频风格
-            </Label>
-            {STYLE_CATEGORIES.map(({ key, label }) => (
-              <StyleSelect
-                key={key}
-                category={key}
-                label={label}
-                value={styleConfig[key] ?? ""}
-                onChange={(v) => setStyleCategory(key, v)}
-              />
-            ))}
-          </div>
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">风格组件</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">按需组合提示词组件，塑造视频的整体表达</p>
+            </div>
+            <div className="grid gap-x-4 gap-y-4 rounded-xl border bg-muted/20 p-4 sm:grid-cols-3">
+              {STYLE_CATEGORIES.map(({ key, label }) => (
+                <StyleSelect
+                  key={key}
+                  category={key}
+                  label={label}
+                  value={styleConfig[key] ?? ""}
+                  onChange={(v) => setStyleCategory(key, v)}
+                />
+              ))}
+            </div>
+          </section>
 
-          {/* 研究上下文 */}
           {contextSnippets.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                研究上下文（选择带入叙事生成）
-              </Label>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">研究上下文</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">选择需要带入叙事生成的内容</p>
+              </div>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border p-3">
                 {contextSnippets.map((snippet, i) => (
-                  <div key={i} className="flex items-start gap-2">
+                  <div key={i} className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/60">
                     <Checkbox
                       id={`snippet-${i}`}
                       checked={selectedSnippets.has(i)}
@@ -186,17 +234,18 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
                     />
                     <label
                       htmlFor={`snippet-${i}`}
-                      className="text-xs text-muted-foreground line-clamp-2 cursor-pointer"
+                      className="line-clamp-2 cursor-pointer text-xs leading-5 text-muted-foreground"
                     >
                       {snippet}
                     </label>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           )}
         </div>
-        <DialogFooter>
+
+        <DialogFooter className="bg-background">
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={handleSubmit} disabled={createProject.isPending}>
             {createProject.isPending ? "创建中..." : "创建项目"}

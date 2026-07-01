@@ -60,7 +60,7 @@
 2. 用 `beats[]` 表达镜头内部 2～4 个语义节拍。
 3. 利用火山 TTS 字符时间戳计算每个 beat 的真实语音时间。
 4. 让 Manim 和 Remotion 代码按语义时间执行，而不是只在镜头开头播放进场动画。
-5. 保持旧版无 `beats` 数据可读取、审核、生成代码和渲染。
+5. 将 `beats` 设为新叙事数据的强制契约，不维护无 beats 的双生成链路。
 6. 明确提示词的固定部分与平台可变部分，避免重复约束和风格冲突。
 7. 保存本次生成实际使用的提示词快照，使结果可审计、可复现。
 
@@ -76,7 +76,6 @@
 - 引入完整的非线性时间线编辑器；
 - 自动生成背景音乐或音效；
 - 将全部代码生成改造成多 Agent 或逐 beat 调用；
-- 对历史视频执行批量回填。
 
 ---
 
@@ -291,15 +290,7 @@ class NarrativeSceneSchema(BaseModel):
 
 `NarrativeVersion.scenes` 和 `ScriptVersion.scenes` 已是 JSONB，因此增加 beats、时间戳和对齐字段不需要数据库迁移。
 
-旧数据兼容规则：
-
-```python
-beats = scene.get("beats") or []
-word_timestamps = scene.get("word_timestamps") or []
-content_schema_version = scene.get("content_schema_version", 1)
-```
-
-无 beats 的旧 scene 继续使用 `description` 生成代码。
+项目尚处于开发初期，不保留无 beats 的兼容分支。所有新生成和人工提交的 scene 必须满足 `content_schema_version=2` 且 `beats` 非空；缺失 beats 视为数据校验失败，不进入代码生成。
 
 ### 6.4 提示词快照
 
@@ -400,7 +391,7 @@ ALTER TABLE script_versions ADD COLUMN prompt_snapshot JSONB;
 4. 连接全部 `cue_text` 并忽略空白差异后，应完整覆盖 `narration`。
 5. 每个 beat 必须产生新的知识信息、关系变化或叙事状态；不得用“保持画面”凑数量。
 6. `visual_action` 描述画面意图，不得出现 Manim/React/Remotion API。
-7. `description` 保留，作为镜头级总结和旧链路回退输入。
+7. `description` 保留为镜头级整体意图，`beats` 负责镜头内部动作与时间线；两者都是代码生成输入。
 
 ### 7.3 Narrative 校验与修复
 
@@ -430,7 +421,7 @@ backend/app/services/narrative_validator.py
 | cue 仅有空白差异 | 后端规范化 |
 | cue 覆盖率 ≥ 95% | 尾部未覆盖文本合并进最后一个 beat |
 | cue 覆盖率 < 95% | 调用一次 narrative JSON 修复 |
-| 修复后仍失败 | 保留 scene，但清空 beats，回退 description |
+| 修复后仍失败 | narrative 任务失败，进入 Worker 既有重试/失败流程，不产生不完整版本 |
 
 ---
 
@@ -637,8 +628,8 @@ animation_end = min(scene_duration, speech_end + postroll)
 为了避免 `narration` 与 `beats[].cue_text` 成为两个相互冲突的来源：
 
 - 后端持久化时以 `beats[].cue_text` 顺序拼接结果作为 scene narration；
-- `narration` 是便于现有接口、TTS 和旧前端读取的物化字段；
-- 对无 beats 的旧 scene，`narration` 仍然是唯一权威来源。
+- `narration` 是便于接口、TTS 和前端读取的物化字段；
+- `beats` 必须存在，服务端不接受只有 narration 而没有 beats 的 schema v2 scene。
 
 ### 10.2 前端审核页
 
@@ -683,7 +674,7 @@ class RegenerateTtsRequest(BaseModel):
 5. 重新运行 BeatAligner；
 6. 返回 resolved beats、音频 URL、时长和对齐覆盖率。
 
-旧客户端不传 beats 时保持现有行为。
+客户端不传 beats 时返回 422，不生成不完整的 narrative version。
 
 ---
 
@@ -930,20 +921,14 @@ codegen_scenes = [
 
 ### 13.1 输入
 
-`CodeWorker` 读取 aligned scenes，向 provider 传递精简数据。
-
-如果 scene 无 beats：
-
-```text
-使用 narration + description 走旧生成逻辑。
-```
-
-如果 scene 有 beats：
+`CodeWorker` 读取 aligned scenes，向 provider 传递精简数据：
 
 ```text
 description 决定镜头整体意图；
 beats 决定内部动作顺序与时间。
 ```
+
+进入代码生成前必须校验每个 scene 的 beats 非空、索引连续且已得到 timing；任一 scene 不满足契约时，代码任务直接失败并报告具体 scene，不生成部分 codes。
 
 ### 13.2 输出保持不变
 
@@ -1126,7 +1111,7 @@ const endFrame = Math.round(beat.animationEndSeconds * fps);
 - 可变 prompt 出现在正确位置；
 - 引擎技术词不进入 narrative style 示例；
 - 输出 beats 被校验；
-- 旧无 beats 响应可回退。
+- narrative 响应缺失 beats 时校验失败并触发修复/任务重试。
 
 `test_code_provider.py`：
 
@@ -1142,7 +1127,7 @@ const endFrame = Math.round(beat.animationEndSeconds * fps);
 - 只修改 visual action 不触发 TTS；
 - 审核创建新 NarrativeVersion 时保留 beats；
 - CodeWorker 保存 beats 和 code；
-- 历史 schema v1 scene 可完整跑通。
+- 缺失 beats、beat 索引断裂或 cue 覆盖不足时不会进入代码生成。
 
 ### 17.3 集成验收
 
@@ -1173,11 +1158,10 @@ const endFrame = Math.round(beat.animationEndSeconds * fps);
 
 ### 阶段 2：Narrative beats
 
-- 开启 `SEMANTIC_BEATS_ENABLED`；
 - 新 narrative 输出 beats；
 - TTS 后执行 alignment；
 - 审核页先只读展示 beats；
-- 代码生成仍可配置是否消费 beats。
+- 未满足 beats 契约的 narrative 不允许通过审核。
 
 ### 阶段 3：代码生成消费 beats
 
@@ -1191,12 +1175,7 @@ const endFrame = Math.round(beat.animationEndSeconds * fps);
 - 新推荐 prompt components 设为内置可选项；
 - 质量稳定后默认启用。
 
-回滚：
-
-- 关闭 `SEMANTIC_BEATS_ENABLED`；
-- 忽略 JSONB 中 beats/timestamps；
-- 继续使用 narration + description 旧链路；
-- 无需回滚历史数据。
+回滚采用代码版本回滚，不在运行时代码中维护无 beats 分支。由于项目处于开发初期，回滚期间产生的开发数据可清理后重新生成。
 
 ---
 
@@ -1224,9 +1203,9 @@ const endFrame = Math.round(beat.animationEndSeconds * fps);
 - cue 对 narration 覆盖率达到 95% 以上；
 - 火山 timestamp 正常响应时，scene alignment coverage 达到 95% 以上；
 - TTS 修改后 beats timing 会重新计算；
-- 无 beats 的历史数据不受影响；
+- 缺失 beats 的 scene 会被明确拒绝，不进入代码生成；
 - Manim/Remotion render API 无破坏性变更；
-- 关闭 feature flag 可完整回退。
+- 部署异常时可以通过代码版本回滚恢复。
 
 质量验收：
 
@@ -1236,4 +1215,3 @@ const endFrame = Math.round(beat.animationEndSeconds * fps);
 - 不依赖重复双圆、光晕和统一居中构图生成全部内容；
 - 视频总时长符合平台 pacing 组件约束；
 - 同一内容版本可定位实际使用的基础 prompt 版本、引擎规范和平台组件文本。
-

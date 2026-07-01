@@ -9,7 +9,7 @@ narrative_hint: |
   装饰元素：装饰细线、分隔线、背景辅助网格
 
   【配色参考】
-  草莓红 #E8524A、橘橙 #F07D3E；天蓝 #4BA3C3、结论绿 #44CF6C；直觉粉 #FF9EBB；深炭灰 #2C2C2C；背景：淡白 #F8F8F8
+  认知紫 #6C4FD4、浅紫 #A98EE8；错误红 #FF6B6B、警示橙 #FFB347；理性青 #4ECDC4、结论绿 #44CF6C；直觉粉 #FF9EBB；深炭 #1C1433；背景：淡紫白 #F7F3FF
 
   【跨镜头衔接说明】
   Remotion 每个 Sequence 是独立作用域。跨镜头持续存在的元素在 description 中注明"作为共享层延续"。

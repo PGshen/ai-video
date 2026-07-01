@@ -13,14 +13,7 @@ import {
   useDuplicatePromptComponent,
 } from "@/hooks/usePromptComponents";
 import type { PromptComponent } from "@/types";
-
-const CATEGORIES = [
-  { key: "narrative_style", label: "叙事风格" },
-  { key: "pacing", label: "叙事节奏" },
-  { key: "scene_structure", label: "镜头结构" },
-  { key: "color_scheme", label: "配色系统" },
-  { key: "animation_style", label: "动画风格" },
-] as const;
+import { STYLE_CATEGORIES } from "@/lib/styleCategories";
 
 interface ComponentFormData {
   name: string;
@@ -167,7 +160,7 @@ function ComponentFormDialog({
 }
 
 export function StyleLibraryPage() {
-  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key as string);
+  const [activeCategory, setActiveCategory] = useState(STYLE_CATEGORIES[0].key as string);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PromptComponent | null>(null);
   const { data, isLoading } = usePromptComponents(activeCategory);
@@ -185,7 +178,7 @@ export function StyleLibraryPage() {
 
       {/* Category tabs */}
       <div className="flex gap-2 flex-wrap">
-        {CATEGORIES.map(({ key, label }) => (
+        {STYLE_CATEGORIES.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setActiveCategory(key)}

@@ -1,9 +1,12 @@
+import logging
 import json
 import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from app.engines.ai.base import (
     BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
@@ -20,7 +23,11 @@ def _load_engine_specs() -> tuple[dict[str, str], dict[str, str]]:
     if _SPECS_DIR.exists():
         for yaml_file in _SPECS_DIR.glob("*.yaml"):
             engine_name = yaml_file.stem
-            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+            try:
+                data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+            except Exception as exc:
+                logger.warning("Failed to load engine spec %s: %s", yaml_file, exc)
+                continue
             if "narrative_hint" in data:
                 narrative_hints[engine_name] = data["narrative_hint"]
             if "code_prompt" in data:
@@ -327,6 +334,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         engine_hint = self._engine_code_prompts.get(render_engine, self._ENGINE_CODE_PROMPT_FALLBACK)
         defaults = self._DEFAULT_STYLE_COMPONENTS
         color_scheme = (style_components or {}).get("color_scheme", defaults.get("color_scheme", ""))
+        animation_style = (style_components or {}).get("animation_style", defaults.get("animation_style", ""))
         system_prompt = f"""\
 你是知识视频渲染代码修复专家。请严格输出 JSON object，不要输出 Markdown。
 
@@ -353,6 +361,7 @@ JSON 格式：
 
 渲染引擎：{render_engine}
 {color_scheme}
+{animation_style}
 {engine_hint}
 
 只能输出合法 JSON object。"""

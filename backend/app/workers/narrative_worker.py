@@ -64,6 +64,7 @@ class NarrativeWorker(BaseWorker):
         render_engine = payload.get("render_engine", "manim")
         rejection_context = payload.get("rejection_context")
         narrative_context = payload.get("narrative_context") or []
+        style_components: dict[str, str] = payload.get("style_components") or {}
 
         logger.info(
             "[NarrativeWorker] task=%s project=%s title=%r engine=%s retry=%s",
@@ -82,6 +83,7 @@ class NarrativeWorker(BaseWorker):
             render_engine=render_engine,
             rejection_context=rejection_context,
             narrative_context=narrative_context,
+            style_components=style_components,
         )
         logger.info(
             "[NarrativeWorker] AI done: scenes=%d fact_checks=%d",

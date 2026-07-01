@@ -167,6 +167,7 @@ async def create_project(
         aspect_ratio=body.aspect_ratio,
         temporal_workflow_id=workflow_id,
         narrative_context=body.narrative_context,
+        style_config=body.style_config,
     )
     orm_project.id = project_id
     topic.status = "in_production"

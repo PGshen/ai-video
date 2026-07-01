@@ -9,6 +9,7 @@ from app.models.narrative_version import NarrativeVersion
 from app.models.script_version import ScriptVersion
 from app.models.topic import Topic
 from app.models.worker_task import WorkerTask
+from app.models.prompt_component import PromptComponent
 
 
 @activity.defn
@@ -101,6 +102,18 @@ async def submit_narrative_task(project_id: str) -> None:
         ).scalars().first()
         rejection_context = rejection_event.payload if rejection_event else None
 
+        # Resolve style_config to prompt texts
+        style_config = project.style_config or {}
+        style_components: dict[str, str] = {}
+        for category, component_id in style_config.items():
+            try:
+                comp_uuid = uuid.UUID(str(component_id))
+                comp = db.get(PromptComponent, comp_uuid)
+                if comp:
+                    style_components[category] = comp.prompt_text
+            except (ValueError, TypeError):
+                pass
+
         task = WorkerTask(
             project_id=project.id,
             task_type="generate_narrative",
@@ -112,6 +125,7 @@ async def submit_narrative_task(project_id: str) -> None:
                 "render_engine": project.render_engine,
                 "rejection_context": rejection_context,
                 "narrative_context": project.narrative_context or [],
+                "style_components": style_components,
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="narrative_generated",
@@ -130,12 +144,25 @@ async def submit_code_task(project_id: str) -> None:
         project = db.get(VideoProject, uuid.UUID(project_id))
         if project is None:
             return
+
+        # Resolve style_config to prompt texts
+        style_config = project.style_config or {}
+        style_components: dict[str, str] = {}
+        for category, component_id in style_config.items():
+            try:
+                comp_uuid = uuid.UUID(str(component_id))
+                comp = db.get(PromptComponent, comp_uuid)
+                if comp:
+                    style_components[category] = comp.prompt_text
+            except (ValueError, TypeError):
+                pass
+
         task = WorkerTask(
             project_id=project.id,
             task_type="generate_code",
             engine=project.render_engine,
             status="pending",
-            input_payload={"render_engine": project.render_engine},
+            input_payload={"render_engine": project.render_engine, "style_components": style_components},
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="code_generated",
             max_retries=3,

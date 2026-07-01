@@ -11,6 +11,7 @@ class ProjectCreate(BaseModel):
     tts_voice: str
     aspect_ratio: str
     narrative_context: list[dict] = []
+    style_config: dict = {}
 
 
 class SceneSchema(BaseModel):

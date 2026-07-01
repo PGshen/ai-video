@@ -21,6 +21,7 @@ class CodeWorker(BaseWorker):
     async def _execute(self, task) -> dict:
         payload = task.input_payload or {}
         render_engine = payload.get("render_engine", "manim")
+        style_components: dict[str, str] = payload.get("style_components") or {}
 
         logger.info(
             "[CodeWorker] task=%s project=%s engine=%s",
@@ -52,6 +53,7 @@ class CodeWorker(BaseWorker):
             result = await provider.generate_code(
                 scenes=scenes,
                 render_engine=render_engine,
+                style_components=style_components,
             )
             logger.info("[CodeWorker] AI done: codes=%d", len(result.codes))
 

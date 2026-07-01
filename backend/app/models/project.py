@@ -36,6 +36,9 @@ class VideoProject(Base):
     narrative_context: Mapped[list] = mapped_column(
         JSONB, default=list, server_default="[]"
     )
+    style_config: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default="{}"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

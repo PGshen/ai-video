@@ -1,0 +1,138 @@
+narrative_hint: |
+  【Remotion 画面描述规范——弱技术层】
+  description 字段只写画面意图，由代码生成阶段翻译为 React/TSX 动画代码。禁止在 description 中出现组件名、hook 名或代码语法。
+
+  【可用图形词汇】
+  SVG 图形：圆形（含双圆/光晕圆）、矩形（含圆角矩形容器）、路径、线条、多边形、径向渐变背景光晕
+  连接关系：箭头（细/粗）、连线（实线/虚线）、路径生长动画
+  文字层：标题、说明文字、数字标注、滚动数字、关键公式（文字描述）
+  装饰元素：装饰细线、分隔线、背景辅助网格
+
+  【配色参考】
+  草莓红 #E8524A、橘橙 #F07D3E；天蓝 #4BA3C3、结论绿 #44CF6C；直觉粉 #FF9EBB；深炭灰 #2C2C2C；背景：淡白 #F8F8F8
+
+  【跨镜头衔接说明】
+  Remotion 每个 Sequence 是独立作用域。跨镜头持续存在的元素在 description 中注明"作为共享层延续"。
+
+  【内容要求】
+  - 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画
+  - 先图形讲解，关键公式只在支撑核心结论时出现
+  - 每帧文字不超过 15 个汉字
+  - 图形元素数量控制在 3–6 个；多元素须描述"错落依次入场"
+
+  【精致度要求】
+  - 标题镜头：主标题下方配同色装饰线从中心向两侧伸展
+  - 概念节点：建议"双圆节点（外圈半透明光晕+内圈实心）"或"带圆角矩形容器"
+  - 连线/路径：描述"从左向右生长延伸"等动态过程
+  - 强调结论：描述"弹性放大后回弹"或"周围扩散光环"
+  - 数字变化：描述"数字从0滚动到X"而非静态显示
+
+  【示例】
+  镜头 0："淡白背景。中央主标题文字弹性入场（从下方轻微上移），下方装饰细线同步从中心向两侧伸展。整体保留至旁白结束。"
+  镜头 1："背景和缩小后的标题作为共享层延续至顶部。画面中央 SVG：左侧橘橙双圆节点弹性入场代表太阳，稍后天蓝细线从节点右侧向右生长延伸，末端弹性分裂成多条散射路径。图示保留至旁白结束。"
+
+code_prompt: |
+  【Remotion 代码规范】
+
+  渲染引擎为每个镜头生成一个具名 React 组件（如 _Scene0、_Scene1），code 字段即该组件的函数体。
+  禁止在 code 里写 export、const _SceneN、const VideoScene 等外层定义——这些由渲染引擎自动生成。
+
+  可直接使用的 API（已由渲染引擎导入，无需 import）：
+  AbsoluteFill、Sequence、Audio、staticFile、useCurrentFrame、useVideoConfig、interpolate、interpolateColors、spring
+
+  画布尺寸：1280 × 720 px（16:9），所有元素坐标和尺寸以此为基准，禁止超出边界。
+  SVG viewBox 统一使用 "0 0 1280 720"。
+
+  【布局与坐标规范（重要）】
+  坐标系：原点在左上角，x 向右，y 向下；画布中心为 (640, 360)。
+
+  定位原则——先声明位置常量，再从常量推导所有相关坐标：
+  const L_CX = 280, L_CY = 360, BOX_W = 200, BOX_H = 160;
+  const R_CX = 1000, R_CY = 360;
+  const lineX1 = L_CX + BOX_W / 2;
+  const lineX2 = R_CX - BOX_W / 2;
+
+  常用布局参考（不超出边界）：
+  - 左右两列：左中心 x=320，右中心 x=960，各留 ≥80px 边距
+  - 三列均分：x=213、640、1067
+  - 上下两区：上中心 y=210，下中心 y=510
+  - 全屏居中：cx=640，cy=360
+  - 顶部标题栏：y=60，高度 80px；正文区：y=140–680
+
+  连线/曲线必须从元素位置常量计算，禁止凭感觉估算 x/y 魔法数字。
+
+  【节点与连线对齐规则（高频错位根源）】
+  节点（circle/rect）和连线（line/path）必须共享同一套坐标常量，禁止分别硬编码各自的 x/y。
+
+  【帧与时序规则】
+  - code 片段在 React 组件函数体内执行，可直接调用 Hooks：useCurrentFrame()、useVideoConfig()
+  - useCurrentFrame() 返回当前镜头内的相对帧（从 0 开始）
+  - 渲染引擎自动注入 const _sceneDuration = N;（N = estimated_duration_seconds × fps），可直接使用
+  - 禁止自行声明 durationInFrames（会与 useVideoConfig() 解构冲突导致编译报错）；用 _sceneDuration 代替
+  - 动画用 interpolate(frame, [inputRange], [outputRange]) 或 spring({ frame, fps }) 驱动
+  - interpolate() 只能插值数字（opacity、translateY、scale、strokeDashoffset 等），禁止传入颜色字符串
+  - 颜色过渡必须用 interpolateColors()
+  - interpolate() 的 inputRange 必须严格单调递增
+
+  【跨镜头共享元素】
+  - 跨多个镜头持续存在的元素（背景、顶部标题栏）用 Sequence 包裹，放在最外层
+  - 每个镜头的 code 只负责该镜头独有的内容
+  - 镜头边界不等于清场点；关键元素保持到对应旁白结束，仅在叙事转折或替换时淡出
+
+  【配色系统】
+  请严格遵循以下配色方案，所有颜色以十六进制表示：
+  - 主背景（亮底）：#F8F8F8
+  - 亮底上的文字：#2C2C2C；辅助注释文字：#888888
+  - 核心概念色：主色 #3A7BD5、浅色 #7BB3F0
+  - 语义强调：草莓红 #E8524A（错误/陷阱）、橘橙 #F07D3E（警示）、天蓝 #4BA3C3（理性）、结论绿 #44CF6C（正确）、直觉粉 #FF9EBB（情感）
+  - 结构辅助：网格深底 #4A4A4A、网格亮底 #D0D0D0
+  - 配色原则：红色专用于偏差/错误，绿色专用于正确/结论，不可混用
+
+  【字体规范】
+  - 主标题：fontSize: 56
+  - 节点标签/图形说明：fontSize: 36
+  - 正文内容：fontSize: 28
+  - 小标注：fontSize: 22
+  - 禁止使用无 fontSize 的裸 style 文字
+
+  【视觉精致度规范（重要）】
+  构图与层次：
+  - 每个镜头须有明确的视觉层次：背景装饰层 → 主体 SVG 图形层 → 文字标注层，三层分离
+  - 元素之间保持充足间距（≥ 40px），避免拥挤感
+  - 背景光晕效果：在核心元素后方叠加一个半透明径向渐变圆（opacity: 0.12），提升视觉厚度
+  - 箭头使用 SVG defs marker 自定义箭头头部，strokeWidth=2.5，避免默认粗箭头
+
+  精致细节：
+  - 标题下方配装饰线：line 宽度与文字等宽，strokeWidth=1.5，同色系
+  - 关键节点使用双圆叠加：外圈半透明（opacity=0.15），内圈实心
+  - 标注文字使用 fontSize=20，偏移文字中心 ≥ 12px，不贴着图形边缘
+  - 多元素对比布局加垂直/水平分隔线（strokeDasharray="6 4"，opacity=0.35）
+
+  【动画节奏规范（大气感）】
+  入场（弹性为主）：
+  - 主体图形：spring({ frame, fps, config: { stiffness: 70, damping: 14 } }) 驱动 scale + opacity
+  - 文字标题：spring({ stiffness: 80, damping: 12 }) 驱动 translateY（从 +30px）+ opacity
+  - 多元素错落入场：每个元素用 Math.max(0, frame - delay) 作为偏移帧，delay 间隔 4–6 帧，制造层次感
+  - 连线/路径生长：interpolate(frame, [0, durationInFrames * 0.6], [0, totalLength]) 驱动 strokeDashoffset
+
+  强调动画：
+  - 关键结论：scale spring 放大至 1.15 后回弹（stiffness: 200, damping: 10）
+  - 颜色切换：interpolate 驱动颜色插值
+  - 数字滚动：interpolate(frame, [0, durationInFrames*0.7], [startVal, endVal], { extrapolateRight: "clamp" }) 配合 Math.round
+
+  退场：
+  - interpolate(frame, [exitStart, exitStart+10], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
+  - 退场时配合轻微下移（translateY 从 0 → +15px）增加动感
+
+  避免：所有动画都用 opacity 线性；元素突然出现无任何过渡；缺乏弹性感
+
+  【视觉优先】
+  - 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画
+  - 用路径生长、位置移动、大小缩放、连接关系或形变动画推进讲解，避免静态文字页
+  - 公式只保留支撑核心结论的关键公式，配合图形解释，避免公式堆砌
+  - 每帧文字不超过 15 个汉字
+
+  【文字渲染规则】
+  - 所有文字用 div 或 text（SVG），统一设置 fontFamily 为无衬线体
+  - 中文避免使用系统默认 serif 字体，推荐 style={{ fontFamily: "PingFang SC, Microsoft YaHei, sans-serif" }}
+  - 标题文字加 letterSpacing: 2 提升精致感；正文 letterSpacing: 0.5

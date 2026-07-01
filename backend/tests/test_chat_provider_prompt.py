@@ -35,8 +35,8 @@ def test_manim_prompt_keeps_visuals_until_narration_finishes():
 
 def test_narrative_hints_visual_style_and_content_rules():
     for prompt in ChatAIProvider._NARRATIVE_ENGINE_HINTS.values():
-        # 新配色关键词（活力暖色）
-        assert "#E8524A" in prompt or "#F07D3E" in prompt or "#4BA3C3" in prompt
+        # narrative_hint 的配色参考使用叙事侧色票（紫色系），不包含代码侧配色
+        assert "#6C4FD4" in prompt or "#FF6B6B" in prompt or "#4ECDC4" in prompt
         # 关键叙事规则保留
         assert "关键公式" in prompt
         assert "旁白结束" in prompt
@@ -94,18 +94,19 @@ def test_manim_code_prompt_canvas_safety_zone():
 
 
 def test_manim_code_prompt_warm_color_palette():
+    # 配色系统已移至 style_components（DB prompt_components），不再硬编码在 YAML code_prompt 中
+    # 此测试改为验证 YAML 中不再重复包含这些颜色（避免双重注入）
     prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
-    assert "#E8524A" in prompt   # 草莓红
-    assert "#F07D3E" in prompt   # 橘橙
-    assert "#4BA3C3" in prompt   # 天蓝
-    assert "#2C2C2C" in prompt   # 深炭灰
+    assert "#E8524A" not in prompt   # 草莓红应由 style_component 注入
+    assert "#F07D3E" not in prompt   # 橘橙应由 style_component 注入
 
 
 def test_manim_code_prompt_animation_rhythm():
+    # 动画节奏规范已移至 style_components，不再硬编码在 YAML code_prompt 中
+    # 此测试改为验证 YAML 保留引擎技术约束（GrowArrow 禁用说明仍在禁用类名列表）
     prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
-    assert "GrowFromCenter" in prompt
-    assert "DrawBorderThenFill" in prompt
-    assert "Flash" in prompt or "Circumscribe" in prompt
+    assert "GrowArrow" in prompt   # 禁用类名列表中仍提及 GrowArrow
+    assert "GrowFromCenter" not in prompt  # 动画风格建议应由 style_component 注入
 
 
 def test_manim_code_prompt_exit_checklist():
@@ -116,10 +117,11 @@ def test_manim_code_prompt_exit_checklist():
 
 
 def test_remotion_code_prompt_warm_colors():
+    # 配色系统已移至 style_components，不再硬编码在 YAML code_prompt 中
+    # 此测试改为验证 YAML 中不再重复包含这些颜色（避免双重注入）
     prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["remotion"]
-    assert "#E8524A" in prompt or "#F07D3E" in prompt
-    assert "#4BA3C3" in prompt
-    assert "#2C2C2C" in prompt
+    assert "#E8524A" not in prompt   # 草莓红应由 style_component 注入
+    assert "#2C2C2C" not in prompt   # 深炭灰应由 style_component 注入
 
 
 def test_remotion_code_prompt_canvas_size():

@@ -11,6 +11,7 @@ from app.auth import verify_api_key
 from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
+from app.models.prompt_component import PromptComponent
 from app.models.script_version import ScriptVersion
 from app.models.narrative_version import NarrativeVersion
 from app.schemas.narrative import NarrativeVersionSchema
@@ -155,6 +156,16 @@ async def create_project(
     topic = await db.get(Topic, body.topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
+
+    if body.style_config:
+        for category, component_id in body.style_config.items():
+            try:
+                comp_uuid = _uuid.UUID(str(component_id))
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=422, detail=f"style_config[{category}]: invalid UUID")
+            comp = await db.get(PromptComponent, comp_uuid)
+            if comp is None:
+                raise HTTPException(status_code=422, detail=f"style_config[{category}]: component not found")
 
     project_id = _uuid.uuid4()
     workflow_id = f"video-production-{project_id}"

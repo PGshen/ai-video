@@ -32,7 +32,7 @@ export function useUpdatePromptComponent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; promptText?: string }) =>
-      api.patch<PromptComponent>(`/api/prompt-components/${id}`, {
+      api.put<PromptComponent>(`/api/prompt-components/${id}`, {
         name: data.name,
         description: data.description,
         prompt_text: data.promptText,

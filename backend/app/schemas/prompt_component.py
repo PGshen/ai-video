@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from typing import Optional
 from datetime import datetime
@@ -9,7 +9,7 @@ class PromptComponentBase(BaseModel):
     category: str
     name: str
     description: Optional[str] = None
-    prompt_text: str
+    prompt_text: str = Field(..., max_length=8000)
 
 
 class PromptComponentCreate(PromptComponentBase):
@@ -19,7 +19,7 @@ class PromptComponentCreate(PromptComponentBase):
 class PromptComponentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    prompt_text: Optional[str] = None
+    prompt_text: Optional[str] = Field(None, max_length=8000)
 
 
 class PromptComponentResponse(BaseModel):

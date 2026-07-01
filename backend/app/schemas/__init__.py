@@ -9,6 +9,10 @@ from app.schemas.project import (
 )
 from app.schemas.review import ReviewRequest, ReviewResponse
 from app.schemas.worker_task import WorkerTaskResponse, WorkerTaskListResponse
+from app.schemas.prompt_component import (
+    PromptComponentCreate, PromptComponentUpdate,
+    PromptComponentResponse, PromptComponentListResponse,
+)
 
 __all__ = [
     "TopicCreate", "TopicUpdate", "TopicResponse", "TopicListResponse",
@@ -18,4 +22,6 @@ __all__ = [
     "PerformanceResponse", "PreviewUrlResponse",
     "ReviewRequest", "ReviewResponse",
     "WorkerTaskResponse", "WorkerTaskListResponse",
+    "PromptComponentCreate", "PromptComponentUpdate",
+    "PromptComponentResponse", "PromptComponentListResponse",
 ]

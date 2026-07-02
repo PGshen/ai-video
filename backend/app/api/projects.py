@@ -1,7 +1,7 @@
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,7 @@ from app.models.project import VideoProject
 from app.models.prompt_component import PromptComponent
 from app.models.script_version import ScriptVersion
 from app.models.narrative_version import NarrativeVersion
-from app.schemas.narrative import NarrativeVersionSchema
+from app.schemas.narrative import NarrativeBeatSchema, NarrativeVersionSchema
 from app.models.topic import Topic
 from app.models.project_event import ProjectEvent
 from app.models.video_asset import VideoAsset
@@ -31,6 +31,9 @@ from app.schemas.project import (
 )
 from app.workflows.video_production import VideoProductionWorkflow
 from app.config import settings
+from app.services.beat_aligner import align_scene_beats
+from app.services.narrative_validator import validate_and_normalize_scenes
+from app.services.prompt_bundle import style_components_from_snapshot
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -272,11 +275,23 @@ async def repair_script_code(
         raise HTTPException(status_code=422, detail="Scene indices must be unique")
 
     provider = get_ai_provider()
+    script_version = (
+        await db.get(ScriptVersion, project.current_script_version_id)
+        if project.current_script_version_id
+        else None
+    )
+    if script_version is None or not isinstance(script_version.prompt_snapshot, dict):
+        raise HTTPException(status_code=409, detail="Script version has no prompt snapshot")
+    try:
+        style_components = style_components_from_snapshot(script_version.prompt_snapshot)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
         result = await provider.repair_code(
             scenes=[scene.model_dump() for scene in body.scenes],
             render_engine=project.render_engine,
             error_message=body.error_message,
+            style_components=style_components,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"AI code repair failed: {exc}") from exc
@@ -314,6 +329,7 @@ async def get_current_narrative(
         scenes=enriched_scenes,
         fact_checks=nv.fact_checks,
         ai_model=nv.ai_model,
+        prompt_snapshot=nv.prompt_snapshot,
         created_at=nv.created_at,
     )
 
@@ -400,8 +416,11 @@ async def record_performance(project_id: UUID, _=Depends(verify_api_key)):
 
 
 class RegenerateTtsRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
     scene_index: int
     narration: str
+    beats: list[NarrativeBeatSchema]
 
 
 class RegenerateTtsResponse(BaseModel):
@@ -410,6 +429,8 @@ class RegenerateTtsResponse(BaseModel):
     duration_seconds: Optional[float]
     tts_status: str
     presigned_url: Optional[str]
+    beats: list[NarrativeBeatSchema] = Field(default_factory=list)
+    alignment_coverage: Optional[float] = None
 
 
 @router.post("/{project_id}/narrative/tts", response_model=RegenerateTtsResponse)
@@ -433,19 +454,27 @@ async def regenerate_scene_tts(
     scene_idx = body.scene_index
 
     if not narration:
-        scenes = list(nv.scenes)
-        found = False
-        for i, s in enumerate(scenes):
-            if s.get("scene_index") == scene_idx:
-                scenes[i] = {**s, "tts_status": "skipped", "audio_key": None, "duration_seconds": None, "narration": narration}
-                found = True
-                break
-        if not found:
-            raise HTTPException(status_code=404, detail=f"Scene {scene_idx} not found in narrative")
-        nv.scenes = scenes
-        flag_modified(nv, "scenes")
-        await db.commit()
-        return RegenerateTtsResponse(audio_key=None, duration_seconds=None, tts_status="skipped", presigned_url=None)
+        raise HTTPException(status_code=422, detail="Narration must be non-empty")
+
+    source_scene = next(
+        (scene for scene in nv.scenes if scene.get("scene_index") == scene_idx),
+        None,
+    )
+    if source_scene is None:
+        raise HTTPException(status_code=404, detail=f"Scene {scene_idx} not found in narrative")
+
+    candidate_scene = {
+        **source_scene,
+        "narration": narration,
+        "beats": [beat.model_dump() for beat in body.beats],
+    }
+    try:
+        validated_scene = validate_and_normalize_scenes(
+            [{**candidate_scene, "scene_index": 0}]
+        )[0]
+        validated_scene["scene_index"] = scene_idx
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     tts_engine = get_tts_engine()
     tts_voice = project.tts_voice
@@ -460,13 +489,22 @@ async def regenerate_scene_tts(
     found = False
     for i, s in enumerate(scenes):
         if s.get("scene_index") == scene_idx:
-            scenes[i] = {
-                **s,
-                "narration": narration,
+            scene_with_audio = {
+                **validated_scene,
                 "tts_status": "ready",
                 "audio_key": key,
                 "duration_seconds": result.duration_seconds,
+                "word_timestamps": [
+                    {
+                        "word": item.word,
+                        "start_time": item.start_time,
+                        "end_time": item.end_time,
+                        "confidence": item.confidence,
+                    }
+                    for item in result.word_timestamps
+                ],
             }
+            scenes[i] = align_scene_beats(scene_with_audio)
             found = True
             break
     if not found:
@@ -483,4 +521,6 @@ async def regenerate_scene_tts(
         duration_seconds=result.duration_seconds,
         tts_status="ready",
         presigned_url=presigned,
+        beats=scenes[i]["beats"],
+        alignment_coverage=scenes[i].get("alignment_coverage"),
     )

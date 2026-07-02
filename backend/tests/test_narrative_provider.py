@@ -1,4 +1,5 @@
 import pytest
+import json
 from app.engines.ai.chat_provider import ChatAIProvider
 from app.engines.ai.stub import StubChatClient
 from app.engines.ai.base import NarrativeResult
@@ -62,7 +63,12 @@ def test_generate_narrative_context_injected_into_user_payload():
 
     async def fake_completion(messages, **kwargs):
         captured["messages"] = messages
-        return '{"scenes": [], "fact_checks": []}'
+        return (
+            '{"scenes":[{"scene_index":0,"narration":"旁白",'
+            '"description":"画面","beats":[{"beat_index":0,'
+            '"cue_text":"旁白","visual_action":"文字出现"}]}],'
+            '"fact_checks":[]}'
+        )
 
     client = MagicMock()
     client.engine_name = "stub"
@@ -81,3 +87,88 @@ def test_generate_narrative_context_injected_into_user_payload():
     user_msg = captured["messages"][-1]["content"]
     assert "片段A" in user_msg
     assert "片段B" in user_msg
+
+
+@pytest.mark.asyncio
+async def test_generate_narrative_sends_all_validation_errors_back_for_correction():
+    invalid_response = {
+        "scenes": [
+            {
+                "scene_index": 0,
+                "narration": "第一幕",
+                "description": "画面一",
+                "beats": [{
+                    "cue_text": "第一幕",
+                    "visual_action": "文字出现",
+                    "transition": "fade",
+                }],
+            },
+            {
+                "scene_index": 1,
+                "narration": "第二幕",
+                "description": "画面二",
+                "beats": [{
+                    "cue_text": "错误文本",
+                    "visual_action": "文字变化",
+                    "transition": "continue",
+                }],
+            },
+        ],
+        "fact_checks": [],
+    }
+    corrected_response = {
+        "scenes": [
+            {
+                "scene_index": 0,
+                "narration": "第一幕",
+                "description": "画面一",
+                "beats": [{
+                    "cue_text": "第一幕",
+                    "visual_action": "文字出现",
+                    "transition": "reveal",
+                }],
+            },
+            {
+                "scene_index": 1,
+                "narration": "第二幕",
+                "description": "画面二",
+                "beats": [{
+                    "cue_text": "第二幕",
+                    "visual_action": "文字变化",
+                    "transition": "continue",
+                }],
+            },
+        ],
+        "fact_checks": [],
+    }
+    responses = iter([
+        json.dumps(invalid_response, ensure_ascii=False),
+        json.dumps(corrected_response, ensure_ascii=False),
+    ])
+    calls = []
+
+    class RepairingClient:
+        engine_name = "test"
+        model_name = "test-model"
+
+        async def create_chat_completion(self, messages, **kwargs):
+            calls.append([dict(message) for message in messages])
+            return next(responses)
+
+    provider = ChatAIProvider(client=RepairingClient())
+    result = await provider.generate_narrative(
+        topic_title="测试",
+        topic_description="描述",
+        render_engine="manim",
+    )
+
+    assert len(result.scenes) == 2
+    assert len(calls) == 2
+    correction_messages = calls[1]
+    assert correction_messages[-2] == {
+        "role": "assistant",
+        "content": json.dumps(invalid_response, ensure_ascii=False),
+    }
+    correction_prompt = correction_messages[-1]["content"]
+    assert "Scene 0 beat 0 has invalid transition" in correction_prompt
+    assert "Scene 1 cue_text values must cover narration exactly" in correction_prompt

@@ -24,6 +24,7 @@ class ScriptVersion(Base):
     render_engine: Mapped[str] = mapped_column(String(20), nullable=False)
     ai_model: Mapped[Optional[str]] = mapped_column(String(50))
     rejection_context: Mapped[Optional[dict]] = mapped_column(JSONB)
+    prompt_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

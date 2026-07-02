@@ -12,6 +12,10 @@ from app.engines.ai.base import (
     BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
     NarrativeResult,
 )
+from app.services.narrative_validator import (
+    NarrativeValidationError,
+    validate_and_normalize_scenes,
+)
 
 _SPECS_DIR = Path(__file__).parent / "engine_specs"
 
@@ -97,10 +101,12 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         client: ChatClient,
         script_max_tokens: int = 8192,
         json_max_tokens: int = 4096,
+        narrative_validation_retries: int = 1,
     ):
         self.client = client
         self.script_max_tokens = script_max_tokens
         self.json_max_tokens = json_max_tokens
+        self.narrative_validation_retries = max(0, narrative_validation_retries)
         self._narrative_engine_hints, self._engine_code_prompts = _load_engine_specs()
 
     @property
@@ -126,7 +132,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         parts = [
             "你是知识视频叙事脚本生成器。请严格输出 JSON object，不要输出 Markdown。",
             "",
-            'JSON 格式示例：\n{{\n  "scenes": [\n    {{\n      "scene_index": 0,\n      "narration": "旁白文稿——控制节奏、娓娓道来",\n      "description": "画面描述（明确标注进场/变形/退场/跨镜头衔接）",\n      "estimated_duration_seconds": 8.0\n    }}\n  ],\n  "fact_checks": [\n    {{\n      "claim_text": "需要核查的具体论断",\n      "scene_index": 0,\n      "source_url": null,\n      "source_description": "建议核查来源或说明",\n      "confidence": "medium",\n      "is_hypothesis": false,\n      "assumptions": null,\n      "controversy": null,\n      "reviewer_verdict": null,\n      "reviewer_note": null\n    }}\n  ]\n}}',
+            'JSON 格式示例：\n{{\n  "scenes": [\n    {{\n      "scene_index": 0,\n      "narration": "如果现场只有你一个人，责任几乎全部落在你身上。",\n      "description": "用人物和责任计量环解释唯一旁观者承担全部责任。",\n      "estimated_duration_seconds": 8.0,\n      "beats": [\n        {{\n          "beat_index": 0,\n          "cue_text": "如果现场只有你一个人，",\n          "visual_action": "中央出现唯一旁观者，周围保持空旷。",\n          "emphasis": "唯一旁观者",\n          "transition": "reveal",\n          "fallback_weight": 1.0\n        }},\n        {{\n          "beat_index": 1,\n          "cue_text": "责任几乎全部落在你身上。",\n          "visual_action": "责任计量环增长至100%，人物成为唯一高亮主体。",\n          "emphasis": "100%责任",\n          "transition": "continue",\n          "fallback_weight": 1.0\n        }}\n      ]\n    }}\n  ],\n  "fact_checks": [\n    {{\n      "claim_text": "需要核查的具体论断",\n      "scene_index": 0,\n      "source_url": null,\n      "source_description": "建议核查来源或说明",\n      "confidence": "medium",\n      "is_hypothesis": false,\n      "assumptions": null,\n      "controversy": null,\n      "reviewer_verdict": null,\n      "reviewer_note": null\n    }}\n  ]\n}}',
             "",
         ]
         if narrative_style:
@@ -138,12 +144,25 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         if color_scheme:
             parts.append(color_scheme)
             parts.append("颜色名与 Hex 对照（description 中用颜色名即可，代码生成阶段再转 Hex）")
+        parts += [
+            "",
+            "【语义节拍契约】",
+            "- 每个 scene 除 narration、description 外必须输出非空 beats 数组",
+            "- 普通镜头输出 2-4 个 beats，纯标题或结尾镜头可输出 1-2 个",
+            "- cue_text 必须逐字取自 narration，并按顺序完整覆盖 narration；不得概括、改写或遗漏",
+            "- visual_action 只描述这一句旁白发生时画面产生的知识性变化",
+            "- 每个 beat 必须推进信息、关系或状态，禁止用“保持画面”凑数量",
+            "- beat_index 在每个 scene 内必须从 0 连续递增",
+            "- transition 只能是 continue、transform、reveal、replace、exit 之一",
+            "- 不输出绝对时间；时间由 TTS 完成后计算",
+            "- visual_action 不得出现渲染引擎 API、类名、组件名或代码语法",
+        ]
         parts.append(engine_hint)
         parts += [
             "",
             "要求：",
-            "- scenes 是镜头数组，scene_index 从 0 连续递增，数量在 15-20 个",
-            "- 每个镜头包含 narration、description、estimated_duration_seconds",
+            "- scenes 是镜头数组，scene_index 从 0 连续递增；镜头数量遵循 pacing 组件",
+            "- 每个镜头包含 narration、description、beats、estimated_duration_seconds",
             "- fact_checks 覆盖脚本中的关键事实论断和可能争议点",
             "- 只能输出合法 JSON object",
         ]
@@ -174,6 +193,17 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             parts.append(color_scheme)
         if animation_style:
             parts.append(animation_style)
+        parts += [
+            "",
+            "【语义节拍时间执行契约】",
+            "- scene 中 beats 已按顺序给出真实 speech 时间和建议 animation 时间",
+            "- 每个 beat 的 visual_action 必须在自己的 animation 时间窗口内发生",
+            "- 关键词对应的主要视觉结果最迟应在 speech_end_seconds 前清晰可见",
+            "- 不得在第一个 beat 中一次性完成整个镜头的全部动画",
+            "- 相邻 beat 优先通过已有元素的移动、变形、分裂、聚合或强调连续推进",
+            "- 最后一个 beat 结束后可保持最终画面，但不得用无意义循环填满时间",
+            "- alignment_status 为 interpolated 时仍使用给出的时间",
+        ]
         parts.append(engine_hint)
         parts += [
             "",
@@ -230,25 +260,81 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
                     + snippets_text
                 )
 
-        content = await self.client.create_chat_completion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"请为以下选题生成知识视频叙事脚本 JSON{user_note}：\n"
-                    + json.dumps(user_payload, ensure_ascii=False)
-                    + context_note,
-                },
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=self.script_max_tokens,
-        )
-        payload = parse_json_object(content)
-        scenes = payload.get("scenes")
-        fact_checks = payload.get("fact_checks")
-        if not isinstance(scenes, list) or not isinstance(fact_checks, list):
-            raise ValueError("Narrative response must contain scenes and fact_checks arrays")
-        return NarrativeResult(scenes=scenes, fact_checks=fact_checks)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": f"请为以下选题生成知识视频叙事脚本 JSON{user_note}：\n"
+                + json.dumps(user_payload, ensure_ascii=False)
+                + context_note,
+            },
+        ]
+
+        for attempt in range(self.narrative_validation_retries + 1):
+            content = await self.client.create_chat_completion(
+                messages=messages,
+                response_format={"type": "json_object"},
+                max_tokens=self.script_max_tokens,
+            )
+            try:
+                payload = parse_json_object(content)
+                scenes = payload.get("scenes")
+                fact_checks = payload.get("fact_checks")
+                structure_errors = []
+                normalized_scenes = None
+                if not isinstance(scenes, list):
+                    structure_errors.append("Narrative response scenes must be an array")
+                else:
+                    try:
+                        normalized_scenes = validate_and_normalize_scenes(scenes)
+                    except NarrativeValidationError as exc:
+                        structure_errors.extend(exc.errors)
+                if not isinstance(fact_checks, list):
+                    structure_errors.append("Narrative response fact_checks must be an array")
+                if structure_errors:
+                    raise NarrativeValidationError(structure_errors)
+
+                if normalized_scenes is None:
+                    raise RuntimeError("Narrative scenes were not normalized")
+                return NarrativeResult(
+                    scenes=normalized_scenes,
+                    fact_checks=fact_checks,
+                )
+            except ValueError as exc:
+                if attempt >= self.narrative_validation_retries:
+                    raise
+
+                validation_errors = (
+                    list(exc.errors)
+                    if isinstance(exc, NarrativeValidationError)
+                    else [str(exc)]
+                )
+                logger.warning(
+                    "Narrative response validation failed; requesting correction "
+                    "(attempt %d/%d): %s",
+                    attempt + 1,
+                    self.narrative_validation_retries,
+                    "; ".join(validation_errors),
+                )
+                messages.extend(
+                    [
+                        {"role": "assistant", "content": content},
+                        {
+                            "role": "user",
+                            "content": (
+                                "上一次输出未通过校验。请根据以下全部错误修改上一份 JSON，"
+                                "并返回修正后的完整 JSON object；不要解释，不要遗漏未报错的内容：\n"
+                                + json.dumps(
+                                    {"validation_errors": validation_errors},
+                                    ensure_ascii=False,
+                                    indent=2,
+                                )
+                            ),
+                        },
+                    ]
+                )
+
+        raise RuntimeError("Narrative validation loop exited unexpectedly")
 
     async def generate_code(
         self,
@@ -276,6 +362,12 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         codes = payload.get("codes")
         if not isinstance(codes, list):
             raise ValueError("Code generation response must contain codes array")
+        if len(codes) != len(scenes):
+            raise ValueError(
+                f"Code generation returned {len(codes)} codes for {len(scenes)} scenes"
+            )
+        if any(not isinstance(code, str) or not code.strip() for code in codes):
+            raise ValueError("Every generated scene code must be a non-empty string")
         return CodeGenerationResult(codes=codes)
 
     async def repair_code(

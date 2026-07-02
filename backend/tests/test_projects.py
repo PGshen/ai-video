@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
 from datetime import datetime, timezone
@@ -248,7 +249,24 @@ def test_get_script_returns_script_version(client, auth_headers, mock_db):
         id=script_id,
         project_id=project_id,
         version_number=1,
-        scenes=[{"scene_index": 0, "narration": "旁白", "description": "画面", "code": "", "estimated_duration_seconds": 5.0}],
+        scenes=[{
+            "scene_index": 0,
+            "narration": "旁白",
+            "description": "画面",
+            "code": "pass",
+            "beats": [{
+                "beat_index": 0,
+                "cue_text": "旁白",
+                "visual_action": "文字出现",
+                "alignment_status": "interpolated",
+                "speech_start_seconds": 0.0,
+                "speech_end_seconds": 5.0,
+                "animation_start_seconds": 0.0,
+                "animation_end_seconds": 5.0,
+            }],
+            "estimated_duration_seconds": 5.0,
+            "duration_seconds": 5.0,
+        }],
         fact_checks=[{
             "claim_text": "事实陈述",
             "scene_index": 0,
@@ -264,6 +282,7 @@ def test_get_script_returns_script_version(client, auth_headers, mock_db):
         render_engine="manim",
         ai_model="test-model",
         rejection_context=None,
+        prompt_snapshot={"base_prompt_version": "test"},
         created_at=datetime.now(timezone.utc),
     )
 
@@ -295,11 +314,67 @@ def test_get_script_returns_404_if_project_missing(client, auth_headers, mock_db
     assert response.status_code == 404
 
 
+def test_get_script_serializes_nested_beats_as_camel_case(
+    client, auth_headers, mock_db,
+):
+    project = make_project()
+    project.current_script_version_id = uuid4()
+    script_version = SimpleNamespace(
+        id=project.current_script_version_id,
+        project_id=project.id,
+        version_number=1,
+        scenes=[{
+            "scene_index": 0,
+            "narration": "第一幕",
+            "description": "标题",
+            "code": "title = Text('标题')",
+            "beats": [{
+                "beat_index": 0,
+                "cue_text": "第一幕",
+                "visual_action": "标题出现",
+                "alignment_status": "aligned",
+            }],
+            "estimated_duration_seconds": 5,
+            "duration_seconds": 5,
+        }],
+        fact_checks=[],
+        render_engine="manim",
+        ai_model="test-model",
+        prompt_snapshot=None,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_db.get = AsyncMock(
+        side_effect=lambda model, pk: (
+            project if model.__name__ == "VideoProject" else script_version
+        )
+    )
+
+    response = client.get(
+        f"/api/projects/{project.id}/script",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    beat = response.json()["scenes"][0]["beats"][0]
+    assert beat["beatIndex"] == 0
+    assert beat["cueText"] == "第一幕"
+    assert beat["visualAction"] == "标题出现"
+    assert beat["alignmentStatus"] == "aligned"
+    assert "beat_index" not in beat
+
+
 def test_repair_script_code_sends_all_scenes_and_error_to_ai(
     client, auth_headers, mock_db,
 ):
     project = make_project(status="script_review", render_engine="manim")
-    mock_db.get = AsyncMock(return_value=project)
+    project.current_script_version_id = uuid4()
+    script_version = MagicMock()
+    script_version.prompt_snapshot = {"components": {}}
+    mock_db.get = AsyncMock(
+        side_effect=lambda model, pk: (
+            project if model.__name__ == "VideoProject" else script_version
+        )
+    )
     provider = MagicMock()
     provider.repair_code = AsyncMock(return_value=CodeRepairResult(repairs=[{
         "scene_index": 1,
@@ -312,18 +387,31 @@ def test_repair_script_code_sends_all_scenes_and_error_to_ai(
             "narration": "第一幕",
             "description": "标题",
             "code": "title = Text('标题')",
+            "beats": [{
+                "beatIndex": 0,
+                "cueText": "第一幕",
+                "visualAction": "标题出现",
+            }],
             "estimatedDurationSeconds": 5,
+            "durationSeconds": 5,
         },
         {
             "sceneIndex": 1,
             "narration": "第二幕",
             "description": "数轴",
             "code": "NumberLine(label_direction=DOWN)",
+            "beats": [{
+                "beatIndex": 0,
+                "cueText": "第二幕",
+                "visualAction": "数轴出现",
+            }],
             "estimatedDurationSeconds": 6,
+            "durationSeconds": 6,
         },
     ]
 
-    with patch("app.api.projects.get_ai_provider", return_value=provider):
+    with patch("app.api.projects.get_ai_provider", return_value=provider), \
+         patch("app.api.projects.style_components_from_snapshot", return_value={}):
         response = client.post(
             f"/api/projects/{project.id}/script/repair",
             headers=auth_headers,
@@ -358,7 +446,13 @@ def test_repair_script_code_only_allowed_during_script_review(
                 "narration": "旁白",
                 "description": "画面",
                 "code": "broken()",
+                "beats": [{
+                    "beatIndex": 0,
+                    "cueText": "旁白",
+                    "visualAction": "画面出现",
+                }],
                 "estimatedDurationSeconds": 5,
+                "durationSeconds": 5,
             }],
         },
     )

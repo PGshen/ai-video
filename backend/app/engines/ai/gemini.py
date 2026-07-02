@@ -1,7 +1,11 @@
 import json
+import logging
+import time
 from collections.abc import AsyncIterator
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiClient:
@@ -45,6 +49,11 @@ class GeminiClient:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
+        logger.info(
+            "Gemini chat completion request: model=%s messages=%d max_tokens=%s",
+            self.model_name, len(messages), max_tokens,
+        )
+        started = time.monotonic()
         async with self._new_client() as client:
             response = await client.post("/chat/completions", json=payload, headers=self._headers())
         self._raise_for_status(response)
@@ -55,6 +64,10 @@ class GeminiClient:
             raise ValueError("Unexpected Gemini chat completion response") from exc
         if not content:
             raise ValueError("Gemini returned empty content")
+        logger.info(
+            "Gemini chat completion response: model=%s elapsed=%.2fs content_len=%d",
+            self.model_name, time.monotonic() - started, len(content),
+        )
         return content
 
     async def stream_chat_completion(self, messages: list[dict]) -> AsyncIterator[str]:
@@ -63,6 +76,13 @@ class GeminiClient:
             "messages": messages,
             "stream": True,
         }
+        logger.info(
+            "Gemini stream chat completion request: model=%s messages=%d",
+            self.model_name, len(messages),
+        )
+        started = time.monotonic()
+        chunk_count = 0
+        total_len = 0
         async with self._new_client() as client:
             async with client.stream(
                 "POST",
@@ -84,7 +104,13 @@ class GeminiClient:
                         continue
                     content = delta.get("content")
                     if content:
+                        chunk_count += 1
+                        total_len += len(content)
                         yield content
+        logger.info(
+            "Gemini stream chat completion done: model=%s elapsed=%.2fs chunks=%d content_len=%d",
+            self.model_name, time.monotonic() - started, chunk_count, total_len,
+        )
 
     def _new_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(

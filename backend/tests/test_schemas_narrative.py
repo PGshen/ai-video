@@ -14,6 +14,13 @@ def test_narrative_version_schema_from_dict():
                 "scene_index": 0,
                 "narration": "旁白",
                 "description": "描述",
+                "beats": [
+                    {
+                        "beat_index": 0,
+                        "cue_text": "旁白",
+                        "visual_action": "文字出现",
+                    }
+                ],
                 "estimated_duration_seconds": 8.0,
             }
         ],
@@ -35,6 +42,13 @@ def test_review_request_narrative_gate():
                 scene_index=0,
                 narration="旁白修改",
                 description="描述修改",
+                beats=[
+                    {
+                        "beat_index": 0,
+                        "cue_text": "旁白修改",
+                        "visual_action": "文字更新",
+                    }
+                ],
             )
         ],
     )

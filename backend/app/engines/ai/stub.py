@@ -98,10 +98,40 @@ class StubChatClient:
         response_format: dict | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """Return a stub JSON response with empty scenes and fact_checks."""
+        """Return a schema-valid stub response for provider tests."""
         await asyncio.sleep(0)
-        response = {"scenes": [], "fact_checks": [], "codes": []}
-        return json.dumps(response, ensure_ascii=False)
+        narrative_response = {
+            "scenes": [
+                {
+                    "scene_index": 0,
+                    "narration": "测试旁白。",
+                    "description": "显示测试标题。",
+                    "estimated_duration_seconds": 3.0,
+                    "beats": [
+                        {
+                            "beat_index": 0,
+                            "cue_text": "测试旁白。",
+                            "visual_action": "测试标题出现。",
+                            "transition": "reveal",
+                            "fallback_weight": 1.0,
+                        }
+                    ],
+                }
+            ],
+            "fact_checks": [],
+        }
+        user_content = messages[-1].get("content", "") if messages else ""
+        if "生成渲染代码 JSON" in user_content:
+            try:
+                request_payload = json.loads(user_content.split("\n", 1)[1])
+                scene_count = len(request_payload.get("scenes") or [])
+            except (json.JSONDecodeError, IndexError, AttributeError):
+                scene_count = 0
+            return json.dumps(
+                {"codes": ["# stub generated code" for _ in range(scene_count)]},
+                ensure_ascii=False,
+            )
+        return json.dumps(narrative_response, ensure_ascii=False)
 
     async def stream_chat_completion(
         self,

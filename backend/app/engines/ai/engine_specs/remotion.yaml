@@ -1,6 +1,6 @@
 narrative_hint: |
   【Remotion 画面描述规范——弱技术层】
-  description 字段只写画面意图，由代码生成阶段翻译为 React/TSX 动画代码。禁止在 description 中出现组件名、hook 名或代码语法。
+  description 和 beats[].visual_action 只写画面意图，由代码生成阶段翻译为 React/TSX 动画代码。禁止出现组件名、hook 名或代码语法。
 
   【可用图形词汇】
   SVG 图形：圆形（含双圆/光晕圆）、矩形（含圆角矩形容器）、路径、线条、多边形、径向渐变背景光晕
@@ -8,31 +8,26 @@ narrative_hint: |
   文字层：标题、说明文字、数字标注、滚动数字、关键公式（文字描述）
   装饰元素：装饰细线、分隔线、背景辅助网格
 
-  【跨镜头衔接说明】
-  Remotion 每个 Sequence 是独立作用域。跨镜头持续存在的元素在 description 中注明"作为共享层延续"。
-
-  【内容要求】
-  - 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画
-  - 先图形讲解，关键公式只在支撑核心结论时出现
-  - 每帧文字不超过 15 个汉字
-  - 图形元素数量控制在 3–6 个；多元素须描述"错落依次入场"
-
-  【精致度要求】
-  - 标题镜头：主标题下方配同色装饰线从中心向两侧伸展
-  - 概念节点：建议"双圆节点（外圈半透明光晕+内圈实心）"或"带圆角矩形容器"
-  - 连线/路径：描述"从左向右生长延伸"等动态过程
-  - 强调结论：描述"弹性放大后回弹"或"周围扩散光环"
-  - 数字变化：描述"数字从0滚动到X"而非静态显示
-
-  【示例】
-  镜头 0："淡白背景。中央主标题文字弹性入场（从下方轻微上移），下方装饰细线同步从中心向两侧伸展。整体保留至旁白结束。"
-  镜头 1："背景和缩小后的标题作为共享层延续至顶部。画面中央 SVG：左侧橘橙双圆节点弹性入场代表太阳，稍后天蓝细线从节点右侧向右生长延伸，末端弹性分裂成多条散射路径。图示保留至旁白结束。"
+  【语义表达要求】
+  - description 概括整个镜头的视觉论证目标，visual_action 只描述当前 cue_text 对应的变化
+  - 优先描述位置、数量、大小、连接、分裂、聚合、替换和状态变化，让动画承担解释功能
+  - 前一 beat 的视觉结果应成为后一 beat 的输入，不在每个 beat 重新搭建画面
+  - 跨镜头需要持续存在的元素在 description 中注明“作为共享视觉锚点延续”
+  - 关键图形和结果至少保留到对应 cue_text 结束
+  - 文字只保留关键词、数字、公式和短标注；先用图形解释，只在必要时使用公式
 
 code_prompt: |
   【Remotion 代码规范】
 
   渲染引擎为每个镜头生成一个具名 React 组件（如 _Scene0、_Scene1），code 字段即该组件的函数体。
   禁止在 code 里写 export、const _SceneN、const VideoScene 等外层定义——这些由渲染引擎自动生成。
+
+  【语义节拍时间翻译】
+  - 每个 beat 使用局部帧窗口：startFrame = Math.round(animation_start_seconds * fps)，endFrame = Math.round(animation_end_seconds * fps)
+  - 每个 beat 的 interpolate/spring 只在自己的帧窗口内驱动，并对窗口外数值执行 clamp
+  - 前一 beat 的最终状态默认延续为后一 beat 的输入，不要在每个 beat 开头重建整张画面
+  - 不得只使用一个覆盖整个 _sceneDuration 的统一 spring 代替 beats 时间线
+  - 主要视觉结果必须在对应 speech_end_seconds 换算的帧之前清晰可见
 
   可直接使用的 API（已由渲染引擎导入，无需 import）：
   AbsoluteFill、Sequence、Audio、staticFile、useCurrentFrame、useVideoConfig、interpolate、interpolateColors、spring
@@ -61,6 +56,14 @@ code_prompt: |
   【节点与连线对齐规则（高频错位根源）】
   节点（circle/rect）和连线（line/path）必须共享同一套坐标常量，禁止分别硬编码各自的 x/y。
 
+  【画面占用与居中规则（高频问题：偏移、重叠、留白过多）】
+  - 主体内容的整体包围盒（bounding box）几何中心必须落在画布中心 (640, 360) 附近，禁止只把标题居中而正文/图形整体偏左或偏右
+  - 多个并列元素（如多张卡片、多个节点）必须整体居中：先计算全部元素总宽度，再令 (1280 - 总宽度) / 2 作为起始 x，禁止从固定的左边距开始排列导致整体偏左
+  - 副标题、注释文字必须在标题完全渲染的宽度之外另起一行或明显下移（y 间距 ≥ 主标题字号 × 1.2），禁止与标题同一 y 坐标导致文字重叠
+  - 徽章/圆形标注（如百分比气泡）必须放在其依附元素的外侧或角上，并与依附元素的顶部/边缘保持 ≥ 20px 间距，禁止圆心与矩形边界重合导致遮挡
+  - 主体图形/内容区域应占据画布至少 55%~70% 的有效宽高（画布 1280×720，除去顶部标题栏与边距后的可用区域），避免元素尺寸过小、四周留白过多导致画面空旷；卡片类元素宽度不小于 220px、高度不小于 260px
+  - 新元素入场前，必须核对与已存在元素的坐标范围是否重叠；同一 beat 或跨 beat 延续的元素禁止在未淡出的情况下被新元素直接遮盖同一区域
+
   【帧与时序规则】
   - code 片段在 React 组件函数体内执行，可直接调用 Hooks：useCurrentFrame()、useVideoConfig()
   - useCurrentFrame() 返回当前镜头内的相对帧（从 0 开始）
@@ -75,6 +78,12 @@ code_prompt: |
   - 跨多个镜头持续存在的元素（背景、顶部标题栏）用 Sequence 包裹，放在最外层
   - 每个镜头的 code 只负责该镜头独有的内容
   - 镜头边界不等于清场点；关键元素保持到对应旁白结束，仅在叙事转折或替换时淡出
+
+  【内联样式语法（高频编译报错根源）】
+  - style={{...}} 是 JS 对象，属性名必须用 camelCase，禁止使用 CSS 的 kebab-case 写法
+  - 错误示例：{ justify-content: 'center' }、{ align-items: 'space-between' }、{ font-size: 28 }
+  - 正确示例：{ justifyContent: 'center' }、{ alignItems: 'space-between' }、{ fontSize: 28 }
+  - 常用属性对照：justifyContent、alignItems、flexDirection、backgroundColor、borderRadius、fontWeight、fontFamily、letterSpacing、strokeDasharray
 
   【字体规范】
   - 主标题：fontSize: 56

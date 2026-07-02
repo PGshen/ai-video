@@ -74,11 +74,38 @@ export interface NarrativeScene {
   sceneIndex: number;
   narration: string;
   description: string;
+  beats: NarrativeBeat[];
   estimatedDurationSeconds: number | null;
   audioKey: string | null;
   durationSeconds: number | null;
   ttsStatus: "ready" | "failed" | "skipped" | "pending" | null;
   audioPresignedUrl: string | null;
+  wordTimestamps: WordTimestamp[];
+  alignmentCoverage: number | null;
+  contentSchemaVersion: number;
+}
+
+export interface NarrativeBeat {
+  beatIndex: number;
+  cueText: string;
+  visualAction: string;
+  emphasis: string | null;
+  transition: "continue" | "transform" | "reveal" | "replace" | "exit";
+  fallbackWeight: number;
+  cueStartChar: number | null;
+  cueEndChar: number | null;
+  speechStartSeconds: number | null;
+  speechEndSeconds: number | null;
+  animationStartSeconds: number | null;
+  animationEndSeconds: number | null;
+  alignmentStatus: "pending" | "aligned" | "interpolated" | "failed";
+}
+
+export interface WordTimestamp {
+  word: string;
+  startTime: number;
+  endTime: number;
+  confidence: number | null;
 }
 
 export interface NarrativeVersion {
@@ -87,6 +114,7 @@ export interface NarrativeVersion {
   scenes: NarrativeScene[];
   factChecks: FactCheckItem[];
   aiModel: string | null;
+  promptSnapshot: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -112,7 +140,9 @@ export interface Scene {
   narration: string;
   description: string;
   code: string;
+  beats: NarrativeBeat[];
   estimatedDurationSeconds: number;
+  durationSeconds: number | null;
 }
 
 // ═══ 事实核查条目 ═══
@@ -137,8 +167,9 @@ export interface ScriptVersion {
   scenes: Scene[];
   factChecks: FactCheckItem[];
   renderEngine: "manim" | "remotion";
-  aiModel: string;
+  aiModel: string | null;
   rejectionContext: RejectionContext | null;
+  promptSnapshot: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -172,6 +203,7 @@ export interface ReviewRequest {
     sceneIndex: number;
     narration: string;
     description: string;
+    beats: NarrativeBeat[];
     estimatedDurationSeconds?: number | null;
   }>;
   editedScriptScenes?: Array<{
@@ -244,4 +276,6 @@ export interface RegenerateTtsResponse {
   durationSeconds: number | null;
   ttsStatus: string;
   presignedUrl: string | null;
+  beats: NarrativeBeat[];
+  alignmentCoverage: number | null;
 }

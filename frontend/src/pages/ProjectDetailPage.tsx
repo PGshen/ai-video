@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
+import { SceneBeats } from "@/components/projects/SceneBeats";
 import { useProject, useProjectScript, useSubmitReview } from "@/hooks/useProjects";
 import type { ProjectStatus } from "@/types";
 
@@ -161,6 +162,7 @@ export default function ProjectDetailPage() {
                       <p className="text-sm text-muted-foreground leading-relaxed">
                         {scene.narration}
                       </p>
+                      <SceneBeats beats={scene.beats} />
                       <details className="text-xs">
                         <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                           查看代码

@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { fetchNarrative, regenerateSceneTts } from "@/lib/api";
+import type { NarrativeBeat } from "@/types";
 
 export function useNarrative(projectId: string) {
   return useQuery({
@@ -15,9 +16,11 @@ export function useRegenerateTts(projectId: string) {
     mutationFn: ({
       sceneIndex,
       narration,
+      beats,
     }: {
       sceneIndex: number;
       narration: string;
-    }) => regenerateSceneTts(projectId, sceneIndex, narration),
+      beats: NarrativeBeat[];
+    }) => regenerateSceneTts(projectId, sceneIndex, narration, beats),
   });
 }

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from dataclasses import asdict
 from sqlalchemy import func, select
 from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_sync_session
@@ -11,6 +12,7 @@ from app.models.project import VideoProject
 from app.models.narrative_version import NarrativeVersion
 from app.storage import upload_bytes
 from app.workers.base import BaseWorker
+from app.services.beat_aligner import align_scene_beats
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +50,15 @@ async def _synthesize_scenes_tts(
             "tts_status": "ready",
             "audio_key": key,
             "duration_seconds": result.duration_seconds,
+            "word_timestamps": [asdict(item) for item in result.word_timestamps],
         }
 
     tasks = [_process_scene(i, scene) for i, scene in enumerate(scenes)]
-    return list(await asyncio.gather(*tasks))
+    synthesized = list(await asyncio.gather(*tasks))
+    return [
+        align_scene_beats(scene) if scene.get("tts_status") == "ready" else scene
+        for scene in synthesized
+    ]
 
 
 class NarrativeWorker(BaseWorker):
@@ -65,6 +72,9 @@ class NarrativeWorker(BaseWorker):
         rejection_context = payload.get("rejection_context")
         narrative_context = payload.get("narrative_context") or []
         style_components: dict[str, str] = payload.get("style_components") or {}
+        prompt_snapshot: dict = payload.get("prompt_snapshot") or {}
+        if not prompt_snapshot:
+            raise ValueError("generate_narrative task requires prompt_snapshot")
 
         logger.info(
             "[NarrativeWorker] task=%s project=%s title=%r engine=%s retry=%s",
@@ -112,6 +122,7 @@ class NarrativeWorker(BaseWorker):
                 fact_checks=result.fact_checks,
                 ai_model=provider.model_name,
                 rejection_context=rejection_context,
+                prompt_snapshot=prompt_snapshot,
             )
             db.add(nv)
             db.flush()

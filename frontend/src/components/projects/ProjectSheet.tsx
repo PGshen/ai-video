@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel";
+import { SceneBeats } from "@/components/projects/SceneBeats";
+import { ProjectStylePrompts } from "@/components/projects/ProjectStylePrompts";
 import {
   useProject, useProjectEvents, useProjectScript, useSubmitReview,
   useNarrativeVersions, useNarrativeVersion,
@@ -85,6 +87,11 @@ export function ProjectSheet({ project, onClose }: Props) {
     displayProject?.id ?? "",
     selectedNode?.type === "script" ? selectedNode.versionId : null,
   );
+  const visiblePromptSnapshot = selectedNode?.type === "narrative"
+    ? selectedNarrativeVersion?.promptSnapshot ?? null
+    : selectedNode?.type === "script"
+      ? selectedScriptVersion?.promptSnapshot ?? null
+      : script?.promptSnapshot ?? narrative?.promptSnapshot ?? null;
   // For historical video node view: use the asset ID stored in the event payload if available,
   // otherwise fall back to current asset (covers published projects with a single asset).
   const selectedVideoAssetId =
@@ -275,7 +282,10 @@ export function ProjectSheet({ project, onClose }: Props) {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* 左栏：元数据 + 时间线 */}
         <div className="w-72 shrink-0 border-r flex min-h-0 flex-col overflow-hidden p-5">
-          <MetaSection project={displayProject} />
+          <MetaSection
+            project={displayProject}
+            promptSnapshot={visiblePromptSnapshot}
+          />
           <EventsSection
             eventsData={eventsData}
             narrativeVersions={narrativeVersions}
@@ -497,7 +507,7 @@ function RightPanel({
               {repairPending ? "AI 修复中…" : "AI 修复"}
             </Button>
           </div>
-          <pre className="text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-64 overflow-y-auto">
+          <pre className="text-xs text-destructive/80 whitespace-pre-wrap break-all leading-relaxed max-h-32 overflow-y-auto">
             {renderFailureError || currentVideoAsset?.errorMessage}
           </pre>
         </div>
@@ -523,6 +533,7 @@ function RightPanel({
                     </div>
                     <p className="text-sm font-medium">{scene.description}</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
+                    <SceneBeats beats={scene.beats} />
                     <details className="text-xs" open>
                       <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                         编辑代码
@@ -624,9 +635,15 @@ function RightPanel({
   );
 }
 
-function MetaSection({ project }: { project: VideoProject }) {
+function MetaSection({
+  project,
+  promptSnapshot,
+}: {
+  project: VideoProject;
+  promptSnapshot: Record<string, unknown> | null;
+}) {
   return (
-    <section className="shrink-0 space-y-3 pb-6">
+    <section className="shrink-0 space-y-3 pb-4">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">项目配置</p>
       <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
         <span className="text-muted-foreground">渲染引擎</span>
@@ -640,6 +657,7 @@ function MetaSection({ project }: { project: VideoProject }) {
         <span className="text-muted-foreground">创建时间</span>
         <span className="font-medium">{timeAgo(project.createdAt)}</span>
       </div>
+      <ProjectStylePrompts promptSnapshot={promptSnapshot} />
     </section>
   );
 }
@@ -920,6 +938,7 @@ function HistoricalNarrativeView({ version }: { version: NarrativeVersion }) {
               <p className="text-sm leading-relaxed">{scene.narration}</p>
               <p className="text-xs font-medium text-muted-foreground">画面描述</p>
               <p className="text-sm leading-relaxed text-muted-foreground">{scene.description}</p>
+              <SceneBeats beats={scene.beats} defaultOpen={false} />
             </div>
           ))}
         </div>
@@ -953,6 +972,7 @@ function HistoricalScriptView({ version }: { version: ScriptVersion }) {
               </div>
               <p className="text-sm font-medium">{scene.description}</p>
               <p className="text-xs text-muted-foreground leading-relaxed">{scene.narration}</p>
+              <SceneBeats beats={scene.beats} defaultOpen={false} />
               <details className="text-xs">
                 <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                   查看代码

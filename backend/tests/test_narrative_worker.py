@@ -15,6 +15,7 @@ def make_task(**kwargs):
         "topic_description": "测试描述",
         "render_engine": "manim",
         "rejection_context": None,
+        "prompt_snapshot": {"base_prompt_version": "test"},
     })
     return task
 
@@ -32,7 +33,17 @@ async def test_narrative_worker_execute_writes_narrative_version():
     mock_provider.model_name = "stub-model"
     mock_provider.generate_narrative = AsyncMock(
         return_value=NarrativeResult(
-            scenes=[{"scene_index": 0, "narration": "旁白", "description": "描述"}],
+            scenes=[{
+                "scene_index": 0,
+                "narration": "旁白",
+                "description": "描述",
+                "beats": [{
+                    "beat_index": 0,
+                    "cue_text": "旁白",
+                    "visual_action": "文字出现",
+                    "fallback_weight": 1.0,
+                }],
+            }],
             fact_checks=[],
         )
     )
@@ -112,6 +123,7 @@ async def test_narrative_worker_passes_context_to_provider():
         "render_engine": "manim",
         "rejection_context": None,
         "narrative_context": [{"text": "参考片段"}],
+        "prompt_snapshot": {"base_prompt_version": "test"},
     })
     project_id = task.project_id
     captured_kwargs = {}
@@ -119,7 +131,16 @@ async def test_narrative_worker_passes_context_to_provider():
     async def fake_generate_narrative(**kwargs):
         captured_kwargs.update(kwargs)
         return NarrativeResult(
-            scenes=[{"scene_index": 0, "narration": "旁白", "description": "描述"}],
+            scenes=[{
+                "scene_index": 0,
+                "narration": "旁白",
+                "description": "描述",
+                "beats": [{
+                    "beat_index": 0,
+                    "cue_text": "旁白",
+                    "visual_action": "文字出现",
+                }],
+            }],
             fact_checks=[],
         )
 
@@ -145,7 +166,11 @@ async def test_narrative_worker_passes_context_to_provider():
          patch("app.workers.narrative_worker.get_sync_session", return_value=mock_db), \
          patch("app.workers.narrative_worker._synthesize_scenes_tts", new_callable=AsyncMock) as mock_tts, \
          patch("app.workers.narrative_worker.upload_bytes"):
-        mock_tts.return_value = [{"scene_index": 0, "tts_status": "ready"}]
+        mock_tts.return_value = [{
+            "scene_index": 0,
+            "tts_status": "ready",
+            "beats": [{"beat_index": 0, "cue_text": "旁白", "visual_action": "文字出现"}],
+        }]
         worker = NarrativeWorker(worker_id="test", temporal_client=AsyncMock())
         await worker._execute(task)
 

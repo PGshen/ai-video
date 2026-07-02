@@ -1,7 +1,11 @@
 import json
+import logging
+import time
 from collections.abc import AsyncIterator
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class DeepSeekClient:
@@ -43,6 +47,11 @@ class DeepSeekClient:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
+        logger.info(
+            "DeepSeek chat completion request: model=%s messages=%d max_tokens=%s",
+            self.model_name, len(messages), max_tokens,
+        )
+        started = time.monotonic()
         async with self._new_client() as client:
             response = await client.post("/chat/completions", json=payload, headers=self._headers())
         self._raise_for_status(response)
@@ -53,6 +62,10 @@ class DeepSeekClient:
             raise ValueError("Unexpected DeepSeek chat completion response") from exc
         if not content:
             raise ValueError("DeepSeek returned empty content")
+        logger.info(
+            "DeepSeek chat completion response: model=%s elapsed=%.2fs content_len=%d",
+            self.model_name, time.monotonic() - started, len(content),
+        )
         return content
 
     async def stream_chat_completion(self, messages: list[dict]) -> AsyncIterator[str]:
@@ -61,6 +74,13 @@ class DeepSeekClient:
             "messages": messages,
             "stream": True,
         }
+        logger.info(
+            "DeepSeek stream chat completion request: model=%s messages=%d",
+            self.model_name, len(messages),
+        )
+        started = time.monotonic()
+        chunk_count = 0
+        total_len = 0
         async with self._new_client() as client:
             async with client.stream(
                 "POST",
@@ -82,7 +102,13 @@ class DeepSeekClient:
                         continue
                     content = delta.get("content")
                     if content:
+                        chunk_count += 1
+                        total_len += len(content)
                         yield content
+        logger.info(
+            "DeepSeek stream chat completion done: model=%s elapsed=%.2fs chunks=%d content_len=%d",
+            self.model_name, time.monotonic() - started, chunk_count, total_len,
+        )
 
     def _new_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(

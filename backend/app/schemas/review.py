@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from typing import Literal, Optional
+from app.schemas.narrative import NarrativeBeatSchema
 
 
 class FactCheckVerdict(BaseModel):
@@ -15,6 +16,7 @@ class EditedNarrativeScene(BaseModel):
     scene_index: int
     narration: str
     description: str
+    beats: list[NarrativeBeatSchema]
     estimated_duration_seconds: Optional[float] = None
 
 

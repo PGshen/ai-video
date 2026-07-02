@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { useSubmitReview } from "@/hooks/useProjects";
 import { useRegenerateTts } from "@/hooks/useNarrative";
-import type { NarrativeVersion, NarrativeScene } from "@/types";
+import type { NarrativeVersion, NarrativeScene, NarrativeBeat } from "@/types";
 
 type Verdict = "approved" | "rejected" | "needs_revision";
 interface VerdictState { verdict: Verdict; note: string; }
@@ -14,9 +14,11 @@ interface VerdictState { verdict: Verdict; note: string; }
 interface SceneState {
   narration: string;
   description: string;
+  beats: NarrativeBeat[];
   audioPresignedUrl: string | null;
   durationSeconds: number | null;
   ttsStatus: NarrativeScene["ttsStatus"];
+  alignmentCoverage: number | null;
 }
 
 interface Props {
@@ -35,9 +37,11 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         {
           narration: s.narration,
           description: s.description,
+          beats: s.beats,
           audioPresignedUrl: s.audioPresignedUrl ?? null,
           durationSeconds: s.durationSeconds ?? null,
           ttsStatus: s.ttsStatus ?? null,
+          alignmentCoverage: s.alignmentCoverage ?? null,
         },
       ])
     )
@@ -51,20 +55,29 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [factVerdicts, setFactVerdicts] = useState<Record<number, VerdictState>>({});
 
-  const updateNarration = (idx: number, value: string) => {
+  const updateBeat = (
+    sceneIndex: number,
+    beatIndex: number,
+    patch: Partial<Pick<NarrativeBeat, "cueText" | "visualAction" | "emphasis" | "transition">>
+  ) => {
     setSceneStates((prev) => {
       const next = new Map(prev);
-      const cur = next.get(idx)!;
-      next.set(idx, { ...cur, narration: value });
+      const cur = next.get(sceneIndex)!;
+      const beats = cur.beats.map((beat) =>
+        beat.beatIndex === beatIndex ? { ...beat, ...patch } : beat
+      );
+      const narration = beats.map((beat) => beat.cueText).join("");
+      next.set(sceneIndex, { ...cur, beats, narration });
       return next;
     });
-    setDirtyTts((prev) => new Set(prev).add(idx));
-    // Clear error when user edits narration
-    setRegenError((prev) => {
-      const next = new Map(prev);
-      next.delete(idx);
-      return next;
-    });
+    if (patch.cueText !== undefined) {
+      setDirtyTts((prev) => new Set(prev).add(sceneIndex));
+      setRegenError((prev) => {
+        const next = new Map(prev);
+        next.delete(sceneIndex);
+        return next;
+      });
+    }
   };
 
   const updateDescription = (idx: number, value: string) => {
@@ -84,6 +97,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       const res = await regenerateTts.mutateAsync({
         sceneIndex: idx,
         narration: state.narration,
+        beats: state.beats,
       });
       setSceneStates((prev) => {
         const next = new Map(prev);
@@ -92,6 +106,8 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
           audioPresignedUrl: res.presignedUrl,
           durationSeconds: res.durationSeconds,
           ttsStatus: res.ttsStatus as NarrativeScene["ttsStatus"],
+          beats: res.beats,
+          alignmentCoverage: res.alignmentCoverage,
         });
         return next;
       });
@@ -122,10 +138,20 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       sceneIndex,
       narration: s.narration,
       description: s.description,
+      beats: s.beats,
     }));
 
   const hasFailedTts = Array.from(sceneStates.values()).some(
     (s) => s.ttsStatus === "failed"
+  );
+  const hasFailedAlignment = Array.from(sceneStates.values()).some(
+    (scene) =>
+      scene.alignmentCoverage == null ||
+      scene.beats.some(
+        (beat) =>
+          beat.alignmentStatus === "failed" ||
+          beat.alignmentStatus === "pending"
+      )
   );
 
   const allFactsMarked = useMemo(() => {
@@ -140,7 +166,11 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       note: v.note || "",
     }));
 
-  const canSubmit = dirtyTts.size === 0 && !hasFailedTts && allFactsMarked;
+  const canSubmit =
+    dirtyTts.size === 0 &&
+    !hasFailedTts &&
+    !hasFailedAlignment &&
+    allFactsMarked;
 
   const handleApprove = () => {
     if (!canSubmit) return;
@@ -195,6 +225,11 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                     {state.ttsStatus === "failed" && (
                       <Badge variant="destructive" className="text-xs">TTS 失败</Badge>
                     )}
+                    {state.alignmentCoverage != null && (
+                      <Badge variant="secondary" className="text-xs">
+                        对齐 {(state.alignmentCoverage * 100).toFixed(0)}%
+                      </Badge>
+                    )}
                   </div>
 
                   {/* 音频播放器 */}
@@ -210,10 +245,13 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                     <label className="text-xs font-medium text-muted-foreground">旁白</label>
                     <Textarea
                       value={state.narration}
-                      onChange={(e) => updateNarration(scene.sceneIndex, e.target.value)}
                       rows={3}
-                      className="text-sm"
+                      className="text-sm bg-muted/40"
+                      readOnly
                     />
+                    <p className="text-xs text-muted-foreground">
+                      完整旁白由下方节拍文本自动拼接。
+                    </p>
                   </div>
 
                   {isDirty && (
@@ -240,6 +278,72 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                       rows={4}
                       className="text-sm"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      语义节拍
+                    </label>
+                    {state.beats.map((beat) => (
+                      <div key={beat.beatIndex} className="rounded-md border bg-muted/20 p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">Beat {beat.beatIndex + 1}</Badge>
+                          <Badge variant="secondary">{beat.alignmentStatus}</Badge>
+                          {beat.speechStartSeconds != null && beat.speechEndSeconds != null && (
+                            <span className="text-xs text-muted-foreground">
+                              {beat.speechStartSeconds.toFixed(2)}s–{beat.speechEndSeconds.toFixed(2)}s
+                            </span>
+                          )}
+                        </div>
+                        <Textarea
+                          value={beat.cueText}
+                          onChange={(e) =>
+                            updateBeat(scene.sceneIndex, beat.beatIndex, { cueText: e.target.value })
+                          }
+                          rows={2}
+                          className="text-sm"
+                          aria-label={`镜头 ${scene.sceneIndex} Beat ${beat.beatIndex + 1} 旁白`}
+                        />
+                        <Textarea
+                          value={beat.visualAction}
+                          onChange={(e) =>
+                            updateBeat(scene.sceneIndex, beat.beatIndex, {
+                              visualAction: e.target.value,
+                            })
+                          }
+                          rows={2}
+                          className="text-sm"
+                          aria-label={`镜头 ${scene.sceneIndex} Beat ${beat.beatIndex + 1} 视觉动作`}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={beat.emphasis ?? ""}
+                            onChange={(e) =>
+                              updateBeat(scene.sceneIndex, beat.beatIndex, {
+                                emphasis: e.target.value || null,
+                              })
+                            }
+                            placeholder="强调对象（可选）"
+                            className="h-9 rounded-md border bg-background px-3 text-sm"
+                          />
+                          <select
+                            value={beat.transition}
+                            onChange={(e) =>
+                              updateBeat(scene.sceneIndex, beat.beatIndex, {
+                                transition: e.target.value as NarrativeBeat["transition"],
+                              })
+                            }
+                            className="h-9 rounded-md border bg-background px-3 text-sm"
+                          >
+                            <option value="continue">延续</option>
+                            <option value="transform">变形</option>
+                            <option value="reveal">揭示</option>
+                            <option value="replace">替换</option>
+                            <option value="exit">退场</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               );
@@ -284,6 +388,11 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         {hasFailedTts && (
           <p className="text-sm text-amber-600">
             有镜头 TTS 生成失败，请重新生成音频后再提交。
+          </p>
+        )}
+        {hasFailedAlignment && (
+          <p className="text-sm text-amber-600">
+            有镜头尚未完成音画对齐，请重新生成音频后再提交。
           </p>
         )}
         {!allFactsMarked && narrative.factChecks.length > 0 && (

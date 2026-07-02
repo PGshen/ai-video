@@ -9,6 +9,7 @@ from app.models.project import VideoProject
 from app.models.narrative_version import NarrativeVersion
 from app.models.script_version import ScriptVersion
 from app.workers.base import BaseWorker
+from app.services.narrative_validator import validate_scenes_for_codegen
 
 _MAX_VALIDATION_ROUNDS = 2
 
@@ -22,6 +23,9 @@ class CodeWorker(BaseWorker):
         payload = task.input_payload or {}
         render_engine = payload.get("render_engine", "manim")
         style_components: dict[str, str] = payload.get("style_components") or {}
+        prompt_snapshot: dict = payload.get("prompt_snapshot") or {}
+        if not prompt_snapshot:
+            raise ValueError("generate_code task requires prompt_snapshot")
 
         logger.info(
             "[CodeWorker] task=%s project=%s engine=%s",
@@ -42,6 +46,7 @@ class CodeWorker(BaseWorker):
 
             scenes = list(narrative.scenes or [])
             fact_checks = list(narrative.fact_checks or [])
+            validate_scenes_for_codegen(scenes)
             logger.info(
                 "[CodeWorker] loaded narrative_version=%s scenes=%d",
                 project.current_narrative_version_id,
@@ -50,8 +55,18 @@ class CodeWorker(BaseWorker):
 
             provider = get_ai_provider()
             logger.info("[CodeWorker] calling AI provider model=%s", provider.model_name)
+            codegen_scenes = [
+                {
+                    "scene_index": scene["scene_index"],
+                    "narration": scene["narration"],
+                    "description": scene["description"],
+                    "duration_seconds": scene.get("duration_seconds"),
+                    "beats": scene["beats"],
+                }
+                for scene in scenes
+            ]
             result = await provider.generate_code(
-                scenes=scenes,
+                scenes=codegen_scenes,
                 render_engine=render_engine,
                 style_components=style_components,
             )
@@ -135,6 +150,7 @@ class CodeWorker(BaseWorker):
                 fact_checks=fact_checks,
                 render_engine=render_engine,
                 ai_model=provider.model_name,
+                prompt_snapshot=prompt_snapshot,
             )
             db.add(sv)
             db.flush()

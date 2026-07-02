@@ -47,10 +47,11 @@ export function fetchNarrative(projectId: string) {
 export function regenerateSceneTts(
   projectId: string,
   sceneIndex: number,
-  narration: string
+  narration: string,
+  beats: import("@/types").NarrativeBeat[]
 ) {
   return api.post<import("@/types").RegenerateTtsResponse>(
     `/api/projects/${projectId}/narrative/tts`,
-    { sceneIndex, narration }
+    { sceneIndex, narration, beats }
   );
 }

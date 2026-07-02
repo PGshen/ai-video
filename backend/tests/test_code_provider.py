@@ -34,11 +34,10 @@ async def test_generate_code_returns_code_generation_result():
 
 
 @pytest.mark.asyncio
-async def test_generate_code_stub_returns_empty_list():
+async def test_generate_code_stub_returns_one_code_per_scene():
     provider = make_provider()
     result = await provider.generate_code(scenes=SAMPLE_SCENES, render_engine="manim")
-    # Stub returns empty codes list
-    assert result.codes == []
+    assert result.codes == ["# stub generated code", "# stub generated code"]
 
 
 def test_generate_code_prompt_contains_engine_rules():

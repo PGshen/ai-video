@@ -8,7 +8,10 @@ from app.engines.ai.base import CodeGenerationResult
 def make_task(**kwargs):
     task = MagicMock()
     task.project_id = kwargs.get("project_id", uuid.uuid4())
-    task.input_payload = kwargs.get("input_payload", {"render_engine": "manim"})
+    task.input_payload = kwargs.get(
+        "input_payload",
+        {"render_engine": "manim", "prompt_snapshot": {"base_prompt_version": "test"}},
+    )
     return task
 
 
@@ -21,7 +24,24 @@ async def test_code_worker_supported_task_types():
 async def test_code_worker_execute_creates_script_version():
     task = make_task()
     narrative_scenes = [
-        {"scene_index": 0, "narration": "旁白", "description": "描述", "estimated_duration_seconds": 5.0}
+        {
+            "scene_index": 0,
+            "narration": "旁白",
+            "description": "描述",
+            "duration_seconds": 5.0,
+            "beats": [
+                {
+                    "beat_index": 0,
+                    "cue_text": "旁白",
+                    "visual_action": "文字出现",
+                    "alignment_status": "interpolated",
+                    "speech_start_seconds": 0.0,
+                    "speech_end_seconds": 5.0,
+                    "animation_start_seconds": 0.0,
+                    "animation_end_seconds": 5.0,
+                }
+            ],
+        }
     ]
 
     mock_provider = AsyncMock()

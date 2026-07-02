@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
 from app.deps import get_temporal_client
@@ -34,8 +34,12 @@ def client(mock_db, mock_temporal):
 
     app.dependency_overrides[get_async_session] = override_db
     app.dependency_overrides[get_temporal_client] = override_temporal
-    with TestClient(app) as c:
-        yield c
+    with patch(
+        "app.main.TemporalClient.connect",
+        new=AsyncMock(return_value=mock_temporal),
+    ):
+        with TestClient(app) as c:
+            yield c
     app.dependency_overrides.clear()
 
 

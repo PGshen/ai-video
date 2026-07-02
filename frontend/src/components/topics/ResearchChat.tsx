@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { SendHorizontal } from "lucide-react";
+import { Loader2, SendHorizontal } from "lucide-react";
 import { ChatMessageMarkdown } from "@/components/ui/chat-message";
 import type { Topic, ResearchMessage } from "@/types";
 
@@ -33,9 +33,21 @@ function MessageBubble({ entry }: { entry: ChatEntry }) {
       </div>
     );
   }
+  if (!entry.text) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex items-center gap-2 py-1 text-sm text-muted-foreground"
+      >
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        <span>正在研究…</span>
+      </div>
+    );
+  }
   return (
     <div className="min-w-0 max-w-full text-sm">
-      <ChatMessageMarkdown content={entry.text || "▋"} />
+      <ChatMessageMarkdown content={entry.text} />
     </div>
   );
 }
@@ -164,6 +176,14 @@ export function ResearchChat({ topic, onSnippetSelect }: Props) {
           break;
         }
       }
+    } catch {
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === assistantEntry.id && !e.text
+            ? { ...e, text: "网络异常，请稍后重试" }
+            : e
+        )
+      );
     } finally {
       setStreaming(false);
     }

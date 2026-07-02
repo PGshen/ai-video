@@ -11,6 +11,10 @@ from app.models.narrative_version import NarrativeVersion
 from app.models.project_event import ProjectEvent
 from app.models.script_version import ScriptVersion
 from app.schemas.review import ReviewRequest
+from app.services.narrative_validator import (
+    validate_and_normalize_scenes,
+    validate_scenes_for_codegen,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["reviews"])
 
@@ -41,15 +45,40 @@ async def submit_review(
                     idx = scene.get("scene_index", -1)
                     if idx in edited_map:
                         edit = edited_map[idx]
+                        persisted_cues = [
+                            beat.get("cue_text")
+                            for beat in scene.get("beats") or []
+                        ]
+                        edited_cues = [beat.cue_text for beat in edit.beats]
+                        if edited_cues != persisted_cues:
+                            raise HTTPException(
+                                status_code=409,
+                                detail=(
+                                    f"Scene {idx} narration beats changed without regenerated TTS"
+                                ),
+                            )
                         updated_scenes.append({
                             **scene,
                             "narration": edit.narration,
                             "description": edit.description,
+                            "beats": [beat.model_dump() for beat in edit.beats],
                             **({"estimated_duration_seconds": edit.estimated_duration_seconds}
                                if edit.estimated_duration_seconds is not None else {}),
                         })
                     else:
                         updated_scenes.append(scene)
+                try:
+                    updated_scenes = validate_and_normalize_scenes(
+                        updated_scenes,
+                        preserve_alignment=True,
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+                if body.verdict == "approved":
+                    try:
+                        validate_scenes_for_codegen(updated_scenes)
+                    except ValueError as exc:
+                        raise HTTPException(status_code=422, detail=str(exc)) from exc
                 new_nv = NarrativeVersion(
                     project_id=nv.project_id,
                     version_number=nv.version_number + 1,
@@ -57,12 +86,18 @@ async def submit_review(
                     fact_checks=nv.fact_checks,
                     ai_model=nv.ai_model,
                     rejection_context=nv.rejection_context,
+                    prompt_snapshot=nv.prompt_snapshot,
                 )
                 db.add(new_nv)
                 await db.flush()
                 project.current_narrative_version_id = new_nv.id
                 reviewed_version = new_nv
                 await db.commit()
+            elif body.verdict == "approved" and nv and isinstance(nv.scenes, list):
+                try:
+                    validate_scenes_for_codegen(list(nv.scenes))
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         signal_name = "narrative_review"
 
@@ -96,6 +131,7 @@ async def submit_review(
                     render_engine=sv.render_engine,
                     ai_model=sv.ai_model,
                     rejection_context=sv.rejection_context,
+                    prompt_snapshot=sv.prompt_snapshot,
                 )
                 db.add(new_sv)
                 await db.flush()

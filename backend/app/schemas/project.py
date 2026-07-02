@@ -4,6 +4,8 @@ from typing import Optional
 from datetime import datetime
 from uuid import UUID
 
+from app.schemas.beat import NarrativeBeatSchema
+
 
 class ProjectCreate(BaseModel):
     topic_id: UUID
@@ -24,7 +26,9 @@ class SceneSchema(BaseModel):
     narration: str
     description: str
     code: str
+    beats: list[NarrativeBeatSchema]
     estimated_duration_seconds: Optional[float] = None
+    duration_seconds: Optional[float] = None
 
 
 class FactCheckItemSchema(BaseModel):
@@ -66,6 +70,7 @@ class ScriptVersionSchema(BaseModel):
     fact_checks: Optional[list[FactCheckItemSchema]]
     render_engine: str
     ai_model: Optional[str]
+    prompt_snapshot: Optional[dict] = None
     created_at: datetime
 
 

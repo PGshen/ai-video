@@ -10,12 +10,21 @@ class TTSRequest:
 
 
 @dataclass
+class WordTimestamp:
+    word: str
+    start_time: float
+    end_time: float
+    confidence: float | None = None
+
+
+@dataclass
 class TTSResult:
     success: bool
     output_path: str | None
     duration_seconds: float | None
     error_message: str | None
     audio_bytes: bytes = field(default=b"")
+    word_timestamps: list[WordTimestamp] = field(default_factory=list)
 
 
 class TTSEngine(Protocol):

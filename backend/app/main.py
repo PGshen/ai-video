@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +7,8 @@ from app.api import topics, projects, reviews, worker_tasks
 from app.api.prompt_components import router as prompt_components_router
 from app.config import settings
 from app.deps import set_temporal_client, get_temporal_client  # re-export for compat
+
+logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager

@@ -22,10 +22,28 @@ def make_narrative_version(project_id, **kwargs):
         project_id=project_id,
         version_number=1,
         scenes=[
-            {"scene_index": 0, "narration": "旁白", "description": "描述", "estimated_duration_seconds": 5.0}
+            {
+                "scene_index": 0,
+                "narration": "旁白",
+                "description": "描述",
+                "beats": [{
+                    "beat_index": 0,
+                    "cue_text": "旁白",
+                    "visual_action": "文字出现",
+                    "alignment_status": "interpolated",
+                    "speech_start_seconds": 0.0,
+                    "speech_end_seconds": 5.0,
+                    "animation_start_seconds": 0.0,
+                    "animation_end_seconds": 5.0,
+                }],
+                "estimated_duration_seconds": 5.0,
+                "duration_seconds": 5.0,
+            }
         ],
         fact_checks=[],
         ai_model="deepseek",
+        rejection_context=None,
+        prompt_snapshot={"base_prompt_version": "test"},
         created_at=datetime.now(timezone.utc),
     )
 
@@ -74,7 +92,21 @@ def test_review_narrative_approved_sends_signal(client, auth_headers, mock_db, m
                 "gate": "narrative",
                 "verdict": "approved",
                 "editedScenes": [
-                    {"sceneIndex": 0, "narration": "修改旁白", "description": "修改描述"}
+                    {
+                        "sceneIndex": 0,
+                        "narration": "旁白",
+                        "description": "修改描述",
+                        "beats": [{
+                            "beatIndex": 0,
+                            "cueText": "旁白",
+                            "visualAction": "文字更新",
+                            "alignmentStatus": "interpolated",
+                            "speechStartSeconds": 0.0,
+                            "speechEndSeconds": 5.0,
+                            "animationStartSeconds": 0.0,
+                            "animationEndSeconds": 5.0,
+                        }],
+                    }
                 ],
             },
         )

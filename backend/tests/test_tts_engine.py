@@ -54,6 +54,44 @@ async def test_synthesize_success(engine):
 
 
 @pytest.mark.asyncio
+async def test_synthesize_collects_and_deduplicates_word_timestamps(engine):
+    import json
+
+    audio_bytes = b"fake-audio-data"
+    sentence = {
+        "text": "你好，",
+        "words": [
+            {
+                "word": "你",
+                "startTime": 0.1,
+                "endTime": 0.2,
+                "confidence": 0.9,
+            },
+            {
+                "word": "好，",
+                "startTime": 0.2,
+                "endTime": 0.5,
+                "confidence": 0.8,
+            },
+        ],
+    }
+    chunk = {
+        "code": 0,
+        "data": base64.b64encode(audio_bytes).decode(),
+        "sentence": sentence,
+    }
+    lines = [json.dumps(chunk), json.dumps({**chunk, "data": ""})]
+
+    with patch("httpx.AsyncClient", _make_stream_mock(lines)):
+        result = await engine.synthesize(TTSRequest(text="你好，", voice="alloy"))
+
+    assert [(item.word, item.start_time, item.end_time) for item in result.word_timestamps] == [
+        ("你", 0.1, 0.2),
+        ("好，", 0.2, 0.5),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_synthesize_api_error(engine):
     import json
     error_chunk = {"code": 10001, "message": "invalid api key", "data": ""}

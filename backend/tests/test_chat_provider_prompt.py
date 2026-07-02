@@ -35,11 +35,13 @@ def test_manim_prompt_keeps_visuals_until_narration_finishes():
 
 def test_narrative_hints_visual_style_and_content_rules():
     for prompt in ChatAIProvider._NARRATIVE_ENGINE_HINTS.values():
-        # narrative_hint 的配色参考使用叙事侧色票（紫色系），不包含代码侧配色
-        assert "#6C4FD4" in prompt or "#FF6B6B" in prompt or "#4ECDC4" in prompt
-        # 关键叙事规则保留
+        # 引擎叙事规范只描述能力与语义约束；配色由平台 color_scheme 注入
+        assert "#6C4FD4" not in prompt
+        assert "#FF6B6B" not in prompt
+        assert "#4ECDC4" not in prompt
         assert "关键公式" in prompt
-        assert "旁白结束" in prompt
+        assert "cue_text" in prompt
+        assert "visual_action" in prompt
 
     manim_prompt = ChatAIProvider._NARRATIVE_ENGINE_HINTS["manim"]
     # 弱技术层：有图形类型词汇但无类名
@@ -57,6 +59,22 @@ def test_remotion_prompt_contains_key_rules():
     assert "useCurrentFrame" in prompt
     assert "interpolate" in prompt
     assert "Sequence" in prompt
+
+
+def test_prompts_contain_semantic_beat_contracts():
+    provider = make_provider()
+    narrative_prompt = provider._build_narrative_system_prompt("manim", {})
+    code_prompt = provider._build_code_system_prompt("manim", {})
+
+    assert "【语义节拍契约】" in narrative_prompt
+    assert "cue_text 必须逐字取自 narration" in narrative_prompt
+    assert "beat_index 在每个 scene 内必须从 0 连续递增" in narrative_prompt
+    assert "transition 只能是 continue、transform、reveal、replace、exit 之一" in narrative_prompt
+    assert "不输出绝对时间" in narrative_prompt
+    assert "【语义节拍时间执行契约】" in code_prompt
+    assert "不得在第一个 beat 中一次性完成" in code_prompt
+    assert "animation_start_seconds" in ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "startFrame" in ChatAIProvider._ENGINE_CODE_PROMPTS["remotion"]
 
 
 def test_system_prompt_contains_visual_first_rule():

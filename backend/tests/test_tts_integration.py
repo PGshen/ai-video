@@ -28,7 +28,7 @@ def engine():
 @pytest.mark.asyncio
 async def test_synthesize_real_request(engine):
     """验证真实 TTS 请求能成功返回音频字节。"""
-    result = await engine.synthesize(TTSRequest(text="你好，这是一个测试。", voice="alloy"))
+    result = await engine.synthesize(TTSRequest(text="你好，这是一个测试。", voice="zizi"))
 
     print(f"\nsuccess={result.success}")
     print(f"error_message={result.error_message}")
@@ -46,7 +46,7 @@ async def test_synthesize_raw_response(engine):
 
     from app.engines.tts.voice_map import resolve_speaker
 
-    speaker = resolve_speaker("alloy")
+    speaker = resolve_speaker("zizi")
     headers = {
         "X-Api-Key": engine._api_key,
         "X-Api-Resource-Id": engine._resource_id,

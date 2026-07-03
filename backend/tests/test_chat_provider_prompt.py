@@ -61,6 +61,15 @@ def test_remotion_prompt_contains_key_rules():
     assert "Sequence" in prompt
 
 
+def test_remotion_prompt_uses_tailwind_only_for_static_styles():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["remotion"]
+    assert "静态 Tailwind + 动态内联样式" in prompt
+    assert "scene-title" in prompt
+    assert "禁止动态拼接 Tailwind 类名" in prompt
+    assert "animate-*" in prompt
+    assert "逐帧动态值" in prompt
+
+
 def test_prompts_contain_semantic_beat_contracts():
     provider = make_provider()
     narrative_prompt = provider._build_narrative_system_prompt("manim", {})

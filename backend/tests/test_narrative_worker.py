@@ -150,7 +150,7 @@ async def test_narrative_worker_passes_context_to_provider():
 
     mock_project = MagicMock()
     mock_project.id = project_id
-    mock_project.tts_voice = "alloy"
+    mock_project.tts_voice = "zizi"
     mock_project.current_narrative_version_id = None
 
     nv_id = uuid.uuid4()

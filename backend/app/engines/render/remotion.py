@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -19,6 +20,8 @@ def _resolve_template_dir() -> Path:
         return p
     return _REPO_ROOT / p
 
+
+_SCENE_DURATION_DECL_RE = re.compile(r"^\s*const\s+_sceneDuration\s*=.*;\s*$")
 
 _REMOTION_IMPORTS = """\
 import React from 'react';
@@ -56,6 +59,11 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tup
         lines.append(f"const _Scene{i} = () => {{")
         lines.append(f"  const _sceneDuration = {dur};  // total frames for this scene")
         for code_line in scene.code.splitlines():
+            # The renderer is the sole authority on _sceneDuration; strip any
+            # self-declaration the LLM may have emitted despite instructions,
+            # to avoid a duplicate `const _sceneDuration` in the same scope.
+            if _SCENE_DURATION_DECL_RE.match(code_line):
+                continue
             lines.append(f"  {code_line}")
         lines.append("};")
         lines.append("")
@@ -129,6 +137,7 @@ class RemotionRenderEngine:
             shutil.copy2(template_dir / fname, Path(tmpdir) / fname)
         shutil.copy2(template_dir / "src" / "index.tsx", src_dir / "index.tsx")
         shutil.copy2(template_dir / "src" / "Root.tsx", src_dir / "Root.tsx")
+        shutil.copy2(template_dir / "src" / "index.css", src_dir / "index.css")
 
         # Symlink node_modules
         node_modules_link = Path(tmpdir) / "node_modules"

@@ -46,7 +46,7 @@ async def test_synthesize_success(engine):
     lines = [json.dumps(chunk), json.dumps(terminal)]
 
     with patch("httpx.AsyncClient", _make_stream_mock(lines)):
-        result = await engine.synthesize(TTSRequest(text="你好世界", voice="alloy"))
+        result = await engine.synthesize(TTSRequest(text="你好世界", voice="zizi"))
 
     assert result.success is True
     assert isinstance(result, TTSResult)
@@ -83,7 +83,7 @@ async def test_synthesize_collects_and_deduplicates_word_timestamps(engine):
     lines = [json.dumps(chunk), json.dumps({**chunk, "data": ""})]
 
     with patch("httpx.AsyncClient", _make_stream_mock(lines)):
-        result = await engine.synthesize(TTSRequest(text="你好，", voice="alloy"))
+        result = await engine.synthesize(TTSRequest(text="你好，", voice="zizi"))
 
     assert [(item.word, item.start_time, item.end_time) for item in result.word_timestamps] == [
         ("你", 0.1, 0.2),
@@ -98,7 +98,7 @@ async def test_synthesize_api_error(engine):
     lines = [json.dumps(error_chunk)]
 
     with patch("httpx.AsyncClient", _make_stream_mock(lines)):
-        result = await engine.synthesize(TTSRequest(text="hello", voice="alloy"))
+        result = await engine.synthesize(TTSRequest(text="hello", voice="zizi"))
 
     assert result.success is False
     assert "invalid api key" in result.error_message

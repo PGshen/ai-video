@@ -83,6 +83,18 @@ def test_build_remotion_tsx_injects_scene_duration():
     assert "const _sceneDuration = 120;" in tsx
 
 
+def test_build_remotion_tsx_strips_llm_self_declared_scene_duration():
+    scenes = [
+        _make_scene(0, "const _sceneDuration = 176;\nreturn <div/>", duration=4.0, audio_path="/tmp/s0.mp3"),
+        _make_scene(1, "const _sceneDuration = 241;\nreturn <div/>", duration=3.0, audio_path="/tmp/s1.mp3"),
+    ]
+    tsx = _build_remotion_tsx(scenes, fps=30)
+    # Only the engine-injected declarations should remain, one per scene.
+    assert tsx.count("const _sceneDuration = 176;") == 0
+    assert tsx.count("const _sceneDuration = 241;") == 0
+    assert tsx.count("const _sceneDuration =") == 2
+
+
 def test_build_remotion_tsx_imports_remotion_apis():
     tsx = _build_remotion_tsx([_make_scene(0, "return <div/>", duration=2.0, audio_path="/tmp/s0.mp3")])
     assert "from 'remotion'" in tsx
@@ -136,7 +148,7 @@ async def test_remotion_render_engine_success():
     with patch("asyncio.create_subprocess_exec", return_value=fake_proc), \
          patch("app.engines.render.remotion._find_output_video", return_value="/tmp/output.mp4"), \
          patch("pathlib.Path.read_bytes", return_value=fake_video_bytes), \
-         patch("shutil.copy2"), \
+         patch("shutil.copy2") as copy_mock, \
          patch("os.symlink"), \
          patch("pathlib.Path.mkdir"), \
          patch("pathlib.Path.write_text"):
@@ -145,6 +157,8 @@ async def test_remotion_render_engine_success():
     assert result.success is True
     assert result.video_bytes == fake_video_bytes
     assert "Rendering..." in result.render_log
+    copied_sources = [str(call.args[0]) for call in copy_mock.call_args_list]
+    assert any(source.endswith("/src/index.css") for source in copied_sources)
 
 
 @pytest.mark.asyncio

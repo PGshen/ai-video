@@ -14,7 +14,7 @@ def make_project(**kwargs):
     p.topic_id = kwargs.get("topic_id", uuid4())
     p.status = kwargs.get("status", "draft")
     p.render_engine = kwargs.get("render_engine", "manim")
-    p.tts_voice = kwargs.get("tts_voice", "alloy")
+    p.tts_voice = kwargs.get("tts_voice", "zizi")
     p.aspect_ratio = kwargs.get("aspect_ratio", "landscape")
     p.temporal_workflow_id = kwargs.get("temporal_workflow_id", None)
     p.retry_count = 0
@@ -52,7 +52,7 @@ def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temp
             topic_title=topic.title,
             status="draft",
             render_engine="manim",
-            tts_voice="alloy",
+            tts_voice="zizi",
             aspect_ratio="landscape",
             retry_count=0,
             created_at=now,
@@ -64,7 +64,7 @@ def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temp
             json={
                 "topic_id": str(topic.id),
                 "render_engine": "manim",
-                "tts_voice": "alloy",
+                "tts_voice": "zizi",
                 "aspect_ratio": "landscape",
             },
         )
@@ -94,7 +94,7 @@ def test_create_project_stores_narrative_context(client, auth_headers, mock_db, 
             topic_title=topic.title,
             status="draft",
             render_engine="manim",
-            tts_voice="alloy",
+            tts_voice="zizi",
             aspect_ratio="landscape",
             retry_count=0,
             created_at=now,
@@ -106,7 +106,7 @@ def test_create_project_stores_narrative_context(client, auth_headers, mock_db, 
             json={
                 "topic_id": str(topic.id),
                 "render_engine": "manim",
-                "tts_voice": "alloy",
+                "tts_voice": "zizi",
                 "aspect_ratio": "landscape",
                 "narrative_context": [{"text": "关键参考片段一"}, {"text": "片段二"}],
             },

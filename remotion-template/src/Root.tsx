@@ -1,5 +1,6 @@
 import { Composition } from "remotion";
 import { VideoScene, totalFrames, fps, width, height } from "./VideoScene";
+import "./index.css";
 
 export const Root = () => (
   <Composition

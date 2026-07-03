@@ -6,5 +6,7 @@ export const width = 1280;
 export const height = 720;
 
 export const VideoScene = () => (
-  <AbsoluteFill style={{ background: "#F7F3FF" }} />
+  <AbsoluteFill className="scene-canvas bg-slate-950">
+    <div className="scene-title m-auto text-white">Remotion</div>
+  </AbsoluteFill>
 );

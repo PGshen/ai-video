@@ -1700,7 +1700,7 @@ function StyleSelect({
 
 export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSnippets = [] }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
-  const [ttsVoice, setTtsVoice] = useState("alloy");
+  const [ttsVoice, setTtsVoice] = useState("zizi");
   const [aspectRatio, setAspectRatio] = useState("landscape");
   const [styleConfig, setStyleConfig] = useState<Record<string, string>>({});
   const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(
@@ -1772,7 +1772,7 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
             <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="alloy">Alloy</SelectItem>
+                <SelectItem value="zizi">zizi</SelectItem>
                 <SelectItem value="echo">Echo</SelectItem>
                 <SelectItem value="fable">Fable</SelectItem>
                 <SelectItem value="onyx">Onyx</SelectItem>

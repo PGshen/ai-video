@@ -70,7 +70,7 @@ async def test_create_project_stores_narrative_context(async_client, db_session)
     payload = {
         "topic_id": str(topic.id),
         "render_engine": "manim",
-        "tts_voice": "alloy",
+        "tts_voice": "zizi",
         "aspect_ratio": "landscape",
         "narrative_context": [{"text": "关键参考片段一"}, {"text": "片段二"}],
     }
@@ -353,7 +353,7 @@ async def test_narrative_worker_passes_context_to_provider():
 
     mock_project = MagicMock()
     mock_project.id = project_id
-    mock_project.tts_voice = "alloy"
+    mock_project.tts_voice = "zizi"
     mock_project.current_narrative_version_id = None
 
     nv_id = uuid.uuid4()
@@ -741,7 +741,7 @@ const RENDER_ENGINE_LABELS: Record<string, string> = {
 };
 
 const TTS_VOICE_LABELS: Record<string, string> = {
-  alloy: "Alloy",
+  zizi: "zizi",
   echo: "Echo",
   fable: "Fable",
   onyx: "Onyx",
@@ -755,7 +755,7 @@ const ASPECT_RATIO_LABELS: Record<string, string> = {
 
 export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSnippets = [] }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
-  const [ttsVoice, setTtsVoice] = useState("alloy");
+  const [ttsVoice, setTtsVoice] = useState("zizi");
   const [aspectRatio, setAspectRatio] = useState("landscape");
   const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(
     () => new Set(contextSnippets.map((_, i) => i))
@@ -813,7 +813,7 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
             <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
               <SelectTrigger><SelectValue>{TTS_VOICE_LABELS[ttsVoice]}</SelectValue></SelectTrigger>
               <SelectContent>
-                <SelectItem value="alloy">Alloy</SelectItem>
+                <SelectItem value="zizi">zizi</SelectItem>
                 <SelectItem value="echo">Echo</SelectItem>
                 <SelectItem value="fable">Fable</SelectItem>
                 <SelectItem value="onyx">Onyx</SelectItem>

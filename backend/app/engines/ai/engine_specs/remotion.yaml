@@ -79,18 +79,46 @@ code_prompt: |
   - 每个镜头的 code 只负责该镜头独有的内容
   - 镜头边界不等于清场点；关键元素保持到对应旁白结束，仅在叙事转折或替换时淡出
 
-  【内联样式语法（高频编译报错根源）】
-  - style={{...}} 是 JS 对象，属性名必须用 camelCase，禁止使用 CSS 的 kebab-case 写法
-  - 错误示例：{ justify-content: 'center' }、{ align-items: 'space-between' }、{ font-size: 28 }
-  - 正确示例：{ justifyContent: 'center' }、{ alignItems: 'space-between' }、{ fontSize: 28 }
-  - 常用属性对照：justifyContent、alignItems、flexDirection、backgroundColor、borderRadius、fontWeight、fontFamily、letterSpacing、strokeDasharray
+  【样式规范：静态 Tailwind + 动态内联样式】
+  - 静态布局和视觉样式必须优先使用 className 和 Tailwind CSS，例如：
+    className="absolute inset-0 flex items-center justify-center bg-slate-950 text-white"
+  - 可使用任意值语法表达固定像素和颜色，例如：w-[220px]、top-[140px]、bg-[#0a0a0a]
+  - 禁止动态拼接 Tailwind 类名，例如 `bg-${color}-500`；条件样式必须写出完整类名，例如：
+    active ? "bg-blue-500" : "bg-slate-500"
+  - Tailwind 只负责静态样式。opacity、transform、left、top、width、height、颜色等由 frame/interpolate/spring
+    计算出的逐帧动态值，继续放在 style={{...}} 中
+  - 禁止使用 Tailwind 的 animate-*、transition-* 和 duration-* 制作动画；所有动画必须由当前 frame
+    和 Remotion API 驱动，保证任意帧可确定性渲染
+  - style={{...}} 是 JS 对象，属性名必须用 camelCase，禁止 CSS kebab-case
+  - SVG 的固定几何属性优先直接写为 JSX 属性；动态 strokeDashoffset、fill、stroke、transform 等可保留内联
+
+  可直接使用的语义类（已全局定义，无需 import）：
+  - scene-canvas：全画布绝对定位、裁剪、中文无衬线字体
+  - scene-title：56px 主标题
+  - scene-heading：36px 节点标签/图形说明
+  - scene-body：28px 正文
+  - scene-label：22px 小标注
+  - scene-card：24px 圆角和 24px 内边距
+
+  示例：
+  return (
+    <AbsoluteFill className="scene-canvas bg-slate-950 text-white">
+      <div className="scene-title absolute left-20 top-14">核心结论</div>
+      <div
+        className="scene-card absolute bg-blue-500/20"
+        style={{ opacity, transform: `translateY(${translateY}px) scale(${scale})` }}
+      >
+        <div className="scene-body">动态内容</div>
+      </div>
+    </AbsoluteFill>
+  );
 
   【字体规范】
-  - 主标题：fontSize: 56
-  - 节点标签/图形说明：fontSize: 36
-  - 正文内容：fontSize: 28
-  - 小标注：fontSize: 22
-  - 禁止使用无 fontSize 的裸 style 文字
+  - 主标题：scene-title（56px）
+  - 节点标签/图形说明：scene-heading（36px）
+  - 正文内容：scene-body（28px）
+  - 小标注：scene-label（22px）
+  - 特殊字号使用明确的 Tailwind 类，如 text-[44px]；禁止无字号的裸文字
 
   【视觉优先】
   - 除纯标题或总结镜头外，每个镜头至少包含一个承载知识含义的 SVG/CSS 图形动画
@@ -99,6 +127,6 @@ code_prompt: |
   - 每帧文字不超过 15 个汉字
 
   【文字渲染规则】
-  - 所有文字用 div 或 text（SVG），统一设置 fontFamily 为无衬线体
-  - 中文避免使用系统默认 serif 字体，推荐 style={{ fontFamily: "PingFang SC, Microsoft YaHei, sans-serif" }}
-  - 标题文字加 letterSpacing: 2 提升精致感；正文 letterSpacing: 0.5
+  - 所有文字用 div 或 text（SVG），使用 scene-* 语义类或 font-sans
+  - 中文字体栈已由 font-sans 和 scene-* 类统一设置，无需在每个元素重复声明 fontFamily
+  - scene-title 已包含 letterSpacing: 2px，scene-body/scene-label 已包含 letterSpacing: 0.5px

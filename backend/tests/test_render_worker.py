@@ -3,12 +3,13 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
-def make_project(script_version_id=None):
+def make_project(script_version_id=None, aspect_ratio="landscape"):
     p = MagicMock()
     p.id = uuid.uuid4()
     p.topic_id = uuid.uuid4()
     p.tts_voice = "male_calm"
     p.render_engine = "manim"
+    p.aspect_ratio = aspect_ratio
     p.current_script_version_id = script_version_id or uuid.uuid4()
     p.current_video_asset_id = None
     return p
@@ -88,6 +89,42 @@ async def test_render_worker_success():
     assert mock_download.call_count == 2
     # upload called once for video only
     assert mock_upload.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_render_worker_uses_portrait_resolution():
+    from app.workers.render_worker import RenderWorker
+    from app.engines.render.base import RenderResultWithBytes
+
+    project = make_project(aspect_ratio="portrait")
+    sv = make_script_version(project.id)
+    task = make_task(project.id)
+    mock_db = MagicMock()
+    mock_db.get.side_effect = [project, sv, MagicMock(), MagicMock()]
+    captured_resolution = None
+
+    async def capture_render(request, work_dir):
+        nonlocal captured_resolution
+        captured_resolution = request.resolution
+        return RenderResultWithBytes(
+            success=True,
+            output_path="/tmp/out.mp4",
+            duration_seconds=10.0,
+            error_message=None,
+            render_log="OK",
+            video_bytes=b"fake-video",
+        )
+
+    mock_render = AsyncMock()
+    mock_render.render = AsyncMock(side_effect=capture_render)
+
+    with patch("app.workers.render_worker.get_sync_session", return_value=mock_db), \
+         patch("app.workers.render_worker.get_render_engine", return_value=mock_render), \
+         patch("app.workers.render_worker.upload_bytes"), \
+         patch("app.workers.render_worker.download_to_file"):
+        await RenderWorker(worker_id="test", temporal_client=AsyncMock())._execute(task)
+
+    assert captured_resolution == (1080, 1920)
 
 
 @pytest.mark.asyncio

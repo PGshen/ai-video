@@ -16,6 +16,7 @@ from app.services.narrative_validator import (
     NarrativeValidationError,
     validate_and_normalize_scenes,
 )
+from app.video_format import normalize_aspect_ratio, resolution_for_aspect_ratio
 
 _SPECS_DIR = Path(__file__).parent / "engine_specs"
 
@@ -61,6 +62,47 @@ class ChatAIProvider:
     _NARRATIVE_ENGINE_HINT_FALLBACK = (
         "description 字段将用于后续渲染代码生成，必须精确描述每个元素的进场、变形、退场及跨镜头衔接关系。"
     )
+
+    @staticmethod
+    def _build_aspect_ratio_prompt(aspect_ratio: str, render_engine: str) -> str:
+        normalized = normalize_aspect_ratio(aspect_ratio)
+        width, height = resolution_for_aspect_ratio(normalized)
+        orientation = "竖屏 9:16（手机端）" if normalized == "portrait" else "横屏 16:9"
+        if normalized == "portrait":
+            composition_rules = (
+                "- 采用自上而下的纵向视觉动线，优先使用上下分区、单列卡片和垂直流程\n"
+                "- 避免依赖横向空间的左右多列、超宽坐标轴和长横排关系；对比内容优先上下排列\n"
+                "- 主体、关键词和关键动作放在画面中部安全区，顶部和底部预留移动端界面遮挡空间\n"
+                "- 每屏减少并列元素数量，文字短句化并适当增大字号，保证手机小屏可读"
+            )
+        else:
+            composition_rules = (
+                "- 充分利用横向空间，可使用左右对比、横向时间线和多列关系图\n"
+                "- 主体保持在中心安全区，避免关键信息贴近左右边缘"
+            )
+
+        engine_rules = ""
+        if render_engine == "manim":
+            logical_width = 4.5 if normalized == "portrait" else 14.222
+            safe_x = "[-1.9, 1.9]" if normalized == "portrait" else "[-6.0, 6.0]"
+            fit_width = "3.6" if normalized == "portrait" else "11"
+            engine_rules = (
+                f"\n- Manim 逻辑画布约为 {logical_width:g} × 8 单位；"
+                f"安全区 x ∈ {safe_x}、y ∈ [-3.5, 3.5]，大型 VGroup 最大宽度 {fit_width}"
+            )
+        elif render_engine == "remotion":
+            engine_rules = (
+                f"\n- Remotion 必须通过 useVideoConfig() 读取 width={width}、height={height}；"
+                "所有坐标、尺寸和 SVG viewBox 均从 width/height 推导，不得沿用固定横屏坐标"
+            )
+
+        return (
+            "【画幅与构图规范（最高优先级）】\n"
+            f"- 本项目画幅：{orientation}，最终视频尺寸：{width} × {height} px\n"
+            "- 本节覆盖引擎通用规范中任何固定画布尺寸、坐标和横屏布局示例\n"
+            f"{composition_rules}"
+            f"{engine_rules}"
+        )
 
     # Default style text used when project has no style_config for a category
     _DEFAULT_STYLE_COMPONENTS: dict[str, str] = {
@@ -121,6 +163,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         self,
         render_engine: str,
         style_components: dict[str, str],
+        aspect_ratio: str = "landscape",
     ) -> str:
         defaults = self._DEFAULT_STYLE_COMPONENTS
         narrative_style = style_components.get("narrative_style", defaults.get("narrative_style", ""))
@@ -160,7 +203,12 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         parts.append(engine_hint)
         parts += [
             "",
+            self._build_aspect_ratio_prompt(aspect_ratio, render_engine),
+        ]
+        parts += [
+            "",
             "要求：",
+            "- 第一个镜头需要按照【视觉系统】要求设置背景颜色",
             "- scenes 是镜头数组，scene_index 从 0 连续递增；镜头数量遵循 pacing 组件",
             "- 每个镜头包含 narration、description、beats、estimated_duration_seconds",
             "- fact_checks 覆盖脚本中的关键事实论断和可能争议点",
@@ -172,6 +220,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         self,
         render_engine: str,
         style_components: dict[str, str],
+        aspect_ratio: str = "landscape",
     ) -> str:
         defaults = self._DEFAULT_STYLE_COMPONENTS
         color_scheme = style_components.get("color_scheme", defaults.get("color_scheme", ""))
@@ -207,6 +256,10 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         parts.append(engine_hint)
         parts += [
             "",
+            self._build_aspect_ratio_prompt(aspect_ratio, render_engine),
+        ]
+        parts += [
+            "",
             "【代码拼合规则】",
             "所有镜头的 code 片段将被渲染引擎按顺序拼合为单个执行单元，每段之间插入注释分隔符。",
             "音频由渲染引擎在每个镜头开始时自动注入，code 里不处理音频。",
@@ -232,16 +285,19 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         rejection_context: dict | None = None,
         narrative_context: list[dict] | None = None,
         style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> NarrativeResult:
         system_prompt = self._build_narrative_system_prompt(
             render_engine=render_engine,
             style_components=style_components or {},
+            aspect_ratio=aspect_ratio,
         )
 
         user_payload: dict = {
             "topic_title": topic_title,
             "topic_description": topic_description,
             "render_engine": render_engine,
+            "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
         }
         if rejection_context:
             user_payload["rejection_context"] = rejection_context
@@ -341,10 +397,12 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         scenes: list[dict],
         render_engine: str,
         style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> CodeGenerationResult:
         system_prompt = self._build_code_system_prompt(
             render_engine=render_engine,
             style_components=style_components or {},
+            aspect_ratio=aspect_ratio,
         )
         content = await self.client.create_chat_completion(
             messages=[
@@ -352,7 +410,13 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
                 {
                     "role": "user",
                     "content": "请为以下镜头脚本生成渲染代码 JSON：\n"
-                    + json.dumps({"scenes": scenes}, ensure_ascii=False),
+                    + json.dumps(
+                        {
+                            "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
+                            "scenes": scenes,
+                        },
+                        ensure_ascii=False,
+                    ),
                 },
             ],
             response_format={"type": "json_object"},
@@ -376,11 +440,13 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         render_engine: str,
         error_message: str,
         style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> CodeRepairResult:
         engine_hint = self._engine_code_prompts.get(render_engine, self._ENGINE_CODE_PROMPT_FALLBACK)
         defaults = self._DEFAULT_STYLE_COMPONENTS
         color_scheme = (style_components or {}).get("color_scheme", defaults.get("color_scheme", ""))
         animation_style = (style_components or {}).get("animation_style", defaults.get("animation_style", ""))
+        aspect_prompt = self._build_aspect_ratio_prompt(aspect_ratio, render_engine)
         system_prompt = f"""\
 你是知识视频渲染代码修复专家。请严格输出 JSON object，不要输出 Markdown。
 
@@ -409,6 +475,7 @@ JSON 格式：
 {color_scheme}
 {animation_style}
 {engine_hint}
+{aspect_prompt}
 
 只能输出合法 JSON object。"""
         content = await self.client.create_chat_completion(
@@ -420,6 +487,7 @@ JSON 格式：
                     + json.dumps(
                         {
                             "render_engine": render_engine,
+                            "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
                             "error_message": error_message,
                             "scenes": scenes,
                         },

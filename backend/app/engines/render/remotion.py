@@ -144,6 +144,8 @@ class RemotionRenderEngine:
         cmd = [
             remotion_bin, "render", "VideoScene", output_path,
             "--fps", str(request.fps),
+            "--width", str(request.resolution[0]),
+            "--height", str(request.resolution[1]),
             "--public-dir", tmpdir,
         ]
 

@@ -57,12 +57,16 @@ class AIProvider(Protocol):
         render_engine: str,
         rejection_context: dict | None = None,
         narrative_context: list[dict] | None = None,
+        style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> NarrativeResult: ...
 
     async def generate_code(
         self,
         scenes: list[dict],
         render_engine: str,
+        style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> CodeGenerationResult: ...
 
     async def repair_code(
@@ -70,6 +74,8 @@ class AIProvider(Protocol):
         scenes: list[dict],
         render_engine: str,
         error_message: str,
+        style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> CodeRepairResult: ...
 
     async def brainstorm_topics(

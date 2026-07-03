@@ -292,6 +292,7 @@ async def repair_script_code(
             render_engine=project.render_engine,
             error_message=body.error_message,
             style_components=style_components,
+            aspect_ratio=project.aspect_ratio,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"AI code repair failed: {exc}") from exc

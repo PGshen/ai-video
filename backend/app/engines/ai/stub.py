@@ -17,6 +17,9 @@ class StubProvider:
         topic_description: str,
         render_engine: str,
         rejection_context: dict | None = None,
+        narrative_context: list[dict] | None = None,
+        style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> NarrativeResult:
         await asyncio.sleep(0)
         return NarrativeResult(scenes=[], fact_checks=[])
@@ -25,6 +28,8 @@ class StubProvider:
         self,
         scenes: list[dict],
         render_engine: str,
+        style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> CodeGenerationResult:
         await asyncio.sleep(0)
         return CodeGenerationResult(codes=["" for _ in scenes])
@@ -34,6 +39,8 @@ class StubProvider:
         scenes: list[dict],
         render_engine: str,
         error_message: str,
+        style_components: dict[str, str] | None = None,
+        aspect_ratio: str = "landscape",
     ) -> CodeRepairResult:
         await asyncio.sleep(0)
         return CodeRepairResult(repairs=[])

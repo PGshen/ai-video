@@ -77,6 +77,30 @@ def test_prompts_contain_semantic_beat_contracts():
     assert "startFrame" in ChatAIProvider._ENGINE_CODE_PROMPTS["remotion"]
 
 
+def test_portrait_prompts_use_mobile_composition_and_dimensions():
+    provider = make_provider()
+    narrative_prompt = provider._build_narrative_system_prompt(
+        "manim", {}, aspect_ratio="portrait"
+    )
+    code_prompt = provider._build_code_system_prompt(
+        "remotion", {}, aspect_ratio="portrait"
+    )
+
+    assert "竖屏 9:16（手机端）" in narrative_prompt
+    assert "1080 × 1920 px" in narrative_prompt
+    assert "自上而下的纵向视觉动线" in narrative_prompt
+    assert "安全区 x ∈ [-1.9, 1.9]" in narrative_prompt
+    assert "width=1080、height=1920" in code_prompt
+    assert "不得沿用固定横屏坐标" in code_prompt
+
+
+def test_landscape_prompt_remains_default():
+    prompt = make_provider()._build_code_system_prompt("manim", {})
+
+    assert "横屏 16:9" in prompt
+    assert "1920 × 1080 px" in prompt
+
+
 def test_system_prompt_contains_visual_first_rule():
     """generate_script 的 system prompt 应包含视觉优先要求"""
     provider = make_provider()

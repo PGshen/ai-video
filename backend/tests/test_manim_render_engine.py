@@ -133,3 +133,20 @@ def test_build_manim_script_skips_template_without_tex_calls():
     script = _build_manim_script([scene])
 
     assert "_chinese_tex_template" not in script
+
+
+def test_build_manim_script_sets_portrait_pixel_and_logical_canvas():
+    scene = SceneInput(
+        scene_index=0,
+        narration="标题",
+        description="竖屏标题",
+        code='title = Text("竖屏")',
+        audio=None,
+    )
+
+    script = _build_manim_script([scene], resolution=(1080, 1920))
+
+    assert "config.pixel_width = 1080" in script
+    assert "config.pixel_height = 1920" in script
+    assert "config.frame_width = 4.500000" in script
+    assert "config.frame_height = 8.0" in script

@@ -22,6 +22,7 @@ class CodeWorker(BaseWorker):
     async def _execute(self, task) -> dict:
         payload = task.input_payload or {}
         render_engine = payload.get("render_engine", "manim")
+        aspect_ratio = payload.get("aspect_ratio")
         style_components: dict[str, str] = payload.get("style_components") or {}
         prompt_snapshot: dict = payload.get("prompt_snapshot") or {}
         if not prompt_snapshot:
@@ -39,6 +40,7 @@ class CodeWorker(BaseWorker):
             project = db.get(VideoProject, task.project_id)
             if project is None:
                 raise ValueError(f"Project {task.project_id} not found")
+            aspect_ratio = aspect_ratio or project.aspect_ratio or "landscape"
 
             narrative = db.get(NarrativeVersion, project.current_narrative_version_id)
             if narrative is None:
@@ -69,6 +71,7 @@ class CodeWorker(BaseWorker):
                 scenes=codegen_scenes,
                 render_engine=render_engine,
                 style_components=style_components,
+                aspect_ratio=aspect_ratio,
             )
             logger.info("[CodeWorker] AI done: codes=%d", len(result.codes))
 
@@ -104,6 +107,8 @@ class CodeWorker(BaseWorker):
                     scenes=merged_scenes,
                     render_engine=render_engine,
                     error_message=errors,
+                    style_components=style_components,
+                    aspect_ratio=aspect_ratio,
                 )
                 for r in repair_result.repairs:
                     idx = r["scene_index"]

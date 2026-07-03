@@ -9,6 +9,7 @@ from app.models.project import VideoProject
 from app.models.script_version import ScriptVersion
 from app.models.video_asset import VideoAsset
 from app.storage import download_to_file, upload_bytes
+from app.video_format import resolution_for_aspect_ratio
 from app.workers.base import BaseWorker
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class RenderWorker(BaseWorker):
             project_id = str(project.id)
             script_version_id = str(sv.id)
             render_engine_name = project.render_engine
+            resolution = resolution_for_aspect_ratio(project.aspect_ratio)
         finally:
             db.close()
 
@@ -53,6 +55,7 @@ class RenderWorker(BaseWorker):
                 project_id=uuid.UUID(project_id),
                 script_version_id=uuid.UUID(script_version_id),
                 status="rendering",
+                resolution=f"{resolution[0]}x{resolution[1]}",
             )
             db.add(asset)
             db.commit()
@@ -90,7 +93,7 @@ class RenderWorker(BaseWorker):
             render_request = RenderRequest(
                 scenes=scene_inputs,
                 output_format="mp4",
-                resolution=(1920, 1080),
+                resolution=resolution,
                 fps=30,
             )
             render_result = await render_engine.render(render_request, work_dir=tmpdir)

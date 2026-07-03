@@ -1,7 +1,9 @@
 VOICE_ALIAS_MAP: dict[str, str] = {
-    "alloy": "zh_male_xionger_uranus_bigtts",
-    "nova": "zh_female_wenjingmaomao_uranus_bigtts",
-    "echo": "zh_female_chunribu_uranus_bigtts",
+    "xiaozhupeiqi": "zh_female_peiqi_uranus_bigtts",
+    "xiaoxinjiejie": "zh_female_chunribu_uranus_bigtts",
+    "zizi": "zh_female_qingchezizi_uranus_bigtts",
+    "yunzhou": "zh_male_m191_uranus_bigtts",
+    "xiaohe": "zh_female_xiaohe_uranus_bigtts",
 }
 
 

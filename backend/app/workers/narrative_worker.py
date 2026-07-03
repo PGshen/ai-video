@@ -69,6 +69,7 @@ class NarrativeWorker(BaseWorker):
         topic_title = payload.get("topic_title", "")
         topic_description = payload.get("topic_description", "")
         render_engine = payload.get("render_engine", "manim")
+        aspect_ratio = payload.get("aspect_ratio", "landscape")
         rejection_context = payload.get("rejection_context")
         narrative_context = payload.get("narrative_context") or []
         style_components: dict[str, str] = payload.get("style_components") or {}
@@ -94,6 +95,7 @@ class NarrativeWorker(BaseWorker):
             rejection_context=rejection_context,
             narrative_context=narrative_context,
             style_components=style_components,
+            aspect_ratio=aspect_ratio,
         )
         logger.info(
             "[NarrativeWorker] AI done: scenes=%d fact_checks=%d",

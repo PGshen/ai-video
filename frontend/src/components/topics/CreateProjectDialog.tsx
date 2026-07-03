@@ -23,11 +23,11 @@ const RENDER_ENGINE_LABELS: Record<string, string> = {
 };
 
 const TTS_VOICE_LABELS: Record<string, string> = {
-  alloy: "Alloy",
-  echo: "Echo",
-  fable: "Fable",
-  onyx: "Onyx",
-  nova: "Nova",
+  xiaoxinjiejie: "春日部小姐姐",
+  xiaozhupeiqi: "小猪佩奇",
+  zizi: "清澈梓梓",
+  yunzhou: "云舟",
+  xiaohe: "小禾",
 };
 
 const ASPECT_RATIO_LABELS: Record<string, string> = {
@@ -88,7 +88,7 @@ function StyleSelect({
 
 export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSnippets = [] }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
-  const [ttsVoice, setTtsVoice] = useState("alloy");
+  const [ttsVoice, setTtsVoice] = useState("zizi");
   const [aspectRatio, setAspectRatio] = useState("landscape");
   const [styleConfig, setStyleConfig] = useState<Record<string, string>>({});
   const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(

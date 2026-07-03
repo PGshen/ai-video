@@ -195,7 +195,10 @@ class ManimRenderEngine:
         with _tmpdir_context(work_dir) as tmpdir:
             script_path = os.path.join(tmpdir, "scene.py")
             output_path = os.path.join(tmpdir, "output.mp4")
-            script_content = _build_manim_script(request.scenes)
+            script_content = _build_manim_script(
+                request.scenes,
+                resolution=request.resolution,
+            )
 
             with open(script_path, "w") as f:
                 f.write(script_content)
@@ -206,7 +209,8 @@ class ManimRenderEngine:
                 "--output_file", output_path,
                 "--format", "mp4",
                 "--media_dir", tmpdir,
-                "-q", "l",  # low quality (480p) for faster rendering
+                "--resolution", f"{request.resolution[0]},{request.resolution[1]}",
+                "--fps", str(request.fps),
             ]
 
             proc = await asyncio.create_subprocess_exec(
@@ -279,7 +283,11 @@ class ManimRenderEngine:
 
 
 
-def _build_manim_script(scenes: list[SceneInput], include_audio: bool = True) -> str:
+def _build_manim_script(
+    scenes: list[SceneInput],
+    include_audio: bool = True,
+    resolution: tuple[int, int] | None = None,
+) -> str:
     prepared_scenes = []
     needs_chinese_tex_template = False
     for scene in scenes:
@@ -291,6 +299,16 @@ def _build_manim_script(scenes: list[SceneInput], include_audio: bool = True) ->
         "from manim import *",
         "",
     ]
+    if resolution is not None:
+        width, height = resolution
+        frame_width = 8.0 * width / height
+        lines.extend([
+            f"config.pixel_width = {width}",
+            f"config.pixel_height = {height}",
+            f"config.frame_width = {frame_width:.6f}",
+            "config.frame_height = 8.0",
+            "",
+        ])
     if needs_chinese_tex_template:
         lines.extend(_CHINESE_TEX_TEMPLATE_LINES)
         lines.append("")

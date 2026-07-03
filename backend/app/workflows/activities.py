@@ -113,6 +113,7 @@ async def submit_narrative_task(project_id: str) -> None:
                 "topic_title": topic.title if topic else "",
                 "topic_description": topic.description if topic else "",
                 "render_engine": project.render_engine,
+                "aspect_ratio": project.aspect_ratio,
                 "rejection_context": rejection_context,
                 "narrative_context": project.narrative_context or [],
                 "style_components": style_components,
@@ -149,6 +150,7 @@ async def submit_code_task(project_id: str) -> None:
             status="pending",
             input_payload={
                 "render_engine": project.render_engine,
+                "aspect_ratio": project.aspect_ratio,
                 "style_components": style_components,
                 "prompt_snapshot": prompt_snapshot,
             },

@@ -58,6 +58,7 @@ async def test_code_worker_execute_creates_script_version():
     mock_project.id = task.project_id
     mock_project.current_narrative_version_id = uuid.uuid4()
     mock_project.render_engine = "manim"
+    mock_project.aspect_ratio = "portrait"
     mock_project.current_script_version_id = None
 
     mock_db = MagicMock()
@@ -78,3 +79,4 @@ async def test_code_worker_execute_creates_script_version():
     assert "script_version_id" in result
     assert result["scene_count"] == 1
     mock_db.add.assert_called_once()
+    assert mock_provider.generate_code.await_args.kwargs["aspect_ratio"] == "portrait"

@@ -213,11 +213,18 @@ def test_submit_video_review_sends_signal(client, auth_headers, mock_db, mock_te
     response = client.post(
         f"/api/projects/{project.id}/review",
         headers=auth_headers,
-        json={"gate": "video", "verdict": "rejected", "rejectionType": "sync_issue"},
+        json={
+            "gate": "video",
+            "verdict": "rejected",
+            "rejectionType": "sync_issue",
+            "rejectionDetail": "口播与画面不同步",
+            "targetStage": "script",
+        },
     )
     assert response.status_code == 200
     call_args = mock_handle.signal.call_args
     assert call_args[0][0] == "video_review"
+    assert call_args[0][1]["target_stage"] == "script"
 
 
 def test_list_project_events(client, auth_headers, mock_db):

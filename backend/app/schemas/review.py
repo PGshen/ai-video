@@ -34,7 +34,7 @@ class ReviewRequest(BaseModel):
     verdict: Literal["approved", "rejected", "abandoned"]
     rejection_type: Optional[str] = None
     rejection_detail: Optional[str] = None
-    target_stage: Optional[str] = None
+    target_stage: Optional[Literal["narrative", "code", "script"]] = None
     fact_check_verdicts: Optional[list[FactCheckVerdict]] = None
     edited_scenes: Optional[list[EditedNarrativeScene]] = None
     edited_script_scenes: Optional[list[EditedScriptScene]] = None

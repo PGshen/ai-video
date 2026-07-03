@@ -193,7 +193,7 @@ export interface ReviewRequest {
   verdict: "approved" | "rejected" | "abandoned" | "retry";
   rejectionType?: string;
   rejectionDetail?: string;
-  targetStage?: "narrative" | "code";
+  targetStage?: "narrative" | "code" | "script";
   factCheckVerdicts?: Array<{
     index: number;
     verdict: "approved" | "rejected" | "needs_revision";

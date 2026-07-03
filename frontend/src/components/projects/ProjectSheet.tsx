@@ -76,7 +76,20 @@ export function ProjectSheet({ project, onClose }: Props) {
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [targetStage, setTargetStage] = useState<"narrative" | "code">("narrative");
+  const [showVideoRejectInput, setShowVideoRejectInput] = useState(false);
+  const [videoRejectionDetail, setVideoRejectionDetail] = useState("");
+  const [videoTargetStage, setVideoTargetStage] = useState<"narrative" | "script">("script");
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    setSubmitted(false);
+  }, [displayProject?.id, displayProject?.status]);
+
+  useEffect(() => {
+    setShowVideoRejectInput(false);
+    setVideoRejectionDetail("");
+    setVideoTargetStage("script");
+  }, [displayProject?.id]);
 
   // Fetch selected historical version on demand
   const { data: selectedNarrativeVersion } = useNarrativeVersion(
@@ -231,6 +244,34 @@ export function ProjectSheet({ project, onClose }: Props) {
     );
   };
 
+  const handleVideoReject = () => {
+    if (!project) return;
+    if (!showVideoRejectInput) {
+      setShowVideoRejectInput(true);
+      return;
+    }
+    if (!videoRejectionDetail.trim()) {
+      toast.error("请填写驳回原因");
+      return;
+    }
+    submitReview.mutate(
+      {
+        projectId: project.id,
+        gate: "video",
+        verdict: "rejected",
+        rejectionDetail: videoRejectionDetail.trim(),
+        targetStage: videoTargetStage,
+      },
+      {
+        onSuccess: () => {
+          setSubmitted(true);
+          toast.success(videoTargetStage === "narrative" ? "已驳回到叙事审核" : "已驳回到脚本审核");
+        },
+        onError: () => toast.error("提交失败，请重试"),
+      },
+    );
+  };
+
   const handleVideoRetry = () => {
     if (!project) return;
     submitReview.mutate(
@@ -329,6 +370,12 @@ export function ProjectSheet({ project, onClose }: Props) {
               currentVideoAsset={projectDetail?.currentVideoAsset ?? null}
               videoUrl={videoUrlData?.url ?? null}
               onVideoApprove={handleVideoApprove}
+              showVideoRejectInput={showVideoRejectInput}
+              videoRejectionDetail={videoRejectionDetail}
+              setVideoRejectionDetail={setVideoRejectionDetail}
+              videoTargetStage={videoTargetStage}
+              setVideoTargetStage={setVideoTargetStage}
+              onVideoReject={handleVideoReject}
               onVideoRetry={handleVideoRetry}
               onVideoAbandon={handleVideoAbandon}
               editedCode={editedCode}
@@ -375,6 +422,12 @@ interface RightPanelProps {
   currentVideoAsset: import("@/types").VideoAsset | null;
   videoUrl: string | null;
   onVideoApprove: () => void;
+  showVideoRejectInput: boolean;
+  videoRejectionDetail: string;
+  setVideoRejectionDetail: (value: string) => void;
+  videoTargetStage: "narrative" | "script";
+  setVideoTargetStage: (value: "narrative" | "script") => void;
+  onVideoReject: () => void;
   onVideoRetry: () => void;
   onVideoAbandon: () => void;
 }
@@ -385,7 +438,10 @@ function RightPanel({
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
   submitPending, onApprove, onReject, onAbandon,
-  currentVideoAsset, videoUrl, onVideoApprove, onVideoRetry, onVideoAbandon,
+  currentVideoAsset, videoUrl, onVideoApprove,
+  showVideoRejectInput, videoRejectionDetail, setVideoRejectionDetail,
+  videoTargetStage, setVideoTargetStage, onVideoReject,
+  onVideoRetry, onVideoAbandon,
   editedCode, setEditedCode,
   codeRepairs, appliedRepairs, repairPending, onAiRepair, onApplyRepair,
 }: RightPanelProps) {
@@ -431,13 +487,48 @@ function RightPanel({
           )}
         </div>
         {project.status === "video_review" && (
-          <div className="px-5 py-4 border-t flex gap-2">
-            <Button onClick={onVideoApprove} disabled={submitPending} className="flex-1">
-              通过发布
-            </Button>
-            <Button variant="destructive" onClick={onVideoAbandon} disabled={submitPending}>
-              废弃
-            </Button>
+          <div className="px-5 py-4 border-t space-y-3">
+            {showVideoRejectInput && (
+              <div className="space-y-2">
+                <Textarea
+                  value={videoRejectionDetail}
+                  onChange={(event) => setVideoRejectionDetail(event.target.value)}
+                  placeholder="请说明视频驳回原因"
+                  className="text-sm min-h-[72px]"
+                />
+                <div className="flex gap-5 text-sm">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="videoTargetStage"
+                      checked={videoTargetStage === "narrative"}
+                      onChange={() => setVideoTargetStage("narrative")}
+                    />
+                    驳回到叙事审核
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="videoTargetStage"
+                      checked={videoTargetStage === "script"}
+                      onChange={() => setVideoTargetStage("script")}
+                    />
+                    驳回到脚本审核
+                  </label>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={onVideoApprove} disabled={submitPending} className="flex-1">
+                通过发布
+              </Button>
+              <Button variant="outline" onClick={onVideoReject} disabled={submitPending} className="flex-1">
+                {showVideoRejectInput ? "确认驳回" : "驳回"}
+              </Button>
+              <Button variant="destructive" onClick={onVideoAbandon} disabled={submitPending}>
+                废弃
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -851,7 +942,11 @@ function EventsSection({
                         )}
                         {verdict?.target_stage && verdict.verdict === "rejected" && (
                           <p className="text-xs text-muted-foreground">
-                            回退至：{verdict.target_stage === "code" ? "重新生成代码" : "重写叙事脚本"}
+                            回退至：{verdict.target_stage === "code"
+                              ? "重新生成代码"
+                              : verdict.target_stage === "script"
+                                ? "脚本审核"
+                                : "叙事审核"}
                           </p>
                         )}
                       </div>

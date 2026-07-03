@@ -88,6 +88,8 @@ class VideoProductionWorkflow:
             result = await self._generate_and_review_video(project_id)
             if result == "approved":
                 break
+            elif result == "retry_video":
+                continue
             elif result == "abandoned":
                 await self._update_status(project_id, "abandoned")
                 return
@@ -233,7 +235,45 @@ class VideoProductionWorkflow:
             return "approved"
         elif verdict == "abandoned":
             return "abandoned"
-        return "back_to_script"
+
+        target = review.get("target_stage", "script")
+        rejection_payload = {
+            "trigger": "video_review_rejected",
+            "target_stage": target,
+            **({"rejection_type": review["rejection_type"]}
+               if review.get("rejection_type") else {}),
+            **({"rejection_detail": review["rejection_detail"]}
+               if review.get("rejection_detail") else {}),
+        }
+
+        if target == "narrative":
+            # Re-open the existing narrative instead of regenerating it before
+            # the reviewer has had a chance to make or request changes.
+            await self._update_status(
+                project_id, "narrative_review", payload=rejection_payload,
+            )
+            narrative_review = await self._wait_signal("narrative_review")
+            narrative_verdict = narrative_review.get("verdict")
+            if narrative_verdict == "abandoned":
+                return "abandoned"
+            if narrative_verdict == "approved":
+                return "back_to_code"
+            return "back_to_narrative"
+
+        # Old clients omitted target_stage, so script review is the safe
+        # backwards-compatible default.
+        await self._update_status(
+            project_id, "script_review", payload=rejection_payload,
+        )
+        script_review = await self._wait_signal("script_review")
+        script_verdict = script_review.get("verdict")
+        if script_verdict == "abandoned":
+            return "abandoned"
+        if script_verdict == "approved":
+            return "retry_video"
+        if script_review.get("target_stage", "narrative") == "code":
+            return "back_to_code"
+        return "back_to_narrative"
 
     async def _update_status(self, project_id: str, status: str, payload: dict | None = None) -> None:
         await workflow.execute_activity(

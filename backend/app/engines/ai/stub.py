@@ -91,6 +91,8 @@ class StubProvider:
 class StubChatClient:
     """Stub implementation of ChatClient protocol for testing."""
 
+    supports_json_schema = True
+
     @property
     def engine_name(self) -> str:
         return "stub"

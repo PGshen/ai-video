@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 class DeepSeekClient:
     engine_name = "deepseek"
+    # DeepSeek currently documents JSON Object mode, not strict JSON Schema.
+    supports_json_schema = False
 
     def __init__(
         self,

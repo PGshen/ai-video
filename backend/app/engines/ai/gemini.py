@@ -12,6 +12,7 @@ class GeminiClient:
     """Gemini via its OpenAI-compatible REST endpoint."""
 
     engine_name = "gemini"
+    supports_json_schema = True
 
     def __init__(
         self,

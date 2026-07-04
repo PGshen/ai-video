@@ -30,6 +30,9 @@ class ChatClient(Protocol):
     @property
     def model_name(self) -> str: ...
 
+    @property
+    def supports_json_schema(self) -> bool: ...
+
     async def create_chat_completion(
         self,
         messages: list[dict],

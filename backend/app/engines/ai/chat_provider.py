@@ -12,6 +12,13 @@ from app.engines.ai.base import (
     BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
     NarrativeResult,
 )
+from app.engines.ai.structured_output import (
+    BRAINSTORM_SCHEMA,
+    CODE_GENERATION_SCHEMA,
+    CODE_REPAIR_SCHEMA,
+    NARRATIVE_SCHEMA,
+    response_format_for,
+)
 from app.services.narrative_validator import (
     NarrativeValidationError,
     validate_and_normalize_scenes,
@@ -329,7 +336,11 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         for attempt in range(self.narrative_validation_retries + 1):
             content = await self.client.create_chat_completion(
                 messages=messages,
-                response_format={"type": "json_object"},
+                response_format=response_format_for(
+                    self.client,
+                    name="narrative",
+                    schema=NARRATIVE_SCHEMA,
+                ),
                 max_tokens=self.script_max_tokens,
             )
             try:
@@ -419,7 +430,11 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
                     ),
                 },
             ],
-            response_format={"type": "json_object"},
+            response_format=response_format_for(
+                self.client,
+                name="code_generation",
+                schema=CODE_GENERATION_SCHEMA,
+            ),
             max_tokens=self.script_max_tokens,
         )
         payload = parse_json_object(content)
@@ -495,7 +510,11 @@ JSON 格式：
                     ),
                 },
             ],
-            response_format={"type": "json_object"},
+            response_format=response_format_for(
+                self.client,
+                name="code_repair",
+                schema=CODE_REPAIR_SCHEMA,
+            ),
             max_tokens=self.script_max_tokens,
         )
         payload = parse_json_object(content)
@@ -555,13 +574,27 @@ JSON 格式示例：
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object"},
+            response_format=response_format_for(
+                self.client,
+                name="brainstorm",
+                schema=BRAINSTORM_SCHEMA,
+            ),
             max_tokens=self.json_max_tokens,
         )
         payload = parse_json_object(content)
         candidates = payload.get("candidates")
         if not isinstance(candidates, list):
             raise ValueError("Brainstorm response must contain candidates array")
+        for candidate in candidates:
+            if (
+                not isinstance(candidate, dict)
+                or not isinstance(candidate.get("title"), str)
+                or not candidate["title"].strip()
+                or not isinstance(candidate.get("description"), str)
+                or not isinstance(candidate.get("tags"), list)
+                or any(not isinstance(tag, str) for tag in candidate["tags"])
+            ):
+                raise ValueError("Invalid brainstorm candidate")
         return BrainstormResult(candidates=candidates[:count])
 
     async def research_topic(

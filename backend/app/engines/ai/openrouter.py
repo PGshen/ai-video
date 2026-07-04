@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class OpenRouterClient:
     engine_name = "openrouter"
+    supports_json_schema = True
 
     def __init__(
         self,
@@ -48,6 +49,9 @@ class OpenRouterClient:
         }
         if response_format is not None:
             payload["response_format"] = response_format
+            if response_format.get("type") == "json_schema":
+                # Do not route to an upstream provider that would ignore the schema.
+                payload["provider"] = {"require_parameters": True}
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 

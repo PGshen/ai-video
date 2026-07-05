@@ -67,6 +67,50 @@ async def test_reset_stuck_stage_cancels_old_tasks_and_resubmits():
 
 
 @pytest.mark.asyncio
+async def test_reset_stuck_stage_narrative_generating_resubmits_narrative_task():
+    project_id = uuid4()
+    project = SimpleNamespace(id=project_id, status="narrative_generating")
+    stuck_task = SimpleNamespace(id=uuid4(), status="processing")
+    db = MagicMock()
+    db.get.return_value = project
+    db.execute.return_value.scalars.return_value.all.return_value = [stuck_task]
+
+    with patch("app.workflows.activities.get_sync_session", return_value=db), \
+         patch("app.workflows.activities.submit_narrative_task", new_callable=AsyncMock) as mock_submit:
+        result = await reset_stuck_stage(str(project_id))
+
+    assert stuck_task.status == "cancelled"
+    mock_submit.assert_awaited_once_with(str(project_id))
+    event = db.add.call_args.args[0]
+    assert event.event_type == "stuck_reset"
+    assert event.payload["stage"] == "generate_narrative"
+    assert event.payload["cancelled_task_ids"] == [str(stuck_task.id)]
+    assert result == {"stage": "generate_narrative", "cancelled_task_ids": [str(stuck_task.id)]}
+
+
+@pytest.mark.asyncio
+async def test_reset_stuck_stage_video_generating_resubmits_video_task():
+    project_id = uuid4()
+    project = SimpleNamespace(id=project_id, status="video_generating")
+    stuck_task = SimpleNamespace(id=uuid4(), status="processing")
+    db = MagicMock()
+    db.get.return_value = project
+    db.execute.return_value.scalars.return_value.all.return_value = [stuck_task]
+
+    with patch("app.workflows.activities.get_sync_session", return_value=db), \
+         patch("app.workflows.activities.submit_video_generation_task", new_callable=AsyncMock) as mock_submit:
+        result = await reset_stuck_stage(str(project_id))
+
+    assert stuck_task.status == "cancelled"
+    mock_submit.assert_awaited_once_with(str(project_id))
+    event = db.add.call_args.args[0]
+    assert event.event_type == "stuck_reset"
+    assert event.payload["stage"] == "render_video"
+    assert event.payload["cancelled_task_ids"] == [str(stuck_task.id)]
+    assert result == {"stage": "render_video", "cancelled_task_ids": [str(stuck_task.id)]}
+
+
+@pytest.mark.asyncio
 async def test_reset_stuck_stage_rejects_non_resettable_status():
     project_id = uuid4()
     project = SimpleNamespace(id=project_id, status="script_review")

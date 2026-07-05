@@ -5,6 +5,8 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from app.engines.ai.base import CompletionText, completion_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,13 +71,14 @@ class GeminiClient:
             "Gemini chat completion response: model=%s elapsed=%.2fs content_len=%d",
             self.model_name, time.monotonic() - started, len(content),
         )
-        return content
+        return completion_text(content, data)
 
     async def stream_chat_completion(self, messages: list[dict]) -> AsyncIterator[str]:
         payload: dict = {
             "model": self.model_name,
             "messages": messages,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
         logger.info(
             "Gemini stream chat completion request: model=%s messages=%d",
@@ -100,9 +103,13 @@ class GeminiClient:
                         break
                     try:
                         data = json.loads(raw)
-                        delta = data["choices"][0].get("delta") or {}
+                        choices = data.get("choices") or []
+                        delta = choices[0].get("delta") or {} if choices else {}
                     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
+                    usage = data.get("usage")
+                    if isinstance(usage, dict) and not delta.get("content"):
+                        yield CompletionText("", usage)
                     content = delta.get("content")
                     if content:
                         chunk_count += 1

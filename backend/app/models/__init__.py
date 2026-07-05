@@ -7,6 +7,7 @@ from app.models.worker_task import WorkerTask
 from app.models.project_event import ProjectEvent
 from app.models.performance_record import PerformanceRecord
 from app.models.prompt_component import PromptComponent  # noqa: F401
+from app.models.ai_call_record import AICallRecord
 
 __all__ = [
     "NarrativeVersion",
@@ -18,4 +19,5 @@ __all__ = [
     "ProjectEvent",
     "PerformanceRecord",
     "PromptComponent",
+    "AICallRecord",
 ]

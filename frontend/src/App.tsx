@@ -7,6 +7,7 @@ import ProjectsPage from "@/pages/ProjectsPage";
 import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import PerformancePage from "@/pages/PerformancePage";
 import { StyleLibraryPage } from "@/pages/StyleLibraryPage";
+import AICallRecordsPage from "@/pages/AICallRecordsPage";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ export default function App() {
               element={<PerformancePage />}
             />
             <Route path="/style-library" element={<StyleLibraryPage />} />
+            <Route path="/ai-calls" element={<AICallRecordsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

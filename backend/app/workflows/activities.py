@@ -78,7 +78,7 @@ async def check_and_increment_retry(project_id: str, stage: str, error: str) -> 
             return False
         project.retry_count += 1
         db.commit()
-        return project.retry_count < 1
+        return project.retry_count < 2
     finally:
         db.close()
 

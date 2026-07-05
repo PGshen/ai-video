@@ -5,6 +5,7 @@ const navItems = [
   { to: "/topics", label: "选题池" },
   { to: "/projects", label: "项目列表" },
   { to: "/style-library", label: "风格库" },
+  { to: "/ai-calls", label: "AI 调用记录" },
 ];
 
 export default function Layout() {

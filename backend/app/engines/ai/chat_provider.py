@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from app.engines.ai.base import (
     BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
-    NarrativeResult, StyleAssistantResult,
+    NarrativeResult, StyleAssistantResult, ai_business,
 )
 from app.engines.ai.structured_output import (
     BRAINSTORM_SCHEMA,
@@ -158,6 +158,25 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         self.json_max_tokens = json_max_tokens
         self.narrative_validation_retries = max(0, narrative_validation_retries)
         self._narrative_engine_hints, self._engine_code_prompts = _load_engine_specs()
+
+    async def _complete(self, business: str, **kwargs) -> str:
+        with ai_business(business):
+            return await self.client.create_chat_completion(**kwargs)
+
+    async def _stream(
+        self, business: str, messages: list[dict]
+    ) -> AsyncIterator[str]:
+        stream = self.client.stream_chat_completion(messages).__aiter__()
+        try:
+            while True:
+                with ai_business(business):
+                    try:
+                        chunk = await anext(stream)
+                    except StopAsyncIteration:
+                        break
+                yield chunk
+        finally:
+            await stream.aclose()
 
     @property
     def engine_name(self) -> str:
@@ -341,7 +360,8 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         ]
 
         for attempt in range(self.narrative_validation_retries + 1):
-            content = await self.client.create_chat_completion(
+            content = await self._complete(
+                "narrative_generation",
                 messages=messages,
                 response_format=response_format_for(
                     self.client,
@@ -422,7 +442,8 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             style_components=style_components or {},
             aspect_ratio=aspect_ratio,
         )
-        content = await self.client.create_chat_completion(
+        content = await self._complete(
+            "code_generation",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -482,6 +503,9 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
 5. code 必须是可直接替换原镜头 code 的完整代码片段。
 6. explanation 用简短中文说明该镜头的问题和修复方式。
 
+注意项：
+1. 修复代码时尤其注意变量作用域，保证变量先声明再使用，避免跨镜头变量冲突。
+
 JSON 格式：
 {{
   "repairs": [
@@ -500,7 +524,8 @@ JSON 格式：
 {aspect_prompt}
 
 只能输出合法 JSON object。"""
-        content = await self.client.create_chat_completion(
+        content = await self._complete(
+            "code_repair",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -576,7 +601,8 @@ JSON 格式示例：
 - tags 使用 2 到 5 个中文短标签。
 - 只能输出合法 JSON object。"""
         user_prompt = f"请围绕「{topic_direction}」生成 {count} 个候选选题 JSON。"
-        content = await self.client.create_chat_completion(
+        content = await self._complete(
+            "topic_brainstorm",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -636,7 +662,7 @@ JSON 格式示例：
             }
         )
 
-        async for chunk in self.client.stream_chat_completion(messages):
+        async for chunk in self._stream("topic_research", messages):
             yield chunk
 
     async def assist_style_prompt(
@@ -685,7 +711,8 @@ JSON 格式示例：
                 ),
             }
         )
-        content = await self.client.create_chat_completion(
+        content = await self._complete(
+            "style_assistant",
             messages=messages,
             response_format=response_format_for(
                 self.client,

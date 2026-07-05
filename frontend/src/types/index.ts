@@ -67,6 +67,65 @@ export interface StyleAssistantResponse {
   promptText: string;
 }
 
+// ═══ AI 调用记录 ═══
+export type AICallStatus =
+  | "pending"
+  | "succeeded"
+  | "failed"
+  | "timeout"
+  | "cancelled";
+
+export interface AICallRecord {
+  id: string;
+  provider: string;
+  model: string;
+  business:
+    | "narrative_generation"
+    | "code_generation"
+    | "code_repair"
+    | "topic_brainstorm"
+    | "topic_research"
+    | "style_assistant"
+    | "unknown";
+  requestType: "chat" | "stream";
+  status: AICallStatus;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  cachedTokens: number | null;
+  reasoningTokens: number | null;
+  totalCost: string | null;
+  currency: string;
+  durationMs: number | null;
+  errorType: string | null;
+  outputPreview: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface AICallRecordDetail extends AICallRecord {
+  input: Record<string, unknown>;
+  output: string | null;
+  usage: Record<string, unknown> | null;
+  inputCost: string | null;
+  outputCost: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface AICallRecordListResponse {
+  items: AICallRecord[];
+  total: number;
+  summary: {
+    calls: number;
+    succeeded: number;
+    failed: number;
+    totalTokens: number;
+    totalCost: string;
+    averageDurationMs: number;
+  };
+}
+
 // ═══ 视频项目 ═══
 export type ProjectStatus =
   | "draft"

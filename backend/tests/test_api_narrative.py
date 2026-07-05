@@ -112,3 +112,38 @@ def test_review_narrative_approved_sends_signal(client, auth_headers, mock_db, m
         )
     assert response.status_code == 200
     mock_handle.signal.assert_awaited_once()
+
+
+def test_review_narrative_content_rejection_sends_reason(
+    client, auth_headers, mock_db, mock_temporal
+):
+    project = make_project()
+    nv = make_narrative_version(project.id)
+    mock_db.get.side_effect = lambda model, pk: (
+        project if "VideoProject" in str(model) else nv
+    )
+    mock_db.commit = AsyncMock()
+    mock_handle = AsyncMock()
+    mock_temporal.get_workflow_handle = MagicMock(return_value=mock_handle)
+
+    response = client.post(
+        f"/api/projects/{project.id}/review",
+        headers=auth_headers,
+        json={
+            "gate": "narrative",
+            "verdict": "rejected",
+            "rejectionType": "content",
+            "rejectionDetail": "  开头不够吸引人  ",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_handle.signal.assert_awaited_once_with(
+        "narrative_review",
+        {
+            "verdict": "rejected",
+            "rejection_type": "content",
+            "rejection_detail": "开头不够吸引人",
+            "target_stage": None,
+        },
+    )

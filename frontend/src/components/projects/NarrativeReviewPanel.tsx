@@ -53,6 +53,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   const [regenError, setRegenError] = useState<Map<number, string>>(new Map());
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [rejectionError, setRejectionError] = useState("");
   const [factVerdicts, setFactVerdicts] = useState<Record<number, VerdictState>>({});
 
   const updateBeat = (
@@ -184,14 +185,17 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   };
 
   const handleReject = () => {
-    if (!canSubmit) return;
+    const detail = rejectionDetail.trim();
+    if (!detail) {
+      setRejectionError("请填写内容驳回原因，AI 重新生成时会参考此信息。");
+      return;
+    }
     submitReview.mutate({
       projectId,
       gate: "narrative",
       verdict: "rejected",
-      rejectionDetail,
-      editedScenes: buildEditedScenes(),
-      factCheckVerdicts: buildFactVerdictList(),
+      rejectionType: "content",
+      rejectionDetail: detail,
     });
   };
 
@@ -401,16 +405,25 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
           </p>
         )}
         {showRejectInput && (
-          <Textarea
-            placeholder="请说明驳回原因..."
-            value={rejectionDetail}
-            onChange={(e) => setRejectionDetail(e.target.value)}
-            rows={2}
-          />
+          <div className="space-y-1">
+            <Textarea
+              placeholder="请说明对叙事内容不满意的地方，AI 重新生成时会参考此信息"
+              value={rejectionDetail}
+              onChange={(e) => {
+                setRejectionDetail(e.target.value);
+                if (e.target.value.trim()) setRejectionError("");
+              }}
+              rows={2}
+              aria-label="内容驳回原因"
+            />
+            {rejectionError && (
+              <p className="text-sm text-destructive">{rejectionError}</p>
+            )}
+          </div>
         )}
         {submitReview.isSuccess && (
           <p className="text-sm text-muted-foreground text-center animate-pulse">
-            已提交，正在切换到代码生成阶段…
+            已提交，正在更新项目状态…
           </p>
         )}
         <div className="flex gap-2">
@@ -428,11 +441,16 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                 handleReject();
               } else {
                 setShowRejectInput(true);
+                setRejectionError("");
               }
             }}
-            disabled={submitReview.isPending || submitReview.isSuccess || !canSubmit}
+            disabled={submitReview.isPending || submitReview.isSuccess}
           >
-            {submitReview.isPending ? "提交中…" : "驳回重生成"}
+            {submitReview.isPending
+              ? "提交中…"
+              : showRejectInput
+                ? "确认内容驳回"
+                : "内容驳回"}
           </Button>
           <Button
             variant="ghost"

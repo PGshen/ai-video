@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from pydantic.alias_generators import to_camel
 from typing import Literal, Optional
 from app.schemas.narrative import NarrativeBeatSchema
@@ -38,6 +38,18 @@ class ReviewRequest(BaseModel):
     fact_check_verdicts: Optional[list[FactCheckVerdict]] = None
     edited_scenes: Optional[list[EditedNarrativeScene]] = None
     edited_script_scenes: Optional[list[EditedScriptScene]] = None
+
+    @model_validator(mode="after")
+    def validate_content_rejection_reason(self):
+        if (
+            self.verdict == "rejected"
+            and self.rejection_type == "content"
+            and not (self.rejection_detail or "").strip()
+        ):
+            raise ValueError("Content rejection requires a rejection reason")
+        if self.rejection_detail is not None:
+            self.rejection_detail = self.rejection_detail.strip()
+        return self
 
 
 class ReviewResponse(BaseModel):

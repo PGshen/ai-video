@@ -1,4 +1,7 @@
 from app.schemas.narrative import NarrativeVersionSchema, NarrativeSceneSchema
+import pytest
+from pydantic import ValidationError
+
 from app.schemas.review import ReviewRequest, EditedNarrativeScene
 from uuid import uuid4
 from datetime import datetime, timezone
@@ -54,6 +57,27 @@ def test_review_request_narrative_gate():
     )
     assert req.gate == "narrative"
     assert req.edited_scenes[0].scene_index == 0
+
+
+def test_content_rejection_requires_reason():
+    with pytest.raises(ValidationError, match="Content rejection requires a rejection reason"):
+        ReviewRequest(
+            gate="narrative",
+            verdict="rejected",
+            rejection_type="content",
+            rejection_detail="  ",
+        )
+
+
+def test_content_rejection_trims_reason():
+    req = ReviewRequest(
+        gate="narrative",
+        verdict="rejected",
+        rejection_type="content",
+        rejection_detail="  叙事节奏太平  ",
+    )
+
+    assert req.rejection_detail == "叙事节奏太平"
 
 
 def test_review_request_script_gate_with_target_stage():

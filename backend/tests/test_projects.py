@@ -39,8 +39,46 @@ def test_list_projects_empty(client, auth_headers, mock_db):
     assert data["total"] == 0
 
 
+def test_list_projects_filters_by_topic(client, auth_headers, mock_db):
+    topic_id = uuid4()
+    mock_db.execute.return_value.scalars.return_value.all.return_value = []
+
+    response = client.get(
+        f"/api/projects?topic_id={topic_id}",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    statement = mock_db.execute.await_args.args[0]
+    assert "video_projects.topic_id" in str(statement)
+    assert topic_id in statement.compile().params.values()
+
+
+def test_list_projects_combines_title_engine_and_aspect_ratio_filters(
+    client, auth_headers, mock_db,
+):
+    mock_db.execute.return_value.scalars.return_value.all.return_value = []
+
+    response = client.get(
+        "/api/projects?topic_title=%E9%87%8F%E5%AD%90"
+        "&render_engine=manim&aspect_ratio=portrait",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    statement = mock_db.execute.await_args.args[0]
+    statement_sql = str(statement)
+    params = statement.compile().params.values()
+    assert "lower(topics.title) LIKE lower" in statement_sql
+    assert "video_projects.render_engine" in statement_sql
+    assert "video_projects.aspect_ratio" in statement_sql
+    assert "manim" in params
+    assert "portrait" in params
+
+
 def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temporal):
     topic = make_topic(title="My Topic")
+    topic.status = "stocked"
     mock_db.get.return_value = topic  # only called once now: for the topic
     mock_temporal.start_workflow = AsyncMock()
 
@@ -69,7 +107,7 @@ def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temp
             },
         )
     assert response.status_code == 201
-    assert topic.status == "in_production"
+    assert topic.status == "stocked"
     mock_temporal.start_workflow.assert_called_once()
 
 
@@ -127,19 +165,14 @@ def test_get_project_not_found(client, auth_headers, mock_db):
     assert response.status_code == 404
 
 
-def test_delete_project_cleans_related_data_and_restores_topic(
+def test_delete_project_cleans_related_data_without_changing_topic(
     client, auth_headers, mock_db, mock_temporal,
 ):
     project = make_project(
         status="script_review",
         temporal_workflow_id="video-production-delete",
     )
-    topic = make_topic(id=project.topic_id)
-    topic.status = "in_production"
-    mock_db.get = AsyncMock(
-        side_effect=lambda model, pk: project if pk == project.id else topic
-    )
-    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+    mock_db.get = AsyncMock(return_value=project)
     handle = AsyncMock()
     handle.describe.return_value.status = WorkflowExecutionStatus.RUNNING
     mock_temporal.get_workflow_handle = MagicMock(return_value=handle)
@@ -148,9 +181,8 @@ def test_delete_project_cleans_related_data_and_restores_topic(
 
     assert response.status_code == 204
     handle.terminate.assert_awaited_once_with(reason="Project deleted by user")
-    assert mock_db.execute.await_count == 7
+    assert mock_db.execute.await_count == 6
     mock_db.delete.assert_awaited_once_with(project)
-    assert topic.status == "stocked"
     mock_db.commit.assert_awaited_once()
 
 

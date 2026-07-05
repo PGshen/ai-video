@@ -11,13 +11,16 @@ interface BrainstormResponse {
   candidates: BrainstormCandidate[];
 }
 
-export function useTopics(status?: string) {
+export function useTopics(status?: string, title?: string) {
   return useQuery<TopicListResponse>({
-    queryKey: ["topics", status],
-    queryFn: () =>
-      api.get<TopicListResponse>(
-        `/api/topics${status ? `?status=${status}` : ""}`
-      ),
+    queryKey: ["topics", status, title],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (title) params.set("title", title);
+      const query = params.toString();
+      return api.get<TopicListResponse>(`/api/topics${query ? `?${query}` : ""}`);
+    },
   });
 }
 

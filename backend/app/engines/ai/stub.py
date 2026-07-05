@@ -3,7 +3,7 @@ import json
 
 from app.engines.ai.base import (
     BrainstormResult, CodeGenerationResult, CodeRepairResult,
-    NarrativeResult,
+    NarrativeResult, StyleAssistantResult,
 )
 
 
@@ -86,6 +86,43 @@ class StubProvider:
         for chunk in chunks:
             await asyncio.sleep(0)
             yield chunk
+
+    async def assist_style_prompt(
+        self,
+        category: str,
+        name: str,
+        description: str,
+        prompt_text: str,
+        conversation_history: list[dict],
+        new_message: str,
+    ) -> StyleAssistantResult:
+        del conversation_history
+        labels = {
+            "narrative_style": "叙事风格",
+            "pacing": "叙事节奏",
+            "scene_structure": "镜头结构",
+            "color_scheme": "视觉系统",
+            "animation_style": "动画系统",
+        }
+        label = labels.get(category, category)
+        if prompt_text.strip():
+            generated_prompt = (
+                f"{prompt_text.strip()}\n\n"
+                f"【补充要求】\n{new_message.strip()}"
+            )
+        else:
+            generated_prompt = (
+                f"【{label}】\n"
+                f"围绕“{new_message}”建立统一、明确且可复用的生成规则。\n"
+                "所有输出必须保持风格一致，并优先使用可检查的具体约束。"
+            )
+        await asyncio.sleep(0)
+        return StyleAssistantResult(
+            reply="我已根据你的要求整理了一个可直接编辑的版本。你还可以继续补充受众、参考风格或需要避免的效果。",
+            name=name.strip() or f"自定义{label}",
+            description=description.strip() or f"适用于需要统一{label}的知识视频",
+            prompt_text=generated_prompt,
+        )
 
 
 class StubChatClient:

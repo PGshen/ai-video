@@ -110,7 +110,6 @@ export function TopicSheet({ topic, onClose }: Props) {
 
   const compositeScore = displayTopic.compositeScore;
   const isStocked = displayTopic.status === "stocked";
-  const isInProduction = displayTopic.status === "in_production";
   const isUpdating = updateTopic.isPending;
   const allScoresFilled = SCORE_DIMENSIONS.every(({ key }) => scores[key] !== undefined);
 
@@ -216,7 +215,7 @@ export function TopicSheet({ topic, onClose }: Props) {
                       type="button"
                       variant="outline"
                       onClick={() => handleStatusAction("stocked")}
-                      disabled={isUpdating || isInProduction || !allScoresFilled}
+                      disabled={isUpdating || !allScoresFilled}
                     >
                       <Check className="size-4" />
                       通过
@@ -225,7 +224,7 @@ export function TopicSheet({ topic, onClose }: Props) {
                       type="button"
                       variant="destructive"
                       onClick={() => handleStatusAction("abandoned")}
-                      disabled={isUpdating || isInProduction || !allScoresFilled}
+                      disabled={isUpdating || !allScoresFilled}
                     >
                       <X className="size-4" />
                       废弃
@@ -235,18 +234,15 @@ export function TopicSheet({ topic, onClose }: Props) {
                     type="button"
                     className="w-full"
                     onClick={() => setCreateProjectOpen(true)}
-                    disabled={(!isStocked && !isInProduction) || isUpdating}
+                    disabled={!isStocked || isUpdating}
                   >
                     <PackagePlus className="size-4" />
                     创建项目
                   </Button>
-                  {!isStocked && !isInProduction && (
+                  {!isStocked && (
                     <p className="text-xs text-muted-foreground">
                       {allScoresFilled ? "通过后可创建项目。" : "完成全部打分后可通过或废弃。"}
                     </p>
-                  )}
-                  {isInProduction && (
-                    <p className="text-xs text-muted-foreground">已有项目制作中，可继续创建新项目。</p>
                   )}
                 </div>
               </section>
@@ -276,11 +272,6 @@ export function TopicSheet({ topic, onClose }: Props) {
           open={createProjectOpen}
           onClose={() => setCreateProjectOpen(false)}
           contextSnippets={contextSnippets}
-          onCreated={() =>
-            setDisplayTopic((prev) =>
-              prev ? { ...prev, status: "in_production" } : prev
-            )
-          }
         />
       )}
     </>

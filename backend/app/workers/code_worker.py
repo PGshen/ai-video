@@ -135,9 +135,12 @@ class CodeWorker(BaseWorker):
                     logger.info("[CodeWorker] validation passed after final repair")
                 else:
                     logger.warning(
-                        "[CodeWorker] validation still failing after %d rounds, saving anyway:\n%s",
+                        "[CodeWorker] validation still failing after %d rounds:\n%s",
                         _MAX_VALIDATION_ROUNDS,
                         errors[:500],
+                    )
+                    raise ValueError(
+                        f"Code validation failed after {_MAX_VALIDATION_ROUNDS} repair rounds:\n{errors[:2000]}"
                     )
 
             max_version = db.execute(

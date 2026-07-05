@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
+from app.engines.ai.base import StyleAssistantResult
 
 
 def make_component(*, is_builtin: bool = False):
@@ -46,3 +48,54 @@ def test_builtin_prompt_component_category_cannot_be_updated(client, auth_header
     assert response.status_code == 403
     assert component.category == "color_scheme"
     mock_db.commit.assert_not_awaited()
+
+
+def test_style_assistant_updates_prompt_draft(client, auth_headers):
+    provider = MagicMock()
+    provider.assist_style_prompt = AsyncMock(
+        return_value=StyleAssistantResult(
+            reply="我加强了配色约束。",
+            name="冷静科技蓝",
+            description="适合科技知识视频",
+            prompt_text="背景使用深蓝，重点信息仅使用青色。",
+        )
+    )
+
+    with patch(
+        "app.api.prompt_components.get_ai_provider",
+        return_value=provider,
+    ):
+        response = client.post(
+            "/api/prompt-components/assist",
+            headers=auth_headers,
+            json={
+                "category": "color_scheme",
+                "name": "",
+                "description": "",
+                "prompt_text": "",
+                "conversation_history": [],
+                "message": "想要冷静的科技感",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "reply": "我加强了配色约束。",
+        "name": "冷静科技蓝",
+        "description": "适合科技知识视频",
+        "promptText": "背景使用深蓝，重点信息仅使用青色。",
+    }
+    provider.assist_style_prompt.assert_awaited_once()
+
+
+def test_style_assistant_rejects_empty_message(client, auth_headers):
+    response = client.post(
+        "/api/prompt-components/assist",
+        headers=auth_headers,
+        json={
+            "category": "pacing",
+            "message": "",
+        },
+    )
+
+    assert response.status_code == 422

@@ -8,6 +8,18 @@ export function timeAgo(dateStr: string): string {
   return `${months} 个月前`;
 }
 
+export function formatDateTime(dateStr: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(dateStr));
+}
+
 export const SOURCE_LABELS: Record<string, string> = {
   manual: "手动",
   ai_brainstorm: "AI 生成",
@@ -18,7 +30,6 @@ export const SOURCE_LABELS: Record<string, string> = {
 export const TOPIC_STATUS_LABELS: Record<string, string> = {
   pending: "待评估",
   stocked: "已入库",
-  in_production: "制作中",
   used: "已使用",
   abandoned: "已废弃",
 };
@@ -26,7 +37,6 @@ export const TOPIC_STATUS_LABELS: Record<string, string> = {
 export const TOPIC_STATUS_COLORS: Record<string, string> = {
   pending: "bg-gray-100 text-gray-700",
   stocked: "bg-blue-100 text-blue-700",
-  in_production: "bg-orange-100 text-orange-700",
   used: "bg-green-100 text-green-700",
   abandoned: "bg-red-100 text-red-700",
 };

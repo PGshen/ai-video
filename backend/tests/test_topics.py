@@ -46,6 +46,19 @@ def test_list_topics_returns_items(client, auth_headers, mock_db):
     assert data["items"][0]["title"] == "T1"
 
 
+def test_list_topics_filters_by_title(client, auth_headers, mock_db):
+    mock_db.execute.return_value.scalars.return_value.all.return_value = []
+
+    response = client.get(
+        "/api/topics?title=%E9%87%8F%E5%AD%90",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    statement = mock_db.execute.await_args.args[0]
+    assert "lower(topics.title) LIKE lower" in str(statement)
+
+
 def test_create_topic(client, auth_headers, mock_db):
     created = make_topic(title="New Topic", source="manual")
     mock_db.refresh = AsyncMock(return_value=None)

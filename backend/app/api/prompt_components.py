@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,13 +6,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.db import get_async_session
+from app.engines.ai.factory import get_ai_provider
 from app.models.prompt_component import PromptComponent
 from app.schemas.prompt_component import (
     PromptComponentCreate, PromptComponentUpdate,
     PromptComponentResponse, PromptComponentListResponse,
+    StyleAssistantRequest, StyleAssistantResponse,
 )
 
 router = APIRouter(prefix="/api/prompt-components", tags=["prompt-components"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(pc: PromptComponent) -> PromptComponentResponse:
@@ -60,6 +64,37 @@ async def create_prompt_component(
     await db.commit()
     await db.refresh(pc)
     return _to_response(pc)
+
+
+@router.post("/assist", response_model=StyleAssistantResponse)
+async def assist_prompt_component(
+    body: StyleAssistantRequest,
+    _=Depends(verify_api_key),
+):
+    provider = get_ai_provider()
+    try:
+        result = await provider.assist_style_prompt(
+            category=body.category,
+            name=body.name,
+            description=body.description,
+            prompt_text=body.prompt_text,
+            conversation_history=[
+                message.model_dump() for message in body.conversation_history
+            ],
+            new_message=body.message.strip(),
+        )
+    except Exception as exc:
+        logger.exception("Style prompt assistant failed")
+        raise HTTPException(
+            status_code=503,
+            detail="AI style assistant temporarily unavailable",
+        ) from exc
+    return StyleAssistantResponse(
+        reply=result.reply,
+        name=result.name,
+        description=result.description,
+        prompt_text=result.prompt_text,
+    )
 
 
 @router.put("/{component_id}", response_model=PromptComponentResponse)

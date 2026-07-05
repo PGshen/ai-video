@@ -42,3 +42,26 @@ class PromptComponentListResponse(BaseModel):
 
     items: list[PromptComponentResponse]
     total: int
+
+
+class StyleAssistantMessage(BaseModel):
+    role: str
+    content: str
+
+
+class StyleAssistantRequest(BaseModel):
+    category: str
+    name: str = ""
+    description: str = ""
+    prompt_text: str = Field(default="", max_length=8000)
+    conversation_history: list[StyleAssistantMessage] = Field(default_factory=list, max_length=20)
+    message: str = Field(..., min_length=1, max_length=2000)
+
+
+class StyleAssistantResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    reply: str
+    name: str
+    description: str
+    prompt_text: str

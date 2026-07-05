@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FolderKanban, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +12,7 @@ import { BrainstormDialog } from "@/components/topics/BrainstormDialog";
 import { CreateTopicDialog } from "@/components/topics/CreateTopicDialog";
 import { TopicSheet } from "@/components/topics/TopicSheet";
 import {
-  timeAgo,
+  formatDateTime,
   SOURCE_LABELS,
   TOPIC_STATUS_LABELS,
   TOPIC_STATUS_COLORS,
@@ -33,12 +35,26 @@ function ScoreBadge({ score }: { score: number | null }) {
 }
 
 export default function TopicsPage() {
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [titleFilter, setTitleFilter] = useState("");
+  const [debouncedTitleFilter, setDebouncedTitleFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [brainstormOpen, setBrainstormOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
 
-  const { data, isLoading } = useTopics(statusFilter === "all" ? undefined : statusFilter);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedTitleFilter(titleFilter.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [titleFilter]);
+
+  const { data, isLoading } = useTopics(
+    statusFilter === "all" ? undefined : statusFilter,
+    debouncedTitleFilter || undefined,
+  );
   const deleteTopic = useDeleteTopic();
 
   const handleDelete = (topic: Topic) => {
@@ -54,9 +70,19 @@ export default function TopicsPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">选题池</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={titleFilter}
+              onChange={(event) => setTitleFilter(event.target.value)}
+              placeholder="搜索选题标题"
+              aria-label="搜索选题标题"
+              className="w-56 pl-9"
+            />
+          </div>
           <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
             <SelectTrigger className="w-32">
               <SelectValue>{statusFilter === "all" ? "全部状态" : TOPIC_STATUS_LABELS[statusFilter]}</SelectValue>
@@ -89,7 +115,7 @@ export default function TopicsPage() {
               <TableHead>状态</TableHead>
               <TableHead>标签</TableHead>
               <TableHead>创建时间</TableHead>
-              <TableHead className="w-[128px]"></TableHead>
+              <TableHead className="w-[240px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -142,10 +168,25 @@ export default function TopicsPage() {
                   </div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {timeAgo(topic.createdAt)}
+                  {formatDateTime(topic.createdAt)}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const params = new URLSearchParams({
+                          topicId: topic.id,
+                          topicTitle: topic.title,
+                        });
+                        navigate(`/projects?${params.toString()}`);
+                      }}
+                    >
+                      <FolderKanban />
+                      选题项目
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

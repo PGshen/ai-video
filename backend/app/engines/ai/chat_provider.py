@@ -10,13 +10,14 @@ logger = logging.getLogger(__name__)
 
 from app.engines.ai.base import (
     BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
-    NarrativeResult,
+    NarrativeResult, StyleAssistantResult,
 )
 from app.engines.ai.structured_output import (
     BRAINSTORM_SCHEMA,
     CODE_GENERATION_SCHEMA,
     CODE_REPAIR_SCHEMA,
     NARRATIVE_SCHEMA,
+    STYLE_ASSISTANT_SCHEMA,
     response_format_for,
 )
 from app.services.narrative_validator import (
@@ -186,12 +187,16 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "",
         ]
         if narrative_style:
+            parts.append("【叙事风格】")
             parts.append(narrative_style)
         if pacing:
+            parts.append("【叙事节奏】")
             parts.append(pacing)
         if scene_structure:
+            parts.append("【镜头结构】")
             parts.append(scene_structure)
         if color_scheme:
+            parts.append("【视觉系统】")
             parts.append(color_scheme)
             parts.append("颜色名与 Hex 对照（description 中用颜色名即可，代码生成阶段再转 Hex）")
         parts += [
@@ -246,8 +251,10 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             f"渲染引擎：{render_engine}",
         ]
         if color_scheme:
+            parts.append("【视觉系统】")
             parts.append(color_scheme)
         if animation_style:
+            parts.append("【动画系统】")
             parts.append(animation_style)
         parts += [
             "",
@@ -631,6 +638,86 @@ JSON 格式示例：
 
         async for chunk in self.client.stream_chat_completion(messages):
             yield chunk
+
+    async def assist_style_prompt(
+        self,
+        category: str,
+        name: str,
+        description: str,
+        prompt_text: str,
+        conversation_history: list[dict],
+        new_message: str,
+    ) -> StyleAssistantResult:
+        system_prompt = """\
+你是一位知识视频生产系统的风格提示词设计助手。你的任务是通过对话，把用户的想法整理成清晰、可执行、可复用的风格组件提示词。
+
+规则：
+- 只修改当前组件类型范围内的规则，不混入其他组件的职责。
+- 提示词写给后续的叙事或视频生成模型，应使用明确的约束、层级和可检查的表达，避免空泛形容词。
+- 保留用户已有提示词中未要求删除的有效约束；若要求有冲突，在 reply 中简短指出你的取舍。
+- prompt_text 必须是可直接投入生成工作流的完整文本，不要使用 Markdown 代码围栏。
+- name 简洁易辨识；description 用一句话说明适用场景。
+- reply 用 1-3 句中文说明本轮做了什么，并可提出一个有价值的后续问题。
+- 即使用户只是在询问，也要返回当前版本的完整 name、description、 prompt_text和replay。
+- 只能输出合法 JSON object。"""
+        category_labels = {
+            "narrative_style": "叙事风格",
+            "pacing": "叙事节奏",
+            "scene_structure": "镜头结构",
+            "color_scheme": "视觉系统",
+            "animation_style": "动画系统",
+        }
+        messages = [{"role": "system", "content": system_prompt}]
+        for item in conversation_history[-20:]:
+            role = item.get("role")
+            content = item.get("content")
+            if role in {"user", "assistant"} and isinstance(content, str):
+                messages.append({"role": role, "content": content})
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"组件类型：{category_labels.get(category, category)}\n"
+                    f"当前名称：{name or '未填写'}\n"
+                    f"当前说明：{description or '未填写'}\n"
+                    f"当前提示词：\n{prompt_text or '（尚未创建）'}\n\n"
+                    f"本轮要求：{new_message}"
+                ),
+            }
+        )
+        content = await self.client.create_chat_completion(
+            messages=messages,
+            response_format=response_format_for(
+                self.client,
+                name="style_assistant",
+                schema=STYLE_ASSISTANT_SCHEMA,
+            ),
+            max_tokens=self.json_max_tokens,
+        )
+        print(f"Style assistant raw response: {content}")
+        payload = parse_json_object(content)
+        generated_prompt = payload.get("prompt_text", payload.get("promptText"))
+        if not isinstance(generated_prompt, str) or not generated_prompt.strip():
+            raise ValueError("Style assistant returned an empty prompt")
+
+        generated_name = payload.get("name")
+        if not isinstance(generated_name, str) or not generated_name.strip():
+            generated_name = name
+
+        generated_description = payload.get("description")
+        if not isinstance(generated_description, str):
+            generated_description = description
+
+        reply = payload.get("reply")
+        if not isinstance(reply, str) or not reply.strip():
+            reply = "我已根据你的要求更新了左侧提示词。你可以继续告诉我需要强化或删减的部分。"
+
+        return StyleAssistantResult(
+            reply=reply.strip(),
+            name=generated_name.strip(),
+            description=generated_description.strip(),
+            prompt_text=generated_prompt.strip(),
+        )
 
 
 def parse_json_object(content: str) -> dict:

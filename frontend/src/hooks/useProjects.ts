@@ -14,13 +14,27 @@ interface EventListResponse {
   items: ProjectEvent[];
 }
 
-export function useProjects(status?: string) {
+interface ProjectFilters {
+  status?: string;
+  topicId?: string;
+  topicTitle?: string;
+  renderEngine?: string;
+  aspectRatio?: string;
+}
+
+export function useProjects(filters: ProjectFilters = {}) {
   return useQuery<ProjectListResponse>({
-    queryKey: ["projects", status],
-    queryFn: () =>
-      api.get<ProjectListResponse>(
-        `/api/projects${status ? `?status=${status}` : ""}`
-      ),
+    queryKey: ["projects", filters],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filters.status) params.set("status", filters.status);
+      if (filters.topicId) params.set("topic_id", filters.topicId);
+      if (filters.topicTitle) params.set("topic_title", filters.topicTitle);
+      if (filters.renderEngine) params.set("render_engine", filters.renderEngine);
+      if (filters.aspectRatio) params.set("aspect_ratio", filters.aspectRatio);
+      const query = params.toString();
+      return api.get<ProjectListResponse>(`/api/projects${query ? `?${query}` : ""}`);
+    },
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
       return items.some((p) => TRANSITIONAL_STATUSES.has(p.status)) ? 3000 : false;

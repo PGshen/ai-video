@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Search, Trash2, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDeleteProject, useProjects } from "@/hooks/useProjects";
 import { ProjectSheet } from "@/components/projects/ProjectSheet";
@@ -14,10 +16,31 @@ import {
 import type { VideoProject } from "@/types";
 
 export default function ProjectsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [titleFilter, setTitleFilter] = useState("");
+  const [debouncedTitleFilter, setDebouncedTitleFilter] = useState("");
+  const [renderEngineFilter, setRenderEngineFilter] = useState("all");
+  const [aspectRatioFilter, setAspectRatioFilter] = useState("all");
   const [selectedProject, setSelectedProject] = useState<VideoProject | null>(null);
+  const topicId = searchParams.get("topicId") ?? undefined;
+  const topicTitle = searchParams.get("topicTitle");
 
-  const { data, isLoading } = useProjects(statusFilter === "all" ? undefined : statusFilter);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedTitleFilter(titleFilter.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [titleFilter]);
+
+  const { data, isLoading } = useProjects({
+    status: statusFilter === "all" ? undefined : statusFilter,
+    topicId,
+    topicTitle: debouncedTitleFilter || undefined,
+    renderEngine: renderEngineFilter === "all" ? undefined : renderEngineFilter,
+    aspectRatio: aspectRatioFilter === "all" ? undefined : aspectRatioFilter,
+  });
   const deleteProject = useDeleteProject();
 
   const handleDelete = (project: VideoProject) => {
@@ -34,19 +57,76 @@ export default function ProjectsPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">视频项目</h1>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
-          <SelectTrigger className="w-36">
-            <SelectValue>{statusFilter === "all" ? "全部状态" : PROJECT_STATUS_LABELS[statusFilter]}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部状态</SelectItem>
-            {Object.entries(PROJECT_STATUS_LABELS).map(([val, label]) => (
-              <SelectItem key={val} value={val}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">视频项目</h1>
+          {topicId && (
+            <div className="flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 text-sm">
+              <span>选题：{topicTitle || topicId}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="清除选题筛选"
+                title="清除选题筛选"
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("topicId");
+                  next.delete("topicTitle");
+                  setSearchParams(next);
+                }}
+              >
+                <X />
+              </Button>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={titleFilter}
+              onChange={(event) => setTitleFilter(event.target.value)}
+              placeholder="搜索选题标题"
+              aria-label="搜索选题标题"
+              className="w-52 pl-9"
+            />
+          </div>
+          <Select value={renderEngineFilter} onValueChange={(v) => setRenderEngineFilter(v ?? "all")}>
+            <SelectTrigger className="w-36">
+              <SelectValue>
+                {renderEngineFilter === "all" ? "全部引擎" : renderEngineFilter === "manim" ? "Manim" : "Remotion"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部引擎</SelectItem>
+              <SelectItem value="manim">Manim</SelectItem>
+              <SelectItem value="remotion">Remotion</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={aspectRatioFilter} onValueChange={(v) => setAspectRatioFilter(v ?? "all")}>
+            <SelectTrigger className="w-36">
+              <SelectValue>
+                {aspectRatioFilter === "all" ? "全部画幅" : aspectRatioFilter === "landscape" ? "横屏" : "竖屏"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部画幅</SelectItem>
+              <SelectItem value="landscape">横屏</SelectItem>
+              <SelectItem value="portrait">竖屏</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
+            <SelectTrigger className="w-36">
+              <SelectValue>{statusFilter === "all" ? "全部状态" : PROJECT_STATUS_LABELS[statusFilter]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部状态</SelectItem>
+              {Object.entries(PROJECT_STATUS_LABELS).map(([val, label]) => (
+                <SelectItem key={val} value={val}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="rounded-md border">

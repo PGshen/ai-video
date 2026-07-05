@@ -164,3 +164,15 @@ BRAINSTORM_SCHEMA: JsonSchema = {
     "required": ["candidates"],
     "additionalProperties": False,
 }
+
+STYLE_ASSISTANT_SCHEMA: JsonSchema = {
+    "type": "object",
+    "properties": {
+        "reply": {"type": "string"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "prompt_text": {"type": "string"},
+    },
+    "required": ["reply", "name", "description", "prompt_text"],
+    "additionalProperties": False,
+}

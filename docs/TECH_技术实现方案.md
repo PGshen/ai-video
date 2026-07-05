@@ -91,7 +91,7 @@ async def send_completion_signal(
 | title | VARCHAR(200) | NOT NULL | 选题标题 |
 | description | TEXT | | 详细描述、背景信息 |
 | source | VARCHAR(50) | NOT NULL | `manual` / `ai_brainstorm` / `audience` / `competitor` |
-| status | VARCHAR(20) | DEFAULT 'pending' | `pending` / `stocked` / `in_production` / `used` / `abandoned` |
+| status | VARCHAR(20) | DEFAULT 'pending' | `pending` / `stocked` / `used` / `abandoned`；项目制作状态不回写选题 |
 | score_counterintuitive | SMALLINT | CHECK (1–5) | 反直觉强度 |
 | score_defensibility | SMALLINT | CHECK (1–5) | 事实可辩护性（<3 不允许入库） |
 | score_visual | SMALLINT | CHECK (1–5) | 视觉化潜力 |
@@ -1239,10 +1239,11 @@ Request Body:
 
 1. 校验选题状态为 `stocked` 且 `score_defensibility >= 3`
 2. 创建 `video_projects` 记录（状态 `draft`）
-3. 更新选题状态为 `in_production`
-4. 启动 Temporal Workflow 实例
-5. 回写 `temporal_workflow_id`
-6. 返回创建的项目
+3. 启动 Temporal Workflow 实例
+4. 回写 `temporal_workflow_id`
+5. 返回创建的项目
+
+同一选题可创建多个视频项目，项目生命周期不改变选题状态。
 
 ---
 
@@ -1463,7 +1464,7 @@ interface Topic {
   title: string;
   description: string;
   source: 'manual' | 'ai_brainstorm' | 'audience' | 'competitor';
-  status: 'pending' | 'stocked' | 'in_production' | 'used' | 'abandoned';
+  status: 'pending' | 'stocked' | 'used' | 'abandoned';
   scores: {
     counterintuitive: number;
     defensibility: number;

@@ -23,6 +23,14 @@ class CodeRepairResult:
     repairs: list[dict]
 
 
+@dataclass
+class StyleAssistantResult:
+    reply: str
+    name: str
+    description: str
+    prompt_text: str
+
+
 class ChatClient(Protocol):
     @property
     def engine_name(self) -> str: ...
@@ -96,3 +104,13 @@ class AIProvider(Protocol):
         use_default_prompt: bool = False,
         system_prompt: str | None = None,
     ) -> AsyncIterator[str]: ...
+
+    async def assist_style_prompt(
+        self,
+        category: str,
+        name: str,
+        description: str,
+        prompt_text: str,
+        conversation_history: list[dict],
+        new_message: str,
+    ) -> StyleAssistantResult: ...

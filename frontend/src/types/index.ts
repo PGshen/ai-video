@@ -17,7 +17,7 @@ export interface Topic {
   title: string;
   description: string | null;
   source: "manual" | "ai_brainstorm" | "audience" | "competitor";
-  status: "pending" | "stocked" | "in_production" | "used" | "abandoned";
+  status: "pending" | "stocked" | "used" | "abandoned";
   scoreCounterintuitive: number | null;
   scoreDefensibility: number | null;
   scoreVisual: number | null;
@@ -53,6 +53,18 @@ export interface PromptComponent {
 export interface PromptComponentListResponse {
   items: PromptComponent[];
   total: number;
+}
+
+export interface StyleAssistantMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface StyleAssistantResponse {
+  reply: string;
+  name: string;
+  description: string;
+  promptText: string;
 }
 
 // ═══ 视频项目 ═══

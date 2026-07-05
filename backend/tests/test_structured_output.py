@@ -126,3 +126,29 @@ async def test_brainstorm_rejects_invalid_candidate_even_in_json_only_mode():
 
     with pytest.raises(ValueError, match="Invalid brainstorm candidate"):
         await ChatAIProvider(InvalidJsonOnlyClient()).brainstorm_topics("科学", 1)
+
+
+@pytest.mark.asyncio
+async def test_style_assistant_tolerates_optional_fields_missing_in_json_mode():
+    class PartialJsonClient:
+        engine_name = "deepseek"
+        model_name = "json-only-model"
+        supports_json_schema = False
+
+        async def create_chat_completion(self, **kwargs):
+            assert kwargs["response_format"] == {"type": "json_object"}
+            return '{"name":"科技蓝","prompt_text":"只使用蓝色系和充足留白。"}'
+
+    result = await ChatAIProvider(PartialJsonClient()).assist_style_prompt(
+        category="color_scheme",
+        name="",
+        description="原说明",
+        prompt_text="",
+        conversation_history=[],
+        new_message="简洁科技感",
+    )
+
+    assert result.name == "科技蓝"
+    assert result.description == "原说明"
+    assert result.prompt_text == "只使用蓝色系和充足留白。"
+    assert "更新了左侧提示词" in result.reply

@@ -22,12 +22,15 @@ router = APIRouter(prefix="/api/topics", tags=["topics"])
 @router.get("", response_model=TopicListResponse)
 async def list_topics(
     status: Optional[str] = None,
+    title: Optional[str] = None,
     db: AsyncSession = Depends(get_async_session),
     _=Depends(verify_api_key),
 ):
     stmt = select(Topic)
     if status:
         stmt = stmt.where(Topic.status == status)
+    if title and title.strip():
+        stmt = stmt.where(Topic.title.ilike(f"%{title.strip()}%"))
     stmt = stmt.order_by(Topic.created_at.desc())
     result = await db.execute(stmt)
     items = result.scalars().all()

@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { PromptComponent, PromptComponentListResponse } from "@/types";
+import type {
+  PromptComponent,
+  PromptComponentListResponse,
+  StyleAssistantMessage,
+  StyleAssistantResponse,
+} from "@/types";
 
 export function usePromptComponents(category?: string) {
   return useQuery<PromptComponentListResponse>({
@@ -62,5 +67,26 @@ export function useDuplicatePromptComponent() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prompt-components"] });
     },
+  });
+}
+
+export function useStylePromptAssistant() {
+  return useMutation({
+    mutationFn: (data: {
+      category: string;
+      name: string;
+      description: string;
+      promptText: string;
+      conversationHistory: StyleAssistantMessage[];
+      message: string;
+    }) =>
+      api.post<StyleAssistantResponse>("/api/prompt-components/assist", {
+        category: data.category,
+        name: data.name,
+        description: data.description,
+        prompt_text: data.promptText,
+        conversation_history: data.conversationHistory,
+        message: data.message,
+      }),
   });
 }

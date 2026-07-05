@@ -57,12 +57,27 @@ def _project_to_response(project, topic) -> ProjectResponse:
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
     status: Optional[str] = None,
+    topic_id: Optional[UUID] = None,
+    topic_title: Optional[str] = None,
+    render_engine: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
     db: AsyncSession = Depends(get_async_session),
     _=Depends(verify_api_key),
 ):
     stmt = select(VideoProject)
     if status:
         stmt = stmt.where(VideoProject.status == status)
+    if topic_id:
+        stmt = stmt.where(VideoProject.topic_id == topic_id)
+    if topic_title and topic_title.strip():
+        matching_topics = select(Topic.id).where(
+            Topic.title.ilike(f"%{topic_title.strip()}%")
+        )
+        stmt = stmt.where(VideoProject.topic_id.in_(matching_topics))
+    if render_engine:
+        stmt = stmt.where(VideoProject.render_engine == render_engine)
+    if aspect_ratio:
+        stmt = stmt.where(VideoProject.aspect_ratio == aspect_ratio)
     stmt = stmt.order_by(VideoProject.created_at.desc())
     result = await db.execute(stmt)
     projects = result.scalars().all()
@@ -118,16 +133,6 @@ async def delete_project(
                 detail="无法停止项目工作流，请稍后重试",
             ) from exc
 
-    other_project_result = await db.execute(
-        select(VideoProject.id)
-        .where(
-            VideoProject.topic_id == project.topic_id,
-            VideoProject.id != project_id,
-        )
-        .limit(1)
-    )
-    has_other_project = other_project_result.scalar_one_or_none() is not None
-
     # The schema intentionally has no foreign keys, so maintain associations here.
     for model in (
         WorkerTask,
@@ -139,11 +144,6 @@ async def delete_project(
     ):
         await db.execute(delete(model).where(model.project_id == project_id))
     await db.delete(project)
-
-    if not has_other_project:
-        topic = await db.get(Topic, project.topic_id)
-        if topic is not None and topic.status == "in_production":
-            topic.status = "stocked"
 
     await db.commit()
 
@@ -184,7 +184,6 @@ async def create_project(
         style_config=body.style_config,
     )
     orm_project.id = project_id
-    topic.status = "in_production"
     db.add(orm_project)
     await db.commit()
 

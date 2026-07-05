@@ -48,6 +48,30 @@ class _TexStringNormalizer(ast.NodeTransformer):
         return ast.copy_location(ast.Constant(value=normalized), node)
 
 
+class _ManimImportStripper(ast.NodeTransformer):
+    """Drop AI-generated ``import manim`` statements from per-scene code.
+
+    ``_build_manim_script`` already emits ``from manim import *`` once at
+    module level. When the model repeats it inside ``construct()``, it's a
+    non-module-level import statement that pyflakes/Python reject.
+    """
+
+    def __init__(self) -> None:
+        self.changed = False
+
+    def visit_Import(self, node: ast.Import) -> ast.AST | None:
+        if any(alias.name.partition(".")[0] == "manim" for alias in node.names):
+            self.changed = True
+            return None
+        return node
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> ast.AST | None:
+        if node.module and node.module.partition(".")[0] == "manim":
+            self.changed = True
+            return None
+        return node
+
+
 class _TexTemplateInjector(ast.NodeTransformer):
     """Make generated Tex/MathTex calls use a Chinese-capable template."""
 
@@ -83,11 +107,14 @@ class _TexTemplateInjector(ast.NodeTransformer):
 # - ImportStarUsed: always fires for the wildcard import itself
 # - UndefinedName / UndefinedLocal: pyflakes can't see inside the star, so it
 #   falsely flags every Manim name (Circle, Text, Scene, …) as undefined
+# - UnusedVariable: an assigned-but-unused local doesn't affect runtime
+#   behavior, so it's not worth triggering a repair round over
 _PYFLAKES_STAR_NOISE = (
     pyflakes_messages.ImportStarUsed,
     pyflakes_messages.ImportStarUsage,  # "'X' may be undefined, or defined from star imports"
     pyflakes_messages.UndefinedName,
     pyflakes_messages.UndefinedLocal,
+    pyflakes_messages.UnusedVariable,
 )
 
 
@@ -129,13 +156,43 @@ def _prepare_manim_code(code: str) -> tuple[str, bool]:
         # Keep the original source so Manim can report the actual code error.
         return code, False
 
+    stripper = _ManimImportStripper()
+    tree = stripper.visit(tree)
+
     injector = _TexTemplateInjector()
     tree = injector.visit(tree)
-    if not injector.source_changed:
+
+    if not stripper.changed and not injector.source_changed:
         return code, False
 
     ast.fix_missing_locations(tree)
     return ast.unparse(tree), injector.template_injected
+
+
+# Runs the scene directly instead of going through `manim render`, because the
+# CLI catches exceptions with a rich pretty-printed panel (`error_console.
+# print_exception()`) that wraps to a fixed width and buries the actual
+# exception type/message dozens of lines into a boxed traceback — useless
+# once truncated for logging. A plain `traceback.print_exc()` keeps the
+# exception type and message on the last line, always.
+_DRY_RUN_DRIVER = """
+import sys
+import traceback
+
+from manim import config
+
+config.dry_run = True
+config.disable_caching = True
+
+sys.path.insert(0, {tmpdir!r})
+try:
+    from scene import MainScene
+    MainScene().render()
+except Exception:
+    traceback.print_exc()
+    sys.exit(1)
+sys.exit(0)
+"""
 
 
 @contextlib.contextmanager
@@ -163,12 +220,11 @@ class ManimRenderEngine:
             with open(script_path, "w") as f:
                 f.write(script)
 
-            cmd = [
-                "python", "-m", "manim", "render",
-                "--dry_run",
-                script_path, "MainScene",
-                "--media_dir", tmpdir,
-            ]
+            driver_path = os.path.join(tmpdir, "_dry_run_driver.py")
+            with open(driver_path, "w") as f:
+                f.write(_DRY_RUN_DRIVER.format(tmpdir=tmpdir))
+
+            cmd = ["python", driver_path]
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -185,7 +241,9 @@ class ManimRenderEngine:
 
             log = output.decode(errors="replace")
             if proc.returncode != 0:
-                logger.info("[ManimValidate] dry_run failed:\n%s", log[:2000])
+                # The exception type/message is on the last lines of a
+                # traceback, so tail the log rather than truncating its head.
+                logger.info("[ManimValidate] dry_run failed:\n%s", log[-2000:])
                 return False, log
 
             logger.info("[ManimValidate] dry_run passed")

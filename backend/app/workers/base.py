@@ -4,7 +4,7 @@ import logging
 from typing import Any
 from fastapi import logger
 from temporalio.client import Client
-from sqlalchemy import text
+from sqlalchemy import select, text
 from app.db import get_sync_session
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,13 @@ class BaseWorker:
         finally:
             db.close()
 
+    def _is_cancelled(self, db: Any, task_id: Any) -> bool:
+        from app.models.worker_task import WorkerTask
+        current_status = db.execute(
+            select(WorkerTask.status).where(WorkerTask.id == task_id)
+        ).scalar_one_or_none()
+        return current_status == "cancelled"
+
     async def _process_task(self, task: Any):
         db = get_sync_session()
         try:
@@ -77,6 +84,12 @@ class BaseWorker:
                 return  # task disappeared, skip
 
             output = await self._execute(orm_task)
+            if self._is_cancelled(db, task_id):
+                logger.info(
+                    "[BaseWorker] task=%s was cancelled during execution, discarding result",
+                    task_id,
+                )
+                return
             orm_task.status = "completed"
             orm_task.output_payload = output
             orm_task.completed_at = datetime.now(timezone.utc)
@@ -99,6 +112,13 @@ class BaseWorker:
                 orm_task = None
 
             if orm_task is None:
+                return
+
+            if self._is_cancelled(db, task_id):
+                logger.info(
+                    "[BaseWorker] task=%s was cancelled during execution, discarding failure",
+                    task_id,
+                )
                 return
 
             if orm_task.retry_count < orm_task.max_retries:

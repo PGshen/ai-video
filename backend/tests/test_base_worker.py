@@ -115,3 +115,43 @@ async def test_process_task_failure_at_max_retries_sends_failure_signal(worker, 
     handle.signal.assert_called_once()
     signal_args = handle.signal.call_args
     assert signal_args[0][1]["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_process_task_success_skips_signal_when_cancelled_during_execution(worker, mock_task, mock_temporal_client):
+    with patch("app.workers.base.get_sync_session") as mock_session_fn:
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_task
+        mock_db.execute.return_value.scalar_one_or_none.return_value = "cancelled"
+        mock_session_fn.return_value = mock_db
+
+        await worker._process_task(mock_task)
+
+    assert mock_task.status == "processing"
+    mock_temporal_client.get_workflow_handle.return_value.signal.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_task_failure_skips_retry_when_cancelled_during_execution(worker, mock_task, mock_temporal_client):
+    class FailingWorker(BaseWorker):
+        supported_task_types = ["test_task"]
+        async def _execute(self, task) -> dict:
+            raise RuntimeError("boom")
+
+    failing_worker = FailingWorker(
+        worker_id="fail-worker",
+        temporal_client=mock_temporal_client,
+        poll_interval=0.1,
+    )
+    mock_task.retry_count = 0
+    mock_task.max_retries = 3
+
+    with patch("app.workers.base.get_sync_session") as mock_session_fn:
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_task
+        mock_db.execute.return_value.scalar_one_or_none.return_value = "cancelled"
+        mock_session_fn.return_value = mock_db
+        await failing_worker._process_task(mock_task)
+
+    assert mock_task.status == "processing"
+    mock_temporal_client.get_workflow_handle.return_value.signal.assert_not_called()

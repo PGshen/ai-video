@@ -1,11 +1,12 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from app.models.script_version import ScriptVersion
 from app.workflows.activities import update_project_status
+from app.workflows.activities import reset_stuck_stage
 
 
 @pytest.mark.asyncio
@@ -41,3 +42,47 @@ async def test_script_review_status_event_keeps_exact_version_reference():
         "content_version_id": str(version_id),
         "content_version_number": 4,
     }
+
+
+@pytest.mark.asyncio
+async def test_reset_stuck_stage_cancels_old_tasks_and_resubmits():
+    project_id = uuid4()
+    project = SimpleNamespace(id=project_id, status="code_generating")
+    stuck_task = SimpleNamespace(id=uuid4(), status="processing")
+    db = MagicMock()
+    db.get.return_value = project
+    db.execute.return_value.scalars.return_value.all.return_value = [stuck_task]
+
+    with patch("app.workflows.activities.get_sync_session", return_value=db), \
+         patch("app.workflows.activities.submit_code_task", new_callable=AsyncMock) as mock_submit:
+        result = await reset_stuck_stage(str(project_id))
+
+    assert stuck_task.status == "cancelled"
+    mock_submit.assert_awaited_once_with(str(project_id))
+    event = db.add.call_args.args[0]
+    assert event.event_type == "stuck_reset"
+    assert event.payload["stage"] == "generate_code"
+    assert event.payload["cancelled_task_ids"] == [str(stuck_task.id)]
+    assert result == {"stage": "generate_code", "cancelled_task_ids": [str(stuck_task.id)]}
+
+
+@pytest.mark.asyncio
+async def test_reset_stuck_stage_rejects_non_resettable_status():
+    project_id = uuid4()
+    project = SimpleNamespace(id=project_id, status="script_review")
+    db = MagicMock()
+    db.get.return_value = project
+
+    with patch("app.workflows.activities.get_sync_session", return_value=db):
+        with pytest.raises(ValueError):
+            await reset_stuck_stage(str(project_id))
+
+
+@pytest.mark.asyncio
+async def test_reset_stuck_stage_missing_project_raises_lookup_error():
+    db = MagicMock()
+    db.get.return_value = None
+
+    with patch("app.workflows.activities.get_sync_session", return_value=db):
+        with pytest.raises(LookupError):
+            await reset_stuck_stage(str(uuid4()))

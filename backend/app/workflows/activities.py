@@ -163,3 +163,56 @@ async def submit_code_task(project_id: str) -> None:
         db.commit()
     finally:
         db.close()
+
+
+_RESETTABLE_STAGES: dict[str, str] = {
+    "narrative_generating": "generate_narrative",
+    "code_generating": "generate_code",
+    "video_generating": "render_video",
+}
+
+
+async def reset_stuck_stage(project_id: str) -> dict:
+    db = get_sync_session()
+    try:
+        project = db.get(VideoProject, uuid.UUID(project_id))
+        if project is None:
+            raise LookupError(f"Project {project_id} not found")
+
+        task_type = _RESETTABLE_STAGES.get(project.status)
+        if task_type is None:
+            raise ValueError(
+                f"Project status '{project.status}' is not a resettable stage"
+            )
+
+        stuck_tasks = db.execute(
+            select(WorkerTask).where(
+                WorkerTask.project_id == project.id,
+                WorkerTask.task_type == task_type,
+                WorkerTask.status.in_(["pending", "processing"]),
+            )
+        ).scalars().all()
+        cancelled_ids = [str(t.id) for t in stuck_tasks]
+        for t in stuck_tasks:
+            t.status = "cancelled"
+
+        db.add(ProjectEvent(
+            project_id=project.id,
+            event_type="stuck_reset",
+            from_status=project.status,
+            to_status=project.status,
+            actor="operator",
+            payload={"stage": task_type, "cancelled_task_ids": cancelled_ids},
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    if task_type == "generate_narrative":
+        await submit_narrative_task(project_id)
+    elif task_type == "generate_code":
+        await submit_code_task(project_id)
+    elif task_type == "render_video":
+        await submit_video_generation_task(project_id)
+
+    return {"stage": task_type, "cancelled_task_ids": cancelled_ids}

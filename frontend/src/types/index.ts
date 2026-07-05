@@ -75,7 +75,7 @@ export type ProjectStatus =
   | "narrative_failed"
   | "code_generating"
   | "code_failed"
-  | "script_review"
+  | "code_review"
   | "video_generating"
   | "video_failed"
   | "video_review"
@@ -138,7 +138,7 @@ export interface VideoProject {
   renderEngine: "manim" | "remotion";
   ttsVoice: string;
   aspectRatio: "landscape" | "portrait";
-  currentScriptVersion: ScriptVersion | null;
+  currentCodeVersion: CodeVersion | null;
   currentVideoAsset: VideoAsset | null;
   retryCount: number;
   styleConfig: Record<string, string>;
@@ -171,8 +171,8 @@ export interface FactCheckItem {
   reviewerNote: string | null;
 }
 
-// ═══ 脚本版本 ═══
-export interface ScriptVersion {
+// ═══ 代码版本 ═══
+export interface CodeVersion {
   id: string;
   projectId: string;
   versionNumber: number;
@@ -189,7 +189,7 @@ export interface ScriptVersion {
 export interface VideoAsset {
   id: string;
   projectId: string;
-  scriptVersionId: string;
+  codeVersionId: string;
   videoFileKey: string | null;
   durationSeconds: number | null;
   resolution: string | null;
@@ -201,11 +201,11 @@ export interface VideoAsset {
 
 // ═══ 审核请求 ═══
 export interface ReviewRequest {
-  gate: "narrative" | "script" | "video";
+  gate: "narrative" | "code" | "video";
   verdict: "approved" | "rejected" | "abandoned" | "retry";
   rejectionType?: string;
   rejectionDetail?: string;
-  targetStage?: "narrative" | "code" | "script";
+  targetStage?: "narrative" | "code";
   factCheckVerdicts?: Array<{
     index: number;
     verdict: "approved" | "rejected" | "needs_revision";
@@ -218,7 +218,7 @@ export interface ReviewRequest {
     beats: NarrativeBeat[];
     estimatedDurationSeconds?: number | null;
   }>;
-  editedScriptScenes?: Array<{
+  editedCodeScenes?: Array<{
     sceneIndex: number;
     code: string;
   }>;
@@ -246,7 +246,7 @@ export interface RejectionContext {
 export interface WorkerTask {
   id: string;
   projectId: string;
-  taskType: "generate_script" | "render_video";
+  taskType: "generate_narrative" | "generate_code" | "render_video";
   engine: string;
   status: "pending" | "processing" | "completed" | "failed";
   retryCount: number;

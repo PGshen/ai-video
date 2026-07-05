@@ -13,7 +13,7 @@
 | 数据库 | PostgreSQL + SQLAlchemy + Alembic | 关系型存储，JSONB 字段存储半结构化数据，**不使用数据库外键约束** |
 | 工作流引擎 | Temporal (Python SDK) | 持久化工作流，原生支持重试、人工信号、定时器 |
 | 对象存储 | MinIO / S3 | 存储视频、音频、渲染产物 |
-| AI 服务 | Anthropic Claude API / OpenAI API | 脚本生成、选题头脑风暴 |
+| AI 服务 | Anthropic Claude API / OpenAI API | 叙事生成、代码生成、选题头脑风暴 |
 | TTS | 可插拔（Edge TTS / OpenAI TTS / Fish Audio） | 通过 TTSEngine Protocol 抽象 |
 | 视频渲染 | 可插拔（Manim / Remotion） | 通过 RenderEngine Protocol 抽象，渲染时直接注入音频轨道 |
 
@@ -23,7 +23,7 @@ Temporal 的核心优势在于原生的「人工信号等待」能力（Signal +
 
 - **持久化：** Workflow 实例的状态、事件历史存在 Temporal Server 自己的数据库中（非 Worker 内存），Worker 重启、崩溃不影响工作流状态
 - **原生重试：** Activity 级别的 RetryPolicy，支持递增退避、最大重试次数
-- **Signal 机制：** 工作流可以 `await workflow.wait_signal(...)` 无限期挂起，等待外部信号。本系统中统一使用 Signal 作为所有异步操作的回调机制（人工审核、脚本生成完成、视频渲染完成），保持架构一致性
+- **Signal 机制：** 工作流可以 `await workflow.wait_signal(...)` 无限期挂起，等待外部信号。本系统中统一使用 Signal 作为所有异步操作的回调机制（人工审核、叙事/代码生成完成、视频渲染完成），保持架构一致性
 - **可观测性：** 自带 Web UI，可以查看每个 Workflow 实例的执行历史、当前状态
 
 对比其他选项：n8n 偏低代码编排，对复杂状态机表达力不足；Prefect 偏数据管道，对人工卡点支持弱。
@@ -32,7 +32,7 @@ Temporal 的核心优势在于原生的「人工信号等待」能力（Signal +
 
 ## 2. 核心架构模式：Signal 驱动的异步任务
 
-本系统所有耗时操作（脚本生成、视频渲染）采用统一的架构模式：
+本系统所有耗时操作（叙事生成、代码生成、视频渲染）采用统一的架构模式：
 
 ```
 Temporal Workflow              后端 Activity            Worker 进程
@@ -121,7 +121,7 @@ CREATE INDEX idx_topics_tags ON topics USING GIN(tags);
 | render_engine | VARCHAR(20) | NOT NULL | `manim` / `remotion` |
 | tts_voice | VARCHAR(50) | NOT NULL | TTS 音色标识（如 `zh-CN-XiaoxiaoNeural`） |
 | aspect_ratio | VARCHAR(20) | NOT NULL | `landscape`（横屏 16:9）/ `portrait`（竖屏 9:16） |
-| current_script_version_id | UUID | | 当前生效脚本版本 |
+| current_code_version_id | UUID | | 当前生效代码版本 |
 | current_video_asset_id | UUID | | 当前最新成片 |
 | temporal_workflow_id | VARCHAR(100) | | Temporal 工作流实例 ID |
 | retry_count | SMALLINT | DEFAULT 0 | 当前阶段已重试次数 |
@@ -137,7 +137,7 @@ CREATE INDEX idx_projects_topic_id ON video_projects(topic_id);
 
 > **说明：** `status` 字段是 Temporal 工作流状态的冗余镜像，主要用于前端列表页快速筛选查询，避免每次都去查 Temporal。状态变更时由 Activity 同步更新到此字段。真正的状态权威来源是 Temporal Workflow。
 
-### 3.3 script_versions — 脚本版本表
+### 3.3 code_versions — 代码版本表
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -187,7 +187,7 @@ type FactCheckItem = {
 **索引：**
 
 ```sql
-CREATE INDEX idx_script_versions_project_id ON script_versions(project_id);
+CREATE INDEX idx_code_versions_project_id ON code_versions(project_id);
 ```
 
 ### 3.4 video_assets — 视频产物表
@@ -196,7 +196,7 @@ CREATE INDEX idx_script_versions_project_id ON script_versions(project_id);
 |------|------|------|
 | id | UUID | PK |
 | project_id | UUID | 关联视频项目 |
-| script_version_id | UUID | 基于哪个脚本版本渲染 |
+| code_version_id | UUID | 基于哪个代码版本渲染 |
 | video_file_key | VARCHAR(500) | S3/MinIO 对象键（最终成片，已含音频） |
 | duration_seconds | FLOAT | 成片时长 |
 | resolution | VARCHAR(20) | 如 `1920x1080` |
@@ -211,14 +211,14 @@ CREATE INDEX idx_video_assets_project_id ON video_assets(project_id);
 
 ### 3.5 worker_tasks — 异步任务表
 
-统一管理所有异步任务（脚本生成、视频渲染），是 Worker 与 Temporal Workflow 之间的桥梁。
+统一管理所有异步任务（叙事生成、代码生成、视频渲染），是 Worker 与 Temporal Workflow 之间的桥梁。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID | PK |
 | project_id | UUID | 关联视频项目 |
-| script_version_id | UUID | 关联脚本版本（`generate_script` 时为 NULL） |
-| task_type | VARCHAR(30) | `generate_script` / `render_video` |
+| code_version_id | UUID | 关联代码版本（`generate_code` 时为 NULL） |
+| task_type | VARCHAR(30) | `generate_code` / `render_video` |
 | engine | VARCHAR(30) | 执行引擎标识（`claude` / `manim` / `remotion`） |
 | status | VARCHAR(20) | `pending` / `processing` / `completed` / `failed` |
 | input_payload | JSONB | 任务输入数据 |
@@ -242,7 +242,7 @@ CREATE INDEX idx_worker_tasks_type_status ON worker_tasks(task_type, status);
 
 **各任务类型的 input_payload / output_payload：**
 
-#### generate_script
+#### generate_code
 
 ```json
 // input_payload
@@ -255,7 +255,7 @@ CREATE INDEX idx_worker_tasks_type_status ON worker_tasks(task_type, status);
 
 // output_payload (成功)
 {
-  "script_version_id": "uuid",
+  "code_version_id": "uuid",
   "scene_count": 5,
   "fact_check_count": 8
 }
@@ -344,7 +344,7 @@ CREATE INDEX idx_project_events_created_at ON project_events(created_at DESC);
 ### 3.8 ER 关系总结
 
 ```
-topics 1 ── N video_projects 1 ── N script_versions
+topics 1 ── N video_projects 1 ── N code_versions
                              1 ── N video_assets
                              1 ── N worker_tasks
                              1 ── N project_events
@@ -363,9 +363,9 @@ topics 1 ── N video_projects 1 ── N script_versions
 
 | 类别 | Signal 名称 | 发送方 | 触发时机 | Payload |
 |------|-------------|--------|----------|---------|
-| 人工审核 | `script_review` | 后端 API | 审核人点击通过/驳回 | `{ verdict, rejection_type?, rejection_detail?, target_stage? }` |
+| 人工审核 | `code_review` | 后端 API | 审核人点击通过/驳回 | `{ verdict, rejection_type?, rejection_detail?, target_stage? }` |
 | 人工审核 | `video_review` | 后端 API | 审核人点击通过/驳回 | `{ verdict, rejection_type?, rejection_detail?, target_stage? }` |
-| 任务完成 | `script_generated` | Script Worker | 脚本生成完成/失败 | `{ task_id, success, script_version_id?, error? }` |
+| 任务完成 | `code_generated` | Code Worker | 代码生成完成/失败 | `{ task_id, success, code_version_id?, error? }` |
 | 任务完成 | `render_completed` | Render Worker | 视频生成完成/失败 | `{ task_id, success, video_asset_id?, error? }` |
 | 用户操作 | `cancel` | 后端 API | 用户主动废弃 | `{ reason? }` |
 
@@ -381,7 +381,7 @@ class VideoProductionWorkflow:
     async def run(self, project_id: str):
 
         # ═══════════════════════════════════════════
-        #  Phase 1: 脚本生成循环
+        #  Phase 1: 叙事与代码生成循环
         # ═══════════════════════════════════════════
         while True:
             result = await self._generate_and_review_script(project_id)
@@ -425,9 +425,9 @@ class VideoProductionWorkflow:
         返回: "approved" / "rejected" / "abandoned"
         """
         # 1. 更新状态
-        await self._update_status(project_id, "script_generating")
+        await self._update_status(project_id, "code_generating")
 
-        # 2. 提交脚本生成任务
+        # 2. 提交代码生成任务
         await workflow.execute_activity(
             submit_script_generation_task,
             args=[project_id],
@@ -436,17 +436,17 @@ class VideoProductionWorkflow:
 
         # 3. 等待 Worker 完成 Signal
         while True:
-            result = await workflow.wait_signal("script_generated")
+            result = await workflow.wait_signal("code_generated")
 
             if result["success"]:
                 break
             else:
                 # 生成失败，检查是否还可重试
                 can_retry = await self._handle_task_failure(
-                    project_id, "script_generating", result["error"]
+                    project_id, "code_generating", result["error"]
                 )
                 if not can_retry:
-                    await self._update_status(project_id, "script_failed")
+                    await self._update_status(project_id, "code_failed")
                     return "abandoned"
                 # 重新提交任务
                 await workflow.execute_activity(
@@ -456,10 +456,10 @@ class VideoProductionWorkflow:
                 )
 
         # 4. 更新状态为待审核
-        await self._update_status(project_id, "script_review")
+        await self._update_status(project_id, "code_review")
 
         # 5. 等待人工审核 Signal（无超时）
-        review = await workflow.wait_signal("script_review")
+        review = await workflow.wait_signal("code_review")
 
         return review["verdict"]
 
@@ -536,7 +536,7 @@ class VideoProductionWorkflow:
 
 | Activity | 职责 | 超时 |
 |----------|------|------|
-| submit_script_generation_task | 创建 `generate_script` 类型的 worker_tasks 记录 | 30s |
+| submit_script_generation_task | 创建 `generate_code` 类型的 worker_tasks 记录 | 30s |
 | submit_video_generation_task | 创建 `render_video` 类型的 worker_tasks 记录 | 30s |
 | update_project_status | 更新 video_projects.status + 写入 project_events | 10s |
 | check_and_increment_retry | 检查重试次数、自增、返回是否可继续 | 10s |
@@ -552,16 +552,16 @@ async def submit_video_generation_task(project_id: str):
     """
     db = get_db_session()
     project = db.get(VideoProject, project_id)
-    script_version = db.get(ScriptVersion, project.current_script_version_id)
+    code_version = db.get(CodeVersion, project.current_code_version_id)
 
     task = WorkerTask(
         project_id=project_id,
-        script_version_id=script_version.id,
+        code_version_id=code_version.id,
         task_type="render_video",
         engine=project.render_engine,
         status="pending",
         input_payload={
-            "scenes": script_version.scenes,       # 完整镜头数组
+            "scenes": code_version.scenes,       # 完整镜头数组
             "render_engine": project.render_engine,
             "tts_engine": "edge_tts",               # 或从配置读取
             "tts_voice": project.tts_voice,
@@ -1000,12 +1000,12 @@ class BaseWorker:
         raise NotImplementedError
 ```
 
-### 6.2 ScriptWorker
+### 6.2 CodeWorker
 
 ```python
-class ScriptWorker(BaseWorker):
-    """脚本生成 Worker"""
-    supported_task_types = ["generate_script"]
+class CodeWorker(BaseWorker):
+    """代码生成 Worker"""
+    supported_task_types = ["generate_code"]
 
     def __init__(self, ai_registry: EngineRegistry, **kwargs):
         super().__init__(**kwargs)
@@ -1016,22 +1016,22 @@ class ScriptWorker(BaseWorker):
         ai_provider = self.ai_registry.get(task.engine)
 
         # 调用 AI 生成脚本
-        result = await ai_provider.generate_script(
+        result = await ai_provider.generate_code(
             topic_title=payload["topic_title"],
             topic_description=payload["topic_description"],
             render_engine=payload["render_engine"],
             rejection_context=payload.get("rejection_context"),
         )
 
-        # 写入 script_versions 表
+        # 写入 code_versions 表
         db = get_db_session()
         version_number = db.query(
-            func.coalesce(func.max(ScriptVersion.version_number), 0)
+            func.coalesce(func.max(CodeVersion.version_number), 0)
         ).filter(
-            ScriptVersion.project_id == task.project_id
+            CodeVersion.project_id == task.project_id
         ).scalar()
 
-        script_version = ScriptVersion(
+        code_version = CodeVersion(
             project_id=task.project_id,
             version_number=version_number + 1,
             scenes=result.scenes,
@@ -1040,14 +1040,14 @@ class ScriptWorker(BaseWorker):
             ai_model=ai_provider.model_name,
             rejection_context=payload.get("rejection_context"),
         )
-        db.add(script_version)
+        db.add(code_version)
 
         project = db.get(VideoProject, task.project_id)
-        project.current_script_version_id = script_version.id
+        project.current_code_version_id = code_version.id
         db.commit()
 
         return {
-            "script_version_id": str(script_version.id),
+            "code_version_id": str(code_version.id),
             "scene_count": len(result.scenes),
             "fact_check_count": len(result.fact_checks),
         }
@@ -1140,7 +1140,7 @@ class RenderWorker(BaseWorker):
             db = get_db_session()
             video_asset = VideoAsset(
                 project_id=task.project_id,
-                script_version_id=task.script_version_id,
+                code_version_id=task.code_version_id,
                 video_file_key=file_key,
                 duration_seconds=render_result.duration_seconds,
                 resolution=f"{payload['resolution'][0]}x{payload['resolution'][1]}",
@@ -1162,14 +1162,14 @@ class RenderWorker(BaseWorker):
 ### 6.4 Worker 部署
 
 ```bash
-# 脚本生成 Worker（CPU 机器即可）
-python -m app.workers.script_worker --worker-id=script-01
+# 代码生成 Worker（CPU 机器即可）
+python -m app.workers.code_worker --worker-id=code-01
 
 # 视频渲染 Worker（建议高性能机器）
 python -m app.workers.render_worker --worker-id=render-01
 ```
 
-> **开发/小规模部署**可以把两种 Worker 合并到一个进程中，创建一个 `CombinedWorker`，其 `supported_task_types` 包含 `["generate_script", "render_video"]`。
+> **开发/小规模部署**可以把两种 Worker 合并到一个进程中，创建一个 `CombinedWorker`，其 `supported_task_types` 包含 `["generate_code", "render_video"]`。
 
 ---
 
@@ -1187,7 +1187,7 @@ python -m app.workers.render_worker --worker-id=render-01
 | POST | /api/projects | 从选题创建视频项目（启动 Temporal 工作流） |
 | GET | /api/projects/{id} | 获取项目详情（含当前脚本、视频、事件历史） |
 | POST | /api/projects/{id}/review | 提交审核结果（发送 Temporal Signal） |
-| GET | /api/projects/{id}/script-versions | 获取脚本历史版本 |
+| GET | /api/projects/{id}/code-versions | 获取代码历史版本 |
 | GET | /api/projects/{id}/events | 获取项目事件日志 |
 | POST | /api/projects/{id}/performance | 录入发布表现数据 |
 | GET | /api/projects/{id}/preview-url | 获取视频预览签名 URL |
@@ -1200,13 +1200,13 @@ POST /api/projects/{id}/review
 
 Request Body:
 {
-  "gate": "script" | "video",
+  "gate": "code" | "video",
   "verdict": "approved" | "rejected" | "abandoned",
   "rejection_type": "topic_invalid" | "fact_error"
-    | "script_weak" | "sync_issue",            // rejected 时必填
+    | "code_issue" | "sync_issue",            // rejected 时必填
   "rejection_detail": "string, 具体问题描述",    // rejected 时必填
-  "target_stage": "script_generating",          // rejected 时可选（有默认值）
-  "fact_check_verdicts": [                      // gate=script 且 verdict=approved 时必填
+  "target_stage": "code_generating",          // rejected 时可选（有默认值）
+  "fact_check_verdicts": [                      // gate=code 且 verdict=approved 时必填
     { "index": 0, "verdict": "approved", "note": "" },
     { "index": 1, "verdict": "approved", "note": "来源已确认" }
   ]
@@ -1216,10 +1216,10 @@ Request Body:
 **后端处理流程：**
 
 1. **状态校验：** 验证当前项目状态是否允许该审核操作
-2. **核查表校验：** 如果 `gate=script` 且 `verdict=approved`，校验所有核查条目已审核且无 `rejected`
+2. **核查表校验：** 如果 `gate=code` 且 `verdict=approved`，校验所有核查条目已审核且无 `rejected`
 3. **事件记录：** 写入 `project_events` 表
 4. **信号发送：** 向 Temporal Workflow 实例发送 Signal
-5. **核查表回写：** 更新 `script_versions.fact_checks` 中的审核结果字段
+5. **核查表回写：** 更新 `code_versions.fact_checks` 中的审核结果字段
 
 ### 7.3 创建项目接口
 
@@ -1257,7 +1257,7 @@ TanStack Query
   ├── useTopic(id)         → GET /api/topics/{id}
   ├── useProjects()        → GET /api/projects
   ├── useProject(id)       → GET /api/projects/{id}
-  ├── useScriptVersions(projectId) → GET /api/projects/{id}/script-versions
+  ├── useCodeVersions(projectId) → GET /api/projects/{id}/code-versions
   ├── useProjectEvents(projectId)  → GET /api/projects/{id}/events
   └── useWorkerTasks(projectId)    → GET /api/worker-tasks?project_id={id}
 ```
@@ -1300,7 +1300,7 @@ video-workflow-platform/
 │   │   ├── models/                   # SQLAlchemy models
 │   │   │   ├── topic.py
 │   │   │   ├── project.py
-│   │   │   ├── script_version.py
+│   │   │   ├── code_version.py
 │   │   │   ├── video_asset.py
 │   │   │   ├── worker_task.py
 │   │   │   └── project_event.py
@@ -1433,7 +1433,7 @@ volumes:
 |------|------|--------|--------|
 | Sprint 0 | 1 周 | 基础设施搭建 | docker-compose 一键启动、DB migration、空 FastAPI 骨架、空 React 骨架、BaseWorker 框架 |
 | Sprint 1 | 2 周 | 选题池 + 项目状态机 | 可创建选题、打分、从选题创建项目、Temporal Workflow 空壳跑通 |
-| Sprint 2 | 2 周 | 脚本生成 + 内容审核 | ScriptWorker 跑通、AI 生成镜头数组 + 核查表、Signal 回调、核查表审核 UI |
+| Sprint 2 | 2 周 | 叙事与代码生成 + 内容审核 | NarrativeWorker、CodeWorker 跑通，完成叙事/代码审核 UI |
 | Sprint 3 | 2 周 | 视频生成 + 视频审核 | RenderEngine 抽象层 + Manim 实现（含音频注入）、RenderWorker 跑通、视频预览审核 |
 | Sprint 4 | 1 周 | 发布与数据回流 | 标记发布、表现数据录入、回写选题评分 |
 | Sprint 5 | 1 周 | 端到端测试 + 优化 | 全流程跑通、修复问题、发布 v1.0 |
@@ -1482,7 +1482,7 @@ interface Topic {
 // ═══ 视频项目 ═══
 type ProjectStatus =
   | 'draft'
-  | 'script_generating' | 'script_failed' | 'script_review'
+  | 'code_generating' | 'code_failed' | 'code_review'
   | 'video_generating' | 'video_failed' | 'video_review'
   | 'published' | 'abandoned';
 
@@ -1493,7 +1493,7 @@ interface VideoProject {
   renderEngine: 'manim' | 'remotion';
   ttsVoice: string;
   aspectRatio: 'landscape' | 'portrait';
-  currentScriptVersion: ScriptVersion | null;
+  currentCodeVersion: CodeVersion | null;
   currentVideoAsset: VideoAsset | null;
   retryCount: number;
   createdAt: string;
@@ -1509,8 +1509,8 @@ interface Scene {
   estimatedDurationSeconds: number;
 }
 
-// ═══ 脚本版本 ═══
-interface ScriptVersion {
+// ═══ 代码版本 ═══
+interface CodeVersion {
   id: string;
   projectId: string;
   versionNumber: number;
@@ -1538,11 +1538,11 @@ interface FactCheckItem {
 
 // ═══ 审核请求 ═══
 interface ReviewRequest {
-  gate: 'script' | 'video';
+  gate: 'code' | 'video';
   verdict: 'approved' | 'rejected' | 'abandoned';
-  rejectionType?: 'topic_invalid' | 'fact_error' | 'script_weak' | 'sync_issue';
+  rejectionType?: 'topic_invalid' | 'fact_error' | 'code_issue' | 'sync_issue';
   rejectionDetail?: string;
-  targetStage?: 'script_generating';
+  targetStage?: 'code_generating';
   factCheckVerdicts?: Array<{
     index: number;
     verdict: 'approved' | 'rejected' | 'needs_revision';
@@ -1562,7 +1562,7 @@ interface RejectionContext {
 interface WorkerTask {
   id: string;
   projectId: string;
-  taskType: 'generate_script' | 'render_video';
+  taskType: 'generate_code' | 'render_video';
   engine: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   retryCount: number;
@@ -1576,7 +1576,7 @@ interface WorkerTask {
 interface VideoAsset {
   id: string;
   projectId: string;
-  scriptVersionId: string;
+  codeVersionId: string;
   videoFileKey: string;
   durationSeconds: number;
   resolution: string;

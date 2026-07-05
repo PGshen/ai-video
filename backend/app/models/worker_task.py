@@ -18,7 +18,7 @@ class WorkerTask(Base):
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     project_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    script_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    code_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True)
     )
     task_type: Mapped[str] = mapped_column(String(30), nullable=False)

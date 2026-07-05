@@ -21,7 +21,7 @@ async def test_code_worker_supported_task_types():
 
 
 @pytest.mark.asyncio
-async def test_code_worker_execute_creates_script_version():
+async def test_code_worker_execute_creates_code_version():
     task = make_task()
     narrative_scenes = [
         {
@@ -59,7 +59,7 @@ async def test_code_worker_execute_creates_script_version():
     mock_project.current_narrative_version_id = uuid.uuid4()
     mock_project.render_engine = "manim"
     mock_project.aspect_ratio = "portrait"
-    mock_project.current_script_version_id = None
+    mock_project.current_code_version_id = None
 
     mock_db = MagicMock()
     mock_db.get.side_effect = lambda model, pk: (
@@ -76,7 +76,7 @@ async def test_code_worker_execute_creates_script_version():
         worker = CodeWorker(worker_id="test", temporal_client=AsyncMock())
         result = await worker._execute(task)
 
-    assert "script_version_id" in result
+    assert "code_version_id" in result
     assert result["scene_count"] == 1
     mock_db.add.assert_called_once()
     assert mock_provider.generate_code.await_args.kwargs["aspect_ratio"] == "portrait"

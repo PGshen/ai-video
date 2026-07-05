@@ -18,7 +18,7 @@ class VideoAsset(Base):
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     project_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    script_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    code_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True)
     )
     video_file_key: Mapped[Optional[str]] = mapped_column(String(500))

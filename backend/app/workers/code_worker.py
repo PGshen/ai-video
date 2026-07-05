@@ -7,7 +7,7 @@ from app.engines.render.base import SceneInput
 from app.engines.render.factory import get_render_engine
 from app.models.project import VideoProject
 from app.models.narrative_version import NarrativeVersion
-from app.models.script_version import ScriptVersion
+from app.models.code_version import CodeVersion
 from app.workers.base import BaseWorker
 from app.services.narrative_validator import validate_scenes_for_codegen
 
@@ -144,13 +144,13 @@ class CodeWorker(BaseWorker):
                     )
 
             max_version = db.execute(
-                select(func.max(ScriptVersion.version_number)).where(
-                    ScriptVersion.project_id == task.project_id
+                select(func.max(CodeVersion.version_number)).where(
+                    CodeVersion.project_id == task.project_id
                 )
             ).scalar()
             next_version = (max_version or 0) + 1
 
-            sv = ScriptVersion(
+            code_version = CodeVersion(
                 id=uuid.uuid4(),
                 project_id=task.project_id,
                 version_number=next_version,
@@ -160,19 +160,19 @@ class CodeWorker(BaseWorker):
                 ai_model=provider.model_name,
                 prompt_snapshot=prompt_snapshot,
             )
-            db.add(sv)
+            db.add(code_version)
             db.flush()
 
-            project.current_script_version_id = sv.id
+            project.current_code_version_id = code_version.id
             db.commit()
             logger.info(
-                "[CodeWorker] committed script_version_id=%s version=%d",
-                sv.id,
+                "[CodeWorker] committed code_version_id=%s version=%d",
+                code_version.id,
                 next_version,
             )
 
             return {
-                "script_version_id": str(sv.id),
+                "code_version_id": str(code_version.id),
                 "scene_count": len(merged_scenes),
                 "fact_check_count": len(fact_checks),
             }

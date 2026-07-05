@@ -12,7 +12,7 @@ from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
 from app.models.prompt_component import PromptComponent
-from app.models.script_version import ScriptVersion
+from app.models.code_version import CodeVersion
 from app.models.narrative_version import NarrativeVersion
 from app.schemas.narrative import NarrativeBeatSchema, NarrativeVersionSchema
 from app.models.topic import Topic
@@ -26,7 +26,7 @@ from app.engines.tts.base import TTSRequest
 from app.engines.ai.factory import get_ai_provider
 from app.schemas.project import (
     ProjectCreate, ProjectResponse, ProjectListResponse,
-    ProjectDetailResponse, EventListResponse, ScriptVersionSchema,
+    ProjectDetailResponse, EventListResponse, CodeVersionSchema,
     CodeRepairRequest, CodeRepairResponse,
 )
 from app.workflows.video_production import VideoProductionWorkflow
@@ -148,7 +148,7 @@ async def delete_project(
         ProjectEvent,
         PerformanceRecord,
         VideoAsset,
-        ScriptVersion,
+        CodeVersion,
         NarrativeVersion,
     ):
         await db.execute(delete(model).where(model.project_id == project_id))
@@ -222,7 +222,7 @@ async def get_project(
         video_asset = await db.get(VideoAsset, project.current_video_asset_id)
     return ProjectDetailResponse(
         **base.model_dump(),
-        current_script_version=None,
+        current_code_version=None,
         current_video_asset=video_asset,
     )
 
@@ -241,8 +241,8 @@ async def list_events(
     return EventListResponse(items=events)
 
 
-@router.get("/{project_id}/script", response_model=ScriptVersionSchema)
-async def get_current_script(
+@router.get("/{project_id}/code", response_model=CodeVersionSchema)
+async def get_current_code(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
     _=Depends(verify_api_key),
@@ -250,16 +250,16 @@ async def get_current_script(
     project = await db.get(VideoProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    if not project.current_script_version_id:
-        raise HTTPException(status_code=404, detail="No script generated yet")
-    sv = await db.get(ScriptVersion, project.current_script_version_id)
-    if sv is None:
-        raise HTTPException(status_code=404, detail="Script version not found")
-    return sv
+    if not project.current_code_version_id:
+        raise HTTPException(status_code=404, detail="No code generated yet")
+    code_version = await db.get(CodeVersion, project.current_code_version_id)
+    if code_version is None:
+        raise HTTPException(status_code=404, detail="Code version not found")
+    return code_version
 
 
-@router.post("/{project_id}/script/repair", response_model=CodeRepairResponse)
-async def repair_script_code(
+@router.post("/{project_id}/code/repair", response_model=CodeRepairResponse)
+async def repair_code(
     project_id: UUID,
     body: CodeRepairRequest,
     db: AsyncSession = Depends(get_async_session),
@@ -268,10 +268,10 @@ async def repair_script_code(
     project = await db.get(VideoProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    if project.status != "script_review":
+    if project.status != "code_review":
         raise HTTPException(
             status_code=409,
-            detail="Code repair is only available during script review",
+            detail="Code repair is only available during code review",
         )
     if not body.error_message.strip():
         raise HTTPException(status_code=422, detail="Render error message is required")
@@ -283,15 +283,15 @@ async def repair_script_code(
         raise HTTPException(status_code=422, detail="Scene indices must be unique")
 
     provider = get_ai_provider()
-    script_version = (
-        await db.get(ScriptVersion, project.current_script_version_id)
-        if project.current_script_version_id
+    code_version = (
+        await db.get(CodeVersion, project.current_code_version_id)
+        if project.current_code_version_id
         else None
     )
-    if script_version is None or not isinstance(script_version.prompt_snapshot, dict):
-        raise HTTPException(status_code=409, detail="Script version has no prompt snapshot")
+    if code_version is None or not isinstance(code_version.prompt_snapshot, dict):
+        raise HTTPException(status_code=409, detail="Code version has no prompt snapshot")
     try:
-        style_components = style_components_from_snapshot(script_version.prompt_snapshot)
+        style_components = style_components_from_snapshot(code_version.prompt_snapshot)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
@@ -370,31 +370,31 @@ async def get_narrative_version(
     return nv
 
 
-@router.get("/{project_id}/script-versions", response_model=list[ScriptVersionSchema])
-async def list_script_versions(
+@router.get("/{project_id}/code-versions", response_model=list[CodeVersionSchema])
+async def list_code_versions(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
     _=Depends(verify_api_key),
 ):
     result = await db.execute(
-        select(ScriptVersion)
-        .where(ScriptVersion.project_id == project_id)
-        .order_by(ScriptVersion.version_number.asc())
+        select(CodeVersion)
+        .where(CodeVersion.project_id == project_id)
+        .order_by(CodeVersion.version_number.asc())
     )
     return result.scalars().all()
 
 
-@router.get("/{project_id}/script-versions/{sv_id}", response_model=ScriptVersionSchema)
-async def get_script_version(
+@router.get("/{project_id}/code-versions/{code_version_id}", response_model=CodeVersionSchema)
+async def get_code_version(
     project_id: UUID,
-    sv_id: UUID,
+    code_version_id: UUID,
     db: AsyncSession = Depends(get_async_session),
     _=Depends(verify_api_key),
 ):
-    sv = await db.get(ScriptVersion, sv_id)
-    if sv is None or sv.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Script version not found")
-    return sv
+    code_version = await db.get(CodeVersion, code_version_id)
+    if code_version is None or code_version.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Code version not found")
+    return code_version
 
 
 @router.get("/{project_id}/video-url")

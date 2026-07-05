@@ -20,7 +20,7 @@ class EditedNarrativeScene(BaseModel):
     estimated_duration_seconds: Optional[float] = None
 
 
-class EditedScriptScene(BaseModel):
+class EditedCodeScene(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     scene_index: int
@@ -30,14 +30,14 @@ class EditedScriptScene(BaseModel):
 class ReviewRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
-    gate: Literal["narrative", "script", "video"]
+    gate: Literal["narrative", "code", "video"]
     verdict: Literal["approved", "rejected", "abandoned"]
     rejection_type: Optional[str] = None
     rejection_detail: Optional[str] = None
-    target_stage: Optional[Literal["narrative", "code", "script"]] = None
+    target_stage: Optional[Literal["narrative", "code"]] = None
     fact_check_verdicts: Optional[list[FactCheckVerdict]] = None
     edited_scenes: Optional[list[EditedNarrativeScene]] = None
-    edited_script_scenes: Optional[list[EditedScriptScene]] = None
+    edited_code_scenes: Optional[list[EditedCodeScene]] = None
 
     @model_validator(mode="after")
     def validate_content_rejection_reason(self):

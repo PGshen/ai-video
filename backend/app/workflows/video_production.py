@@ -40,8 +40,8 @@ class VideoProductionWorkflow:
         self._signals.setdefault("code_generated", []).append(payload)
 
     @workflow.signal
-    async def script_review(self, payload: dict) -> None:
-        self._signals.setdefault("script_review", []).append(payload)
+    async def code_review(self, payload: dict) -> None:
+        self._signals.setdefault("code_review", []).append(payload)
 
     @workflow.signal
     async def render_completed(self, payload: dict) -> None:
@@ -59,7 +59,7 @@ class VideoProductionWorkflow:
     async def run(self, project_id: str) -> None:
         need_narrative = True
 
-        # Phase 1 outer loop: narrative + code + script review
+        # Phase 1 outer loop: narrative + code + code review
         while True:
             if need_narrative:
                 narrative_result = await self._generate_and_review_narrative(project_id)
@@ -70,7 +70,7 @@ class VideoProductionWorkflow:
                     need_narrative = True
                     continue
 
-            code_result = await self._generate_code_and_review_script(project_id)
+            code_result = await self._generate_and_review_code(project_id)
             if code_result == "approved":
                 break
             elif code_result == "back_to_narrative":
@@ -93,9 +93,8 @@ class VideoProductionWorkflow:
             elif result == "abandoned":
                 await self._update_status(project_id, "abandoned")
                 return
-            elif result in ("back_to_script", "back_to_code", "back_to_narrative"):
-                # 退回脚本阶段：back_to_script/back_to_narrative 重新生成叙事+代码，
-                # back_to_code 只重新生成代码
+            elif result in ("back_to_code", "back_to_narrative"):
+                # back_to_narrative 重新生成叙事和代码；back_to_code 只重新生成代码。
                 need_narrative = result != "back_to_code"
                 while True:
                     if need_narrative:
@@ -106,7 +105,7 @@ class VideoProductionWorkflow:
                         if narrative_result != "approved":
                             need_narrative = True
                             continue
-                    code_result = await self._generate_code_and_review_script(project_id)
+                    code_result = await self._generate_and_review_code(project_id)
                     if code_result == "approved":
                         break
                     elif code_result == "back_to_narrative":
@@ -156,7 +155,7 @@ class VideoProductionWorkflow:
         # rejected → retry narrative
         return "rejected_retry"
 
-    async def _generate_code_and_review_script(self, project_id: str) -> str:
+    async def _generate_and_review_code(self, project_id: str) -> str:
         await self._update_status(project_id, "code_generating")
         await workflow.execute_activity(
             submit_code_task, args=[project_id], **_ACTIVITY_OPTS
@@ -181,8 +180,8 @@ class VideoProductionWorkflow:
                 submit_code_task, args=[project_id], **_ACTIVITY_OPTS
             )
 
-        await self._update_status(project_id, "script_review")
-        review = await self._wait_signal("script_review")
+        await self._update_status(project_id, "code_review")
+        review = await self._wait_signal("code_review")
         verdict = review.get("verdict")
         if verdict == "approved":
             return "approved"
@@ -205,21 +204,21 @@ class VideoProductionWorkflow:
             if result["success"]:
                 break
 
-            # 渲染失败：直接退回脚本审核，不重试
+            # 渲染失败：直接退回代码审核，不重试
             render_error = result.get("error", "")
             failure_payload = {
                 "error_message": render_error,
                 **({"task_id": result["task_id"]} if result.get("task_id") else {}),
             }
-            # 项目最终会停在 script_review，但时间线需要保留独立的失败状态。
+            # 项目最终会停在 code_review，但时间线需要保留独立的失败状态。
             await self._update_status(
                 project_id, "video_failed", payload=failure_payload,
             )
             await self._update_status(
-                project_id, "script_review",
+                project_id, "code_review",
                 payload={"trigger": "video_failed", **failure_payload},
             )
-            review = await self._wait_signal("script_review")
+            review = await self._wait_signal("code_review")
             verdict = review.get("verdict")
             if verdict == "abandoned":
                 return "abandoned"
@@ -242,7 +241,7 @@ class VideoProductionWorkflow:
         elif verdict == "abandoned":
             return "abandoned"
 
-        target = review.get("target_stage", "script")
+        target = review.get("target_stage", "code")
         rejection_payload = {
             "trigger": "video_review_rejected",
             "target_stage": target,
@@ -266,18 +265,16 @@ class VideoProductionWorkflow:
                 return "back_to_code"
             return "back_to_narrative"
 
-        # Old clients omitted target_stage, so script review is the safe
-        # backwards-compatible default.
         await self._update_status(
-            project_id, "script_review", payload=rejection_payload,
+            project_id, "code_review", payload=rejection_payload,
         )
-        script_review = await self._wait_signal("script_review")
-        script_verdict = script_review.get("verdict")
-        if script_verdict == "abandoned":
+        code_review = await self._wait_signal("code_review")
+        code_verdict = code_review.get("verdict")
+        if code_verdict == "abandoned":
             return "abandoned"
-        if script_verdict == "approved":
+        if code_verdict == "approved":
             return "retry_video"
-        if script_review.get("target_stage", "narrative") == "code":
+        if code_review.get("target_stage", "narrative") == "code":
             return "back_to_code"
         return "back_to_narrative"
 

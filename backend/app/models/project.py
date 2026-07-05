@@ -22,7 +22,7 @@ class VideoProject(Base):
     render_engine: Mapped[str] = mapped_column(String(20), nullable=False)
     tts_voice: Mapped[str] = mapped_column(String(50), nullable=False)
     aspect_ratio: Mapped[str] = mapped_column(String(20), nullable=False)
-    current_script_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    current_code_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True)
     )
     current_video_asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(

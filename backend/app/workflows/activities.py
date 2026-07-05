@@ -6,7 +6,7 @@ from app.db import get_sync_session
 from app.models.project import VideoProject
 from app.models.project_event import ProjectEvent
 from app.models.narrative_version import NarrativeVersion
-from app.models.script_version import ScriptVersion
+from app.models.code_version import CodeVersion
 from app.models.topic import Topic
 from app.models.worker_task import WorkerTask
 from app.services.prompt_bundle import build_prompt_snapshot, style_components_from_snapshot
@@ -26,9 +26,9 @@ async def update_project_status(project_id: str, new_status: str, payload: dict 
         if new_status == "narrative_review" and project.current_narrative_version_id:
             version = db.get(NarrativeVersion, project.current_narrative_version_id)
             event_payload["content_type"] = "narrative"
-        elif new_status == "script_review" and project.current_script_version_id:
-            version = db.get(ScriptVersion, project.current_script_version_id)
-            event_payload["content_type"] = "script"
+        elif new_status == "code_review" and project.current_code_version_id:
+            version = db.get(CodeVersion, project.current_code_version_id)
+            event_payload["content_type"] = "code"
         if version is not None:
             event_payload["content_version_id"] = str(version.id)
             event_payload["content_version_number"] = version.version_number
@@ -78,7 +78,7 @@ async def check_and_increment_retry(project_id: str, stage: str, error: str) -> 
             return False
         project.retry_count += 1
         db.commit()
-        return project.retry_count < 3
+        return project.retry_count < 1
     finally:
         db.close()
 

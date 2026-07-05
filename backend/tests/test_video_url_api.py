@@ -4,7 +4,7 @@ from uuid import uuid4
 from datetime import datetime, timezone
 
 
-def make_asset(project_id, status="ready", video_file_key="video/proj/sv/asset.mp4"):
+def make_asset(project_id, status="ready", video_file_key="video/proj/code_version/asset.mp4"):
     a = MagicMock()
     a.id = uuid4()
     a.project_id = project_id

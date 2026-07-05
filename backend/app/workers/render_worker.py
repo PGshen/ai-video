@@ -6,7 +6,7 @@ from app.db import get_sync_session
 from app.engines.render.factory import get_render_engine
 from app.engines.render.base import RenderRequest, SceneInput, SceneAudio
 from app.models.project import VideoProject
-from app.models.script_version import ScriptVersion
+from app.models.code_version import CodeVersion
 from app.models.video_asset import VideoAsset
 from app.storage import download_to_file, upload_bytes
 from app.video_format import resolution_for_aspect_ratio
@@ -25,13 +25,13 @@ class RenderWorker(BaseWorker):
             if project is None:
                 raise ValueError(f"Project {task.project_id} not found")
 
-            sv = db.get(ScriptVersion, project.current_script_version_id)
-            if sv is None:
-                raise ValueError("No script version found for project")
+            code_version = db.get(CodeVersion, project.current_code_version_id)
+            if code_version is None:
+                raise ValueError("No code version found for project")
 
-            scenes_data = list(sv.scenes or [])
+            scenes_data = list(code_version.scenes or [])
             project_id = str(project.id)
-            script_version_id = str(sv.id)
+            code_version_id = str(code_version.id)
             render_engine_name = project.render_engine
             resolution = resolution_for_aspect_ratio(project.aspect_ratio)
         finally:
@@ -53,7 +53,7 @@ class RenderWorker(BaseWorker):
             asset = VideoAsset(
                 id=asset_id,
                 project_id=uuid.UUID(project_id),
-                script_version_id=uuid.UUID(script_version_id),
+                code_version_id=uuid.UUID(code_version_id),
                 status="rendering",
                 resolution=f"{resolution[0]}x{resolution[1]}",
             )
@@ -120,7 +120,7 @@ class RenderWorker(BaseWorker):
                 raise RuntimeError(f"Render failed: {render_result.error_message}")
 
             # Step 3: 上传视频
-            video_key = f"video/{project_id}/{script_version_id}/{asset_id_str}.mp4"
+            video_key = f"video/{project_id}/{code_version_id}/{asset_id_str}.mp4"
             upload_bytes(video_key, render_result.video_bytes, "video/mp4")
             logger.info("[RenderWorker] Uploaded video → %s", video_key)
 

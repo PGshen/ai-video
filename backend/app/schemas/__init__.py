@@ -4,7 +4,7 @@ from app.schemas.topic import (
 )
 from app.schemas.project import (
     ProjectCreate, ProjectResponse, ProjectDetailResponse, ProjectListResponse,
-    ScriptVersionListResponse, EventListResponse, PerformanceCreate,
+    CodeVersionListResponse, EventListResponse, PerformanceCreate,
     PerformanceResponse, PreviewUrlResponse,
 )
 from app.schemas.review import ReviewRequest, ReviewResponse
@@ -18,7 +18,7 @@ __all__ = [
     "TopicCreate", "TopicUpdate", "TopicResponse", "TopicListResponse",
     "BrainstormCandidate", "BrainstormRequest", "BrainstormResponse",
     "ProjectCreate", "ProjectResponse", "ProjectDetailResponse", "ProjectListResponse",
-    "ScriptVersionListResponse", "EventListResponse", "PerformanceCreate",
+    "CodeVersionListResponse", "EventListResponse", "PerformanceCreate",
     "PerformanceResponse", "PreviewUrlResponse",
     "ReviewRequest", "ReviewResponse",
     "WorkerTaskResponse", "WorkerTaskListResponse",

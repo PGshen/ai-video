@@ -10,14 +10,14 @@ import { NarrativeReviewPanel } from "@/components/projects/NarrativeReviewPanel
 import { SceneBeats } from "@/components/projects/SceneBeats";
 import { ProjectStylePrompts } from "@/components/projects/ProjectStylePrompts";
 import {
-  useProject, useProjectEvents, useProjectScript, useSubmitReview,
+  useProject, useProjectEvents, useProjectCode, useSubmitReview,
   useNarrativeVersions, useNarrativeVersion,
-  useScriptVersions, useScriptVersion, useVideoUrl, useRepairScriptCode,
+  useCodeVersions, useCodeVersion, useVideoUrl, useRepairCode,
 } from "@/hooks/useProjects";
 import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, formatDateTime } from "@/lib/format";
 import type {
-  VideoProject, ProjectEvent, NarrativeVersion, ScriptVersion, CodeRepair,
+  VideoProject, ProjectEvent, NarrativeVersion, CodeVersion, CodeRepair,
 } from "@/types";
 
 interface Props {
@@ -32,7 +32,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 };
 
 interface SelectedNode {
-  type: "narrative" | "script" | "video";
+  type: "narrative" | "code" | "video";
   versionId: string;
   versionNumber: number;
   eventId: number;
@@ -54,23 +54,23 @@ export function ProjectSheet({ project, onClose }: Props) {
     if (!displayProject?.id) return;
     refetchProjectDetail();
     qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "events"] });
-    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "script"] });
+    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "code"] });
     qc.invalidateQueries({ queryKey: ["narrative", displayProject.id] });
     qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "narrative-versions"] });
-    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "script-versions"] });
+    qc.invalidateQueries({ queryKey: ["projects", displayProject.id, "code-versions"] });
   }, [displayProject?.id, displayProject?.status, qc, refetchProjectDetail]);
 
   const { data: eventsData } = useProjectEvents(displayProject?.id ?? "");
-  const { data: script, isLoading: scriptLoading } = useProjectScript(displayProject?.id ?? "");
+  const { data: codeVersion, isLoading: codeLoading } = useProjectCode(displayProject?.id ?? "");
   const { data: narrative } = useNarrative(displayProject?.id ?? "");
   const { data: narrativeVersions = [] } = useNarrativeVersions(displayProject?.id ?? "");
-  const { data: scriptVersions = [] } = useScriptVersions(displayProject?.id ?? "");
+  const { data: codeVersions = [] } = useCodeVersions(displayProject?.id ?? "");
   const { data: videoUrlData } = useVideoUrl(
     displayProject?.id ?? "",
     projectDetail?.currentVideoAsset?.id ?? null,
   );
   const submitReview = useSubmitReview();
-  const repairScriptCode = useRepairScriptCode();
+  const repairCode = useRepairCode();
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [rejectionDetail, setRejectionDetail] = useState("");
@@ -78,7 +78,7 @@ export function ProjectSheet({ project, onClose }: Props) {
   const [targetStage, setTargetStage] = useState<"narrative" | "code">("narrative");
   const [showVideoRejectInput, setShowVideoRejectInput] = useState(false);
   const [videoRejectionDetail, setVideoRejectionDetail] = useState("");
-  const [videoTargetStage, setVideoTargetStage] = useState<"narrative" | "script">("script");
+  const [videoTargetStage, setVideoTargetStage] = useState<"narrative" | "code">("code");
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export function ProjectSheet({ project, onClose }: Props) {
   useEffect(() => {
     setShowVideoRejectInput(false);
     setVideoRejectionDetail("");
-    setVideoTargetStage("script");
+    setVideoTargetStage("code");
   }, [displayProject?.id]);
 
   // Fetch selected historical version on demand
@@ -96,15 +96,15 @@ export function ProjectSheet({ project, onClose }: Props) {
     displayProject?.id ?? "",
     selectedNode?.type === "narrative" ? selectedNode.versionId : null,
   );
-  const { data: selectedScriptVersion } = useScriptVersion(
+  const { data: selectedCodeVersion } = useCodeVersion(
     displayProject?.id ?? "",
-    selectedNode?.type === "script" ? selectedNode.versionId : null,
+    selectedNode?.type === "code" ? selectedNode.versionId : null,
   );
   const visiblePromptSnapshot = selectedNode?.type === "narrative"
     ? selectedNarrativeVersion?.promptSnapshot ?? null
-    : selectedNode?.type === "script"
-      ? selectedScriptVersion?.promptSnapshot ?? null
-      : script?.promptSnapshot ?? narrative?.promptSnapshot ?? null;
+    : selectedNode?.type === "code"
+      ? selectedCodeVersion?.promptSnapshot ?? null
+      : codeVersion?.promptSnapshot ?? narrative?.promptSnapshot ?? null;
   // For historical video node view: use the asset ID stored in the event payload if available,
   // otherwise fall back to current asset (covers published projects with a single asset).
   const selectedVideoAssetId =
@@ -116,15 +116,15 @@ export function ProjectSheet({ project, onClose }: Props) {
     selectedVideoAssetId,
   );
 
-  const isScriptReview = project?.status === "script_review";
-  const hasScript = !!script;
+  const isCodeReview = project?.status === "code_review";
+  const hasCode = !!codeVersion;
   // 事件记录是失败原因的权威来源；VideoAsset 用于兼容旧数据。
   const renderFailureError = useMemo(() => {
-    if (!isScriptReview) return null;
+    if (!isCodeReview) return null;
     const retreatEvent = [...(eventsData?.items ?? [])].reverse().find(
       (event) =>
         event.eventType === "status_change" &&
-        event.toStatus === "script_review" &&
+        event.toStatus === "code_review" &&
         (event.payload?.["trigger"] === "video_failed" || event.payload?.["render_error"]),
     );
     const eventError =
@@ -133,10 +133,10 @@ export function ProjectSheet({ project, onClose }: Props) {
     return projectDetail?.currentVideoAsset?.status === "failed"
       ? projectDetail.currentVideoAsset.errorMessage
       : null;
-  }, [eventsData, isScriptReview, projectDetail?.currentVideoAsset]);
+  }, [eventsData, isCodeReview, projectDetail?.currentVideoAsset]);
   const isRenderFailed =
     !!renderFailureError ||
-    (isScriptReview && projectDetail?.currentVideoAsset?.status === "failed");
+    (isCodeReview && projectDetail?.currentVideoAsset?.status === "failed");
 
   // 代码编辑状态（渲染失败时允许修改）
   const [editedCode, setEditedCode] = useState<Map<number, string>>(new Map());
@@ -147,18 +147,18 @@ export function ProjectSheet({ project, onClose }: Props) {
     setEditedCode(new Map());
     setCodeRepairs(new Map());
     setAppliedRepairs(new Set());
-  }, [displayProject?.id, script?.id]);
+  }, [displayProject?.id, codeVersion?.id]);
 
-  const buildEditedScriptScenes = () =>
+  const buildEditedCodeScenes = () =>
     Array.from(editedCode.entries()).map(([sceneIndex, code]) => ({ sceneIndex, code }));
 
   const handleAiRepair = () => {
-    if (!project || !script || !renderFailureError) return;
-    const scenes = script.scenes.map((scene) => ({
+    if (!project || !codeVersion || !renderFailureError) return;
+    const scenes = codeVersion.scenes.map((scene) => ({
       ...scene,
       code: editedCode.get(scene.sceneIndex) ?? scene.code ?? "",
     }));
-    repairScriptCode.mutate(
+    repairCode.mutate(
       {
         projectId: project.id,
         errorMessage: renderFailureError,
@@ -191,13 +191,13 @@ export function ProjectSheet({ project, onClose }: Props) {
 
   const handleApprove = () => {
     if (!project) return;
-    const editedScriptScenes = buildEditedScriptScenes();
+    const editedCodeScenes = buildEditedCodeScenes();
     submitReview.mutate(
       {
         projectId: project.id,
-        gate: "script",
+        gate: "code",
         verdict: "approved",
-        ...(editedScriptScenes.length > 0 ? { editedScriptScenes } : {}),
+        ...(editedCodeScenes.length > 0 ? { editedCodeScenes } : {}),
       },
       {
         onSuccess: () => {
@@ -213,7 +213,7 @@ export function ProjectSheet({ project, onClose }: Props) {
     if (!project) return;
     if (!showRejectInput) { setShowRejectInput(true); return; }
     submitReview.mutate(
-      { projectId: project.id, gate: "script", verdict: "rejected", rejectionDetail, targetStage },
+      { projectId: project.id, gate: "code", verdict: "rejected", rejectionDetail, targetStage },
       {
         onSuccess: () => { setSubmitted(true); toast.success("已驳回，AI 将重新生成"); },
         onError: () => toast.error("提交失败，请重试"),
@@ -225,7 +225,7 @@ export function ProjectSheet({ project, onClose }: Props) {
     if (!project) return;
     if (!window.confirm("确认废弃该项目？此操作不可撤销。")) return;
     submitReview.mutate(
-      { projectId: project.id, gate: "script", verdict: "abandoned" },
+      { projectId: project.id, gate: "code", verdict: "abandoned" },
       {
         onSuccess: () => { setSubmitted(true); toast.info("项目已废弃"); },
         onError: () => toast.error("操作失败，请重试"),
@@ -265,7 +265,7 @@ export function ProjectSheet({ project, onClose }: Props) {
       {
         onSuccess: () => {
           setSubmitted(true);
-          toast.success(videoTargetStage === "narrative" ? "已驳回到叙事审核" : "已驳回到脚本审核");
+          toast.success(videoTargetStage === "narrative" ? "已驳回到叙事审核" : "已驳回到代码审核");
         },
         onError: () => toast.error("提交失败，请重试"),
       },
@@ -330,7 +330,7 @@ export function ProjectSheet({ project, onClose }: Props) {
           <EventsSection
             eventsData={eventsData}
             narrativeVersions={narrativeVersions}
-            scriptVersions={scriptVersions}
+            codeVersions={codeVersions}
             selectedNode={selectedNode}
             onSelectNode={setSelectedNode}
           />
@@ -342,20 +342,20 @@ export function ProjectSheet({ project, onClose }: Props) {
             <HistoricalView
               node={selectedNode}
               narrativeVersion={selectedNarrativeVersion ?? null}
-              scriptVersion={selectedScriptVersion ?? null}
+              codeVersion={selectedCodeVersion ?? null}
               videoUrl={selectedVideoUrlData?.url ?? null}
               onClose={() => setSelectedNode(null)}
             />
           ) : (
             <RightPanel
               project={displayProject}
-              script={script ?? null}
-              scriptLoading={scriptLoading}
+              codeVersion={codeVersion ?? null}
+              codeLoading={codeLoading}
               narrative={narrative ?? null}
-              isScriptReview={isScriptReview}
+              isCodeReview={isCodeReview}
               isRenderFailed={isRenderFailed}
               renderFailureError={renderFailureError}
-              hasScript={hasScript}
+              hasCode={hasCode}
 
               canReject={canReject}
               showRejectInput={showRejectInput}
@@ -382,7 +382,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               setEditedCode={setEditedCode}
               codeRepairs={codeRepairs}
               appliedRepairs={appliedRepairs}
-              repairPending={repairScriptCode.isPending}
+              repairPending={repairCode.isPending}
               onAiRepair={handleAiRepair}
               onApplyRepair={handleApplyRepair}
             />
@@ -395,13 +395,13 @@ export function ProjectSheet({ project, onClose }: Props) {
 
 interface RightPanelProps {
   project: VideoProject;
-  script: Awaited<ReturnType<typeof useProjectScript>>["data"] | null;
-  scriptLoading: boolean;
+  codeVersion: Awaited<ReturnType<typeof useProjectCode>>["data"] | null;
+  codeLoading: boolean;
   narrative: Awaited<ReturnType<typeof useNarrative>>["data"] | null;
-  isScriptReview: boolean;
+  isCodeReview: boolean;
   isRenderFailed: boolean;
   renderFailureError: string | null;
-  hasScript: boolean;
+  hasCode: boolean;
   editedCode: Map<number, string>;
   setEditedCode: React.Dispatch<React.SetStateAction<Map<number, string>>>;
   codeRepairs: Map<number, CodeRepair>;
@@ -425,15 +425,15 @@ interface RightPanelProps {
   showVideoRejectInput: boolean;
   videoRejectionDetail: string;
   setVideoRejectionDetail: (value: string) => void;
-  videoTargetStage: "narrative" | "script";
-  setVideoTargetStage: (value: "narrative" | "script") => void;
+  videoTargetStage: "narrative" | "code";
+  setVideoTargetStage: (value: "narrative" | "code") => void;
   onVideoReject: () => void;
   onVideoRetry: () => void;
   onVideoAbandon: () => void;
 }
 
 function RightPanel({
-  project, script, scriptLoading, narrative, isScriptReview, isRenderFailed, renderFailureError, hasScript,
+  project, codeVersion, codeLoading, narrative, isCodeReview, isRenderFailed, renderFailureError, hasCode,
   canReject,
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
@@ -510,10 +510,10 @@ function RightPanel({
                     <input
                       type="radio"
                       name="videoTargetStage"
-                      checked={videoTargetStage === "script"}
-                      onChange={() => setVideoTargetStage("script")}
+                      checked={videoTargetStage === "code"}
+                      onChange={() => setVideoTargetStage("code")}
                     />
-                    驳回到脚本审核
+                    驳回到代码审核
                   </label>
                 </div>
               </div>
@@ -571,7 +571,7 @@ function RightPanel({
     );
   }
 
-  if (!isScriptReview && !hasScript) {
+  if (!isCodeReview && !hasCode) {
     return (
       <div className="flex items-center justify-center flex-1">
         <p className="text-muted-foreground text-sm">暂无审核内容</p>
@@ -593,7 +593,7 @@ function RightPanel({
               variant="outline"
               className="h-7 shrink-0 border-destructive/40 text-xs"
               onClick={onAiRepair}
-              disabled={repairPending || !script}
+              disabled={repairPending || !codeVersion}
             >
               {repairPending ? "AI 修复中…" : "AI 修复"}
             </Button>
@@ -608,12 +608,12 @@ function RightPanel({
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <div className="flex-1 flex min-h-0 flex-col overflow-hidden">
           <div className="px-4 py-2.5 border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            镜头列表（{script?.scenes.length ?? 0} 个）
+            镜头列表（{codeVersion?.scenes.length ?? 0} 个）
           </div>
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-3">
-              {scriptLoading && <p className="text-sm text-muted-foreground">加载脚本…</p>}
-              {script?.scenes.map((scene) => {
+              {codeLoading && <p className="text-sm text-muted-foreground">加载代码…</p>}
+              {codeVersion?.scenes.map((scene) => {
                 const repair = codeRepairs.get(scene.sceneIndex);
                 const repairApplied = appliedRepairs.has(scene.sceneIndex);
                 return (
@@ -672,8 +672,8 @@ function RightPanel({
         </div>
       </div>
 
-      {/* 右栏底部操作区（仅 script_review） */}
-      {isScriptReview && (
+      {/* 右栏底部操作区（仅 code_review） */}
+      {isCodeReview && (
         <div className="px-5 py-4 border-t space-y-2">
           {showRejectInput && (
             <div className="space-y-2">
@@ -756,9 +756,9 @@ function MetaSection({
 // Statuses whose entry event is clickable and has associated content
 const FAILURE_STATUSES = new Set(["narrative_failed", "code_failed", "video_failed"]);
 
-const CONTENT_STATUS_MAP: Record<string, "narrative" | "script" | "video"> = {
+const CONTENT_STATUS_MAP: Record<string, "narrative" | "code" | "video"> = {
   narrative_review: "narrative",
-  script_review: "script",
+  code_review: "code",
   video_review: "video",
   published: "video",
 };
@@ -766,13 +766,13 @@ const CONTENT_STATUS_MAP: Record<string, "narrative" | "script" | "video"> = {
 interface EventsSectionProps {
   eventsData: { items: ProjectEvent[] } | undefined;
   narrativeVersions: NarrativeVersion[];
-  scriptVersions: ScriptVersion[];
+  codeVersions: CodeVersion[];
   selectedNode: SelectedNode | null;
   onSelectNode: (node: SelectedNode | null) => void;
 }
 
 function EventsSection({
-  eventsData, narrativeVersions, scriptVersions, selectedNode, onSelectNode,
+  eventsData, narrativeVersions, codeVersions, selectedNode, onSelectNode,
 }: EventsSectionProps) {
   const annotated = useMemo(() => {
     const allEvents = eventsData?.items ?? [];
@@ -810,7 +810,7 @@ function EventsSection({
           : undefined;
         const isVideoNode = contentType === "video";
 
-        const versions = contentType === "narrative" ? narrativeVersions : scriptVersions;
+        const versions = contentType === "narrative" ? narrativeVersions : codeVersions;
         const fallbackVersion = contentType && !isVideoNode
           ? [...versions]
               .filter((version) => new Date(version.createdAt) <= new Date(event.createdAt))
@@ -846,7 +846,7 @@ function EventsSection({
 
         return { event, contentType, versionId, versionNumber, verdict: verdict ?? null, renderError, videoAssetId };
       });
-  }, [eventsData, narrativeVersions, scriptVersions]);
+  }, [eventsData, narrativeVersions, codeVersions]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
@@ -947,9 +947,7 @@ function EventsSection({
                           <p className="text-xs text-muted-foreground">
                             回退至：{verdict.target_stage === "code"
                               ? "重新生成代码"
-                              : verdict.target_stage === "script"
-                                ? "脚本审核"
-                                : "叙事审核"}
+                              : "叙事审核"}
                           </p>
                         )}
                       </div>
@@ -975,14 +973,14 @@ function EventsSection({
 interface HistoricalViewProps {
   node: SelectedNode;
   narrativeVersion: NarrativeVersion | null;
-  scriptVersion: ScriptVersion | null;
+  codeVersion: CodeVersion | null;
   videoUrl: string | null;
   onClose: () => void;
 }
 
-function HistoricalView({ node, narrativeVersion, scriptVersion, videoUrl, onClose }: HistoricalViewProps) {
-  const version = node.type === "narrative" ? narrativeVersion : node.type === "script" ? scriptVersion : null;
-  const typeLabel = node.type === "narrative" ? "叙事脚本" : node.type === "script" ? "完整脚本" : "视频";
+function HistoricalView({ node, narrativeVersion, codeVersion, videoUrl, onClose }: HistoricalViewProps) {
+  const version = node.type === "narrative" ? narrativeVersion : node.type === "code" ? codeVersion : null;
+  const typeLabel = node.type === "narrative" ? "叙事脚本" : node.type === "code" ? "渲染代码" : "视频";
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -1013,7 +1011,7 @@ function HistoricalView({ node, narrativeVersion, scriptVersion, videoUrl, onClo
       ) : node.type === "narrative" ? (
         <HistoricalNarrativeView version={narrativeVersion!} />
       ) : (
-        <HistoricalScriptView version={scriptVersion!} />
+        <HistoricalCodeView version={codeVersion!} />
       )}
     </div>
   );
@@ -1057,7 +1055,7 @@ function HistoricalNarrativeView({ version }: { version: NarrativeVersion }) {
   );
 }
 
-function HistoricalScriptView({ version }: { version: ScriptVersion }) {
+function HistoricalCodeView({ version }: { version: CodeVersion }) {
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       <ScrollArea className="flex-[3] min-w-0 p-5">

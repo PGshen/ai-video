@@ -80,6 +80,6 @@ def test_content_rejection_trims_reason():
     assert req.rejection_detail == "叙事节奏太平"
 
 
-def test_review_request_script_gate_with_target_stage():
-    req = ReviewRequest(gate="script", verdict="rejected", target_stage="code")
+def test_review_request_code_gate_with_target_stage():
+    req = ReviewRequest(gate="code", verdict="rejected", target_stage="code")
     assert req.target_stage == "code"

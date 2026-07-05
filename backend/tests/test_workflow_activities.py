@@ -4,41 +4,41 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.script_version import ScriptVersion
+from app.models.code_version import CodeVersion
 from app.workflows.activities import update_project_status
 from app.workflows.activities import reset_stuck_stage
 
 
 @pytest.mark.asyncio
-async def test_script_review_status_event_keeps_exact_version_reference():
+async def test_code_review_status_event_keeps_exact_version_reference():
     project_id = uuid4()
     version_id = uuid4()
     project = SimpleNamespace(
         id=project_id,
         status="video_failed",
         current_narrative_version_id=None,
-        current_script_version_id=version_id,
+        current_code_version_id=version_id,
     )
     version = SimpleNamespace(id=version_id, version_number=4)
     db = MagicMock()
     db.get.side_effect = lambda model, object_id: (
-        version if model is ScriptVersion else project
+        version if model is CodeVersion else project
     )
 
     with patch("app.workflows.activities.get_sync_session", return_value=db):
         await update_project_status(
             str(project_id),
-            "script_review",
+            "code_review",
             {"trigger": "video_failed", "error_message": "render exploded"},
         )
 
     event = db.add.call_args.args[0]
-    assert project.status == "script_review"
+    assert project.status == "code_review"
     assert event.from_status == "video_failed"
     assert event.payload == {
         "trigger": "video_failed",
         "error_message": "render exploded",
-        "content_type": "script",
+        "content_type": "code",
         "content_version_id": str(version_id),
         "content_version_number": 4,
     }
@@ -113,7 +113,7 @@ async def test_reset_stuck_stage_video_generating_resubmits_video_task():
 @pytest.mark.asyncio
 async def test_reset_stuck_stage_rejects_non_resettable_status():
     project_id = uuid4()
-    project = SimpleNamespace(id=project_id, status="script_review")
+    project = SimpleNamespace(id=project_id, status="code_review")
     db = MagicMock()
     db.get.return_value = project
 

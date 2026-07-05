@@ -8,7 +8,7 @@
 
 ### 1.1 产品定位
 
-本平台是一套面向自媒体创作者的「AI 驱动知识视频」端到端生产工作流系统。将「选题发现 → 脚本生成 → 人工事实核查 → 视频渲染合成 → 成片审核 → 发布 → 数据回流」这一完整内容闭环组织为可追溯、可重试、有人工卡点的持久化工作流，在保证内容质量的前提下显著提升生产效率。
+本平台是一套面向自媒体创作者的「AI 驱动知识视频」端到端生产工作流系统。将「选题发现 → 叙事生成与审核 → 代码生成与审核 → 视频渲染合成 → 成片审核 → 发布 → 数据回流」这一完整内容闭环组织为可追溯、可重试、有人工卡点的持久化工作流，在保证内容质量的前提下显著提升生产效率。
 
 ### 1.2 核心设计约束
 
@@ -40,7 +40,7 @@
 |------|------|----------|
 | F-01 | 选题池管理 | 手动或 AI 批量添加选题；四维度打分；状态管理（待评估、已入库、已使用、已废弃） |
 | F-02 | 视频项目状态机 | 核心实体，统管单条视频从创建到发布的全生命周期 |
-| F-03 | 脚本生成 | AI 根据选题生成：按镜头组织的脚本数组 + 事实核查表 |
+| F-03 | 叙事与代码生成 | AI 先生成按镜头组织的叙事与事实核查表，审核后再生成渲染代码 |
 | F-04 | 内容审核（闸门①） | 人工逐条核查事实核查表；通过/驳回（带结构化原因）；驳回自动触发脚本重生成 |
 | F-05 | 视频生成 | 单个任务内完成：TTS 生成 → 音频注入渲染代码 → 整体渲染出带声音的成片；失败自动重试（最多 3 次） |
 | F-06 | 视频审核（闸门②） | 预览成片；通过/驳回（退回重写脚本）/废弃 |
@@ -51,7 +51,7 @@
 | 编号 | 模块 | 功能说明 |
 |------|------|----------|
 | F-08 | 看板视图 | 类 Kanban 看板，展示各阶段视频项目卡片 |
-| F-09 | 批量操作 | 批量触发脚本生成、批量审核 |
+| F-09 | 批量操作 | 批量触发内容生产、批量审核 |
 | F-10 | 选题 AI 助手 | AI 根据历史表现数据主动推荐选题 |
 | F-11 | 版本历史 | 脚本多版本对比、镜头级别 diff |
 | F-12 | 平台 API 自动发布 | 对接抖音/B站等平台 API 自动发布 |
@@ -105,27 +105,36 @@
 stateDiagram-v2
     [*] --> draft: 从选题池创建
 
-    draft --> script_generating: 触发脚本生成
+    draft --> narrative_generating: 触发叙事生成
 
-    script_generating --> script_review: 生成成功
-    script_generating --> script_failed: 生成失败
+    narrative_generating --> narrative_review: 生成成功
+    narrative_generating --> narrative_failed: 生成失败
+    narrative_failed --> narrative_generating: 重试
+    narrative_failed --> abandoned: 放弃
 
-    script_failed --> script_generating: 重试
-    script_failed --> abandoned: 放弃
+    narrative_review --> code_generating: 审核通过
+    narrative_review --> narrative_generating: 审核驳回
+    narrative_review --> abandoned: 废弃
 
-    script_review --> video_generating: 审核通过（闸门①）
-    script_review --> script_generating: 审核驳回
-    script_review --> abandoned: 废弃
+    code_generating --> code_review: 生成成功
+    code_generating --> code_failed: 生成失败
+    code_failed --> code_generating: 重试
+    code_failed --> abandoned: 放弃
+
+    code_review --> video_generating: 审核通过
+    code_review --> code_generating: 驳回并重新生成代码
+    code_review --> narrative_generating: 驳回并重写叙事
+    code_review --> abandoned: 废弃
 
     video_generating --> video_review: 渲染合成完成
     video_generating --> video_failed: 渲染失败
 
-    video_failed --> video_generating: 重试
-    video_failed --> script_generating: 退回重写脚本
+    video_failed --> code_review: 退回修复代码
     video_failed --> abandoned: 放弃
 
     video_review --> published: 审核通过（闸门②）
-    video_review --> script_generating: 驳回重写脚本
+    video_review --> code_review: 驳回修改代码
+    video_review --> narrative_review: 驳回修改叙事
     video_review --> abandoned: 废弃
 
     published --> [*]
@@ -136,13 +145,16 @@ stateDiagram-v2
 
 | 状态 | 触发条件 | 可转向 | 说明 |
 |------|----------|--------|------|
-| draft | 从选题池拉取选题创建 | script_generating | 初始状态，可编辑选题信息 |
-| script_generating | 触发脚本生成 | script_review, script_failed | AI 正在生成脚本（镜头数组）+ 核查表 |
-| script_failed | 脚本生成失败 | script_generating, abandoned | 重试或废弃 |
-| script_review | 脚本生成完成 | video_generating, script_generating, abandoned | 人工审核闸门① |
+| draft | 从选题池拉取选题创建 | narrative_generating | 初始状态，可编辑选题信息 |
+| narrative_generating | 触发叙事生成 | narrative_review, narrative_failed | AI 正在生成旁白、画面意图与核查表 |
+| narrative_failed | 叙事生成失败 | narrative_generating, abandoned | 重试或废弃 |
+| narrative_review | 叙事生成完成 | code_generating, narrative_generating, abandoned | 审核并可编辑叙事内容 |
+| code_generating | 叙事审核通过 | code_review, code_failed | AI 根据已审核叙事生成渲染代码 |
+| code_failed | 代码生成失败 | code_generating, abandoned | 重试或废弃 |
+| code_review | 代码生成完成 | video_generating, code_generating, narrative_generating, abandoned | 审核并可编辑渲染代码 |
 | video_generating | 审核通过 | video_review, video_failed | TTS + 音频注入 + 整体渲染 |
-| video_failed | 渲染失败 | video_generating, script_generating, abandoned | 可重试或退回脚本 |
-| video_review | 渲染完成 | published, script_generating, abandoned | 人工审核闸门② |
+| video_failed | 渲染失败 | code_review, abandoned | 退回代码审核进行修复 |
+| video_review | 渲染完成 | published, code_review, narrative_review, abandoned | 最终视频审核 |
 | published | 终审通过 | — | 终态，等待数据回流 |
 | abandoned | 任何时刻放弃 | — | 终态 |
 
@@ -152,22 +164,23 @@ stateDiagram-v2
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| rejection_type | enum | `topic_invalid` / `fact_error` / `script_weak` / `sync_issue` |
+| rejection_type | enum | `topic_invalid` / `fact_error` / `code_issue` / `sync_issue` |
 | rejection_detail | string | 具体描述 |
 | target_stage | enum | 退回目标状态（由 rejection_type 决定默认值，可覆写） |
 
 默认路由映射：
 
 - `topic_invalid` → `abandoned`（选题不成立，直接废弃）
-- `fact_error` → `script_generating`（事实错误，重写脚本）
-- `script_weak` → `script_generating`（结构/口径问题，重写脚本）
-- `sync_issue` → `script_generating`（同步问题本质是分镜设计问题，重写脚本）
+- `fact_error` → `narrative_generating`（事实错误，重写叙事）
+- `narrative_weak` → `narrative_generating`（结构或口径问题，重写叙事）
+- `code_issue` → `code_generating`（渲染代码问题，重新生成代码）
+- `sync_issue` → `code_review`（同步或画面问题，先修改代码）
 
 > **设计说明：** 闸门②没有「退回重渲染」路径。同一份代码重跑结果不变，渲染过程的偶发失败由系统自动重试处理。审核人发现的问题（画面效果不好、节奏不对、同步问题）本质上都需要改代码/分镜，因此统一退回到脚本阶段。
 
-### 3.3 脚本生成（按镜头组织）
+### 3.3 叙事与代码生成（按镜头组织）
 
-脚本生成阶段由 AI 一次性产出两份产物，打包为一个「脚本版本」存储：
+生产流程分两阶段：先生成并审核叙事版本，再根据已审核叙事生成代码版本。
 
 **① 镜头数组（scenes）：** 脚本的核心数据结构，每个镜头是一个自包含的对象：
 
@@ -325,7 +338,7 @@ stateDiagram-v2
 ├─────────────────────────────────────────────────┤
 │ ┌──────────────────────┐ ┌──────────────────────┐│
 │ │ 生命中点是18岁       │ │ 热水比冷水结冰快     ││
-│ │ ● script_review      │ │ ● video_generating   ││
+│ │ ● code_review      │ │ ● video_generating   ││
 │ │ 引擎: Manim 横屏     │ │ 引擎: Remotion 竖屏  ││
 │ │ 版本: v2  重试: 0    │ │ 版本: v1  重试: 1    ││
 │ │ 更新: 2分钟前        │ │ 更新: 15分钟前       ││
@@ -335,7 +348,7 @@ stateDiagram-v2
 
 **交互说明：**
 
-- 状态标签页：点击筛选对应状态的项目。`待审核` 标签聚合 `script_review` 和 `video_review` 两种状态，方便审核人快速找到待处理项目
+- 状态标签页：点击筛选对应状态的项目。`待审核` 标签聚合 `code_review` 和 `video_review` 两种状态，方便审核人快速找到待处理项目
 - 卡片点击进入项目详情页
 - 状态标识颜色编码：生成中=蓝色、待审核=橙色、渲染中=蓝色、失败=红色、已发布=绿色、已废弃=灰色
 
@@ -347,10 +360,10 @@ stateDiagram-v2
 
 ```
 ┌─────────────────────────────────────────────────┐
-│ ← 返回列表  项目: 生命中点是18岁   状态: script_review │
+│ ← 返回列表  项目: 生命中点是18岁   状态: code_review │
 ├─────────────────────────────────────────────────┤
 │ ┌─ 状态进度条 ────────────────────────────────┐ │
-│ │ ● draft → ● 脚本生成 → ◉ 内容审核 → ○ 视频生成 → ○ 视频审核 → ○ 发布 │
+│ │ ● draft → ● 叙事生成/审核 → ● 代码生成 → ◉ 代码审核 → ○ 视频生成/审核 → ○ 发布 │
 │ └─────────────────────────────────────────────┘ │
 ├───────────────────────────┬─────────────────────┤
 │                           │                     │
@@ -371,11 +384,11 @@ stateDiagram-v2
 
 #### 4.4.2 主内容区（根据状态动态切换）
 
-**当状态为 `script_review` 时 → 显示脚本查看器：**
+**当状态为 `code_review` 时 → 显示脚本查看器：**
 
 ```
 ┌─────────────────────────────────────┐
-│ 脚本版本: v2  引擎: Manim  ▾ 版本切换 │
+│ 代码版本: v2  引擎: Manim  ▾ 版本切换 │
 ├─────────────────────────────────────┤
 │ 镜头 #0                            │
 │ ┌─ 旁白 ───────────────────────┐   │
@@ -421,14 +434,14 @@ stateDiagram-v2
 - 底部镜头定位按钮：点击可跳转到对应镜头的起始时间点，方便逐镜头审查
 - 播放器下方可展开对应脚本内容对照
 
-**当状态为生成中（`script_generating` / `video_generating`）时 → 显示进度信息：**
+**当状态为生成中（`code_generating` / `video_generating`）时 → 显示进度信息：**
 
 - 显示当前正在执行的步骤、已耗时、重试次数
 - 渲染阶段显示镜头级进度（如「正在渲染镜头 3/7」）
 
 #### 4.4.3 右侧面板
 
-**当状态为 `script_review` 时 → 事实核查表 + 审核操作：**
+**当状态为 `code_review` 时 → 事实核查表 + 审核操作：**
 
 ```
 ┌─────────────────────────┐
@@ -464,7 +477,7 @@ stateDiagram-v2
 
 - **通过按钮：** 所有核查条目必须逐条审核完毕才可点击。存在 `rejected` 条目时按钮置灰，tooltip 提示「存在未通过的核查条目」
 - **驳回按钮：** 点击后弹出驳回面板：
-  1. 选择驳回类型（下拉菜单：`fact_error` / `script_weak` / `topic_invalid`）
+  1. 选择驳回类型（下拉菜单：`fact_error` / `code_issue` / `topic_invalid`）
   2. 系统自动填充默认退回目标（可覆写）
   3. 填写详细原因（必填文本框）
   4. 确认驳回
@@ -493,12 +506,12 @@ stateDiagram-v2
 ```
 ▾ 事件时间线
 ┌─────────────────────────────────────────────────┐
-│ 2026-06-23 14:30  系统  script_generating → script_review     │
-│ 2026-06-23 14:25  系统  draft → script_generating             │
+│ 2026-06-23 14:30  系统  code_generating → code_review     │
+│ 2026-06-23 14:25  系统  draft → code_generating             │
 │ 2026-06-23 14:20  用户  review_rejected: fact_error            │
 │                         "来源论文年份有误，应为1877年非1897年"  │
-│ 2026-06-23 14:15  系统  script_generating → script_review     │
-│ 2026-06-23 14:10  系统  draft → script_generating             │
+│ 2026-06-23 14:15  系统  code_generating → code_review     │
+│ 2026-06-23 14:10  系统  draft → code_generating             │
 │ 2026-06-23 14:05  用户  项目创建                               │
 └─────────────────────────────────────────────────┘
 ```
@@ -540,7 +553,7 @@ stateDiagram-v2
 | 类别 | 要求 |
 |------|------|
 | 响应时间 | 页面加载 < 1s，API 响应 < 500ms（渲染任务除外） |
-| 数据安全 | 所有 API 调用需鉴权；脚本版本不可被修改只能追加新版本 |
+| 数据安全 | 所有 API 调用需鉴权；代码版本不可被修改只能追加新版本 |
 | 可追溯性 | 每次状态变更均记录到事件日志，支持完整审计 |
 | 可扩展性 | 渲染引擎、TTS 引擎均为可插拔架构 |
 | 浏览器兼容 | 支持 Chrome、Edge 最新版本 |

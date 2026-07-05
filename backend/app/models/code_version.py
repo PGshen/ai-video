@@ -11,8 +11,8 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 
-class ScriptVersion(Base):
-    __tablename__ = "script_versions"
+class CodeVersion(Base):
+    __tablename__ = "code_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4

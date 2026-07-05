@@ -111,7 +111,7 @@ def test_landscape_prompt_remains_default():
 
 
 def test_system_prompt_contains_visual_first_rule():
-    """generate_script 的 system prompt 应包含视觉优先要求"""
+    """generate_code 的 system prompt 应包含视觉优先要求"""
     provider = make_provider()
     # 直接检查 system_prompt 字符串模板中的公共段
     # 通过检查类属性字符串覆盖核心约束

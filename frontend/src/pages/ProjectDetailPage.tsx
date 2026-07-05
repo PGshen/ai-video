@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { SceneBeats } from "@/components/projects/SceneBeats";
-import { useProject, useProjectScript, useSubmitReview } from "@/hooks/useProjects";
+import { useProject, useProjectCode, useSubmitReview } from "@/hooks/useProjects";
 import type { ProjectStatus } from "@/types";
 
 type Verdict = "approved" | "rejected" | "needs_revision";
@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
   narrative_failed: "叙事生成失败",
   code_generating: "AI 生成代码中…",
   code_failed: "代码生成失败",
-  script_review: "待审核",
+  code_review: "代码待审核",
   video_generating: "视频渲染中…",
   video_failed: "视频生成失败",
   video_review: "待视频审核",
@@ -34,7 +34,7 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading: projectLoading } = useProject(id!);
-  const { data: script, isLoading: scriptLoading } = useProjectScript(id!);
+  const { data: codeVersion, isLoading: codeLoading } = useProjectCode(id!);
   const submitReview = useSubmitReview();
 
   const [verdicts, setVerdicts] = useState<Record<number, VerdictState>>({});
@@ -42,9 +42,9 @@ export default function ProjectDetailPage() {
   const [showRejectInput, setShowRejectInput] = useState(false);
 
   const allMarked = useMemo(() => {
-    if (!script || script.factChecks.length === 0) return true;
-    return script.factChecks.every((_, i) => verdicts[i] !== undefined);
-  }, [script, verdicts]);
+    if (!codeVersion || codeVersion.factChecks.length === 0) return true;
+    return codeVersion.factChecks.every((_, i) => verdicts[i] !== undefined);
+  }, [codeVersion, verdicts]);
 
   const handleVerdictChange = (index: number, verdict: Verdict, note: string) => {
     setVerdicts((prev) => ({ ...prev, [index]: { verdict, note } }));
@@ -60,7 +60,7 @@ export default function ProjectDetailPage() {
   const handleApprove = () => {
     submitReview.mutate({
       projectId: id!,
-      gate: "script",
+      gate: "code",
       verdict: "approved",
       factCheckVerdicts: buildVerdictList(),
     });
@@ -73,7 +73,7 @@ export default function ProjectDetailPage() {
     }
     submitReview.mutate({
       projectId: id!,
-      gate: "script",
+      gate: "code",
       verdict: "rejected",
       rejectionDetail,
       factCheckVerdicts: buildVerdictList(),
@@ -84,7 +84,7 @@ export default function ProjectDetailPage() {
     if (!window.confirm("确认废弃该项目？此操作不可撤销。")) return;
     submitReview.mutate({
       projectId: id!,
-      gate: "script",
+      gate: "code",
       verdict: "abandoned",
     });
   };
@@ -96,7 +96,7 @@ export default function ProjectDetailPage() {
     return <div className="p-6 text-destructive">项目不存在</div>;
   }
 
-  const isScriptReview = project.status === "script_review";
+  const isCodeReview = project.status === "code_review";
   const retryCount = project.retryCount;
   const canReject = retryCount < 3;
 
@@ -126,7 +126,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {!["narrative_generating", "narrative_failed", "code_generating", "code_failed", "script_review"].includes(project.status) &&
+      {!["narrative_generating", "narrative_failed", "code_generating", "code_failed", "code_review"].includes(project.status) &&
         project.status !== "draft" && (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-muted-foreground">
@@ -135,20 +135,20 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-      {/* 脚本审核主区域 */}
-      {(isScriptReview || script) && (
+      {/* 代码审核主区域 */}
+      {(isCodeReview || codeVersion) && (
           <div className="flex flex-1 overflow-hidden">
             {/* 左：镜头列表 */}
             <div className="w-1/2 border-r flex flex-col">
               <div className="px-4 py-3 border-b text-sm font-medium">
-                镜头列表（{script?.scenes.length ?? 0} 个）
+                镜头列表（{codeVersion?.scenes.length ?? 0} 个）
               </div>
               <ScrollArea className="flex-1">
                 <div className="p-4 space-y-4">
-                  {scriptLoading && (
-                    <p className="text-sm text-muted-foreground">加载脚本…</p>
+                  {codeLoading && (
+                    <p className="text-sm text-muted-foreground">加载代码…</p>
                   )}
-                  {script?.scenes.map((scene) => (
+                  {codeVersion?.scenes.map((scene) => (
                     <div key={scene.sceneIndex} className="border rounded-lg p-4 space-y-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary" className="text-xs">
@@ -180,11 +180,11 @@ export default function ProjectDetailPage() {
             {/* 右：事实核查表 */}
             <div className="w-1/2 flex flex-col">
               <div className="px-4 py-3 border-b text-sm font-medium">
-                事实核查（{script?.factChecks.length ?? 0} 条）
+                事实核查（{codeVersion?.factChecks.length ?? 0} 条）
               </div>
               <ScrollArea className="flex-1">
                 <div className="p-4 space-y-4">
-                  {script?.factChecks.map((item, idx) => (
+                  {codeVersion?.factChecks.map((item, idx) => (
                     <FactCheckCard
                       key={idx}
                       item={item}
@@ -198,7 +198,7 @@ export default function ProjectDetailPage() {
               </ScrollArea>
 
               {/* 底部操作栏 */}
-              {isScriptReview && (
+              {isCodeReview && (
                 <div className="border-t p-4 space-y-3">
                   {showRejectInput && (
                     <Textarea
@@ -234,7 +234,7 @@ export default function ProjectDetailPage() {
                       废弃
                     </Button>
                   </div>
-                  {!allMarked && script && script.factChecks.length > 0 && (
+                  {!allMarked && codeVersion && codeVersion.factChecks.length > 0 && (
                     <p className="text-xs text-muted-foreground text-center">
                       请为所有核查条目标注审核结果后再提交
                     </p>

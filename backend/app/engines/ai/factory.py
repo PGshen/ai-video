@@ -17,7 +17,7 @@ def get_ai_provider() -> AIProvider:
                 model=settings.DEEPSEEK_MODEL,
                 timeout_seconds=settings.DEEPSEEK_TIMEOUT_SECONDS,
             ),
-            script_max_tokens=settings.DEEPSEEK_SCRIPT_MAX_TOKENS,
+            content_max_tokens=settings.DEEPSEEK_CONTENT_MAX_TOKENS,
             json_max_tokens=settings.DEEPSEEK_JSON_MAX_TOKENS,
         )
     if provider == "openrouter" and settings.OPENROUTER_API_KEY:
@@ -30,7 +30,7 @@ def get_ai_provider() -> AIProvider:
                 site_url=settings.OPENROUTER_SITE_URL,
                 site_name=settings.OPENROUTER_SITE_NAME,
             ),
-            script_max_tokens=settings.OPENROUTER_SCRIPT_MAX_TOKENS,
+            content_max_tokens=settings.OPENROUTER_CONTENT_MAX_TOKENS,
             json_max_tokens=settings.OPENROUTER_JSON_MAX_TOKENS,
         )
     if provider == "gemini" and settings.GEMINI_API_KEY:
@@ -41,7 +41,7 @@ def get_ai_provider() -> AIProvider:
                 model=settings.GEMINI_MODEL,
                 timeout_seconds=settings.GEMINI_TIMEOUT_SECONDS,
             ),
-            script_max_tokens=settings.GEMINI_SCRIPT_MAX_TOKENS,
+            content_max_tokens=settings.GEMINI_CONTENT_MAX_TOKENS,
             json_max_tokens=settings.GEMINI_JSON_MAX_TOKENS,
         )
     return StubProvider()

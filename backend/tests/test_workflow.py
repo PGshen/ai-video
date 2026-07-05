@@ -18,13 +18,8 @@ def test_workflow_has_code_generated_signal():
     assert hasattr(wf, "code_generated")
 
 
-def test_workflow_does_not_have_script_generated_signal():
-    wf = VideoProductionWorkflow()
-    assert not hasattr(wf, "script_generated")
-
-
 @pytest.mark.asyncio
-async def test_render_failure_is_recorded_before_returning_to_script_review():
+async def test_render_failure_is_recorded_before_returning_to_code_review():
     wf = VideoProductionWorkflow()
     wf._update_status = AsyncMock()
     wf._wait_signal = AsyncMock(side_effect=[
@@ -50,7 +45,7 @@ async def test_render_failure_is_recorded_before_returning_to_script_review():
         ),
         call(
             "project-1",
-            "script_review",
+            "code_review",
             payload={
                 "trigger": "video_failed",
                 "error_message": "Manim syntax error",
@@ -63,14 +58,14 @@ async def test_render_failure_is_recorded_before_returning_to_script_review():
 
 
 @pytest.mark.asyncio
-async def test_video_rejection_can_return_to_script_review():
+async def test_video_rejection_can_return_to_code_review():
     wf = VideoProductionWorkflow()
     wf._update_status = AsyncMock()
     wf._wait_signal = AsyncMock(side_effect=[
         {"success": True},
         {
             "verdict": "rejected",
-            "target_stage": "script",
+            "target_stage": "code",
             "rejection_detail": "画面节奏需要调整",
         },
         {"verdict": "approved"},
@@ -88,10 +83,10 @@ async def test_video_rejection_can_return_to_script_review():
         call("project-1", "video_review"),
         call(
             "project-1",
-            "script_review",
+            "code_review",
             payload={
                 "trigger": "video_review_rejected",
-                "target_stage": "script",
+                "target_stage": "code",
                 "rejection_detail": "画面节奏需要调整",
             },
         ),

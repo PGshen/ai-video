@@ -56,7 +56,7 @@ class FactCheckItemSchema(BaseModel):
     reviewer_note: Optional[str]
 
 
-class ScriptVersionSchema(BaseModel):
+class CodeVersionSchema(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
         populate_by_name=True,
@@ -110,7 +110,7 @@ class ProjectResponse(BaseModel):
 
 
 class ProjectDetailResponse(ProjectResponse):
-    current_script_version: Optional[ScriptVersionSchema]
+    current_code_version: Optional[CodeVersionSchema]
     current_video_asset: Optional[VideoAssetSchema]
 
 
@@ -120,9 +120,9 @@ class ProjectListResponse(BaseModel):
     total: int
 
 
-class ScriptVersionListResponse(BaseModel):
+class CodeVersionListResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
-    items: list[ScriptVersionSchema]
+    items: list[CodeVersionSchema]
 
 
 class CodeRepairSceneInput(SceneSchema):

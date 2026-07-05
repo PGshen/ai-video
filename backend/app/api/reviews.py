@@ -11,7 +11,7 @@ from app.deps import get_temporal_client
 from app.models.project import VideoProject
 from app.models.narrative_version import NarrativeVersion
 from app.models.project_event import ProjectEvent
-from app.models.script_version import ScriptVersion
+from app.models.code_version import CodeVersion
 from app.schemas.review import ReviewRequest
 from app.services.narrative_validator import (
     validate_and_normalize_scenes,
@@ -104,13 +104,17 @@ async def submit_review(
 
         signal_name = "narrative_review"
 
-    elif body.gate == "script":
-        sv = await db.get(ScriptVersion, project.current_script_version_id)
-        reviewed_version = sv
-        if sv:
-            has_edits = bool(body.fact_check_verdicts or body.edited_script_scenes)
+    elif body.gate == "code":
+        code_version = await db.get(CodeVersion, project.current_code_version_id)
+        reviewed_version = code_version
+        if code_version:
+            has_edits = bool(body.fact_check_verdicts or body.edited_code_scenes)
             if has_edits:
-                fact_checks = list(sv.fact_checks) if isinstance(sv.fact_checks, list) else (sv.fact_checks or [])
+                fact_checks = (
+                    list(code_version.fact_checks)
+                    if isinstance(code_version.fact_checks, list)
+                    else (code_version.fact_checks or [])
+                )
                 if body.fact_check_verdicts:
                     for v in body.fact_check_verdicts:
                         if 0 <= v.index < len(fact_checks):
@@ -119,30 +123,34 @@ async def submit_review(
                                 "reviewer_verdict": v.verdict,
                                 "reviewer_note": v.note or None,
                             }
-                scenes = list(sv.scenes) if isinstance(sv.scenes, list) else (sv.scenes or [])
-                if body.edited_script_scenes:
-                    code_map = {s.scene_index: s.code for s in body.edited_script_scenes}
+                scenes = (
+                    list(code_version.scenes)
+                    if isinstance(code_version.scenes, list)
+                    else (code_version.scenes or [])
+                )
+                if body.edited_code_scenes:
+                    code_map = {s.scene_index: s.code for s in body.edited_code_scenes}
                     for i, scene in enumerate(scenes):
                         idx = scene.get("scene_index", -1)
                         if idx in code_map:
                             scenes[i] = {**scene, "code": code_map[idx]}
-                new_sv = ScriptVersion(
-                    project_id=sv.project_id,
-                    version_number=sv.version_number + 1,
+                new_code_version = CodeVersion(
+                    project_id=code_version.project_id,
+                    version_number=code_version.version_number + 1,
                     scenes=scenes,
                     fact_checks=fact_checks,
-                    render_engine=sv.render_engine,
-                    ai_model=sv.ai_model,
-                    rejection_context=sv.rejection_context,
-                    prompt_snapshot=sv.prompt_snapshot,
+                    render_engine=code_version.render_engine,
+                    ai_model=code_version.ai_model,
+                    rejection_context=code_version.rejection_context,
+                    prompt_snapshot=code_version.prompt_snapshot,
                 )
-                db.add(new_sv)
+                db.add(new_code_version)
                 await db.flush()
-                project.current_script_version_id = new_sv.id
-                reviewed_version = new_sv
+                project.current_code_version_id = new_code_version.id
+                reviewed_version = new_code_version
                 await db.commit()
 
-        signal_name = "script_review"
+        signal_name = "code_review"
 
     else:
         reviewed_version = None

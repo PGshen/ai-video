@@ -183,7 +183,7 @@ def test_delete_project_cleans_related_data_without_changing_topic(
     client, auth_headers, mock_db, mock_temporal,
 ):
     project = make_project(
-        status="script_review",
+        status="code_review",
         temporal_workflow_id="video-production-delete",
     )
     mock_db.get = AsyncMock(return_value=project)
@@ -232,7 +232,7 @@ def test_delete_project_not_found(client, auth_headers, mock_db):
     assert response.status_code == 404
 
 
-def test_submit_script_review_sends_signal(client, auth_headers, mock_db, mock_temporal):
+def test_submit_code_review_sends_signal(client, auth_headers, mock_db, mock_temporal):
     project = make_project(temporal_workflow_id="video-production-abc")
     mock_db.get.return_value = project
     mock_handle = AsyncMock()
@@ -241,13 +241,13 @@ def test_submit_script_review_sends_signal(client, auth_headers, mock_db, mock_t
     response = client.post(
         f"/api/projects/{project.id}/review",
         headers=auth_headers,
-        json={"gate": "script", "verdict": "approved"},
+        json={"gate": "code", "verdict": "approved"},
     )
     assert response.status_code == 200
     mock_temporal.get_workflow_handle.assert_called_once_with(project.temporal_workflow_id)
     mock_handle.signal.assert_called_once()
     call_args = mock_handle.signal.call_args
-    assert call_args[0][0] == "script_review"
+    assert call_args[0][0] == "code_review"
 
 
 def test_submit_video_review_sends_signal(client, auth_headers, mock_db, mock_temporal):
@@ -264,13 +264,13 @@ def test_submit_video_review_sends_signal(client, auth_headers, mock_db, mock_te
             "verdict": "rejected",
             "rejectionType": "sync_issue",
             "rejectionDetail": "口播与画面不同步",
-            "targetStage": "script",
+            "targetStage": "code",
         },
     )
     assert response.status_code == 200
     call_args = mock_handle.signal.call_args
     assert call_args[0][0] == "video_review"
-    assert call_args[0][1]["target_stage"] == "script"
+    assert call_args[0][1]["target_stage"] == "code"
 
 
 def test_list_project_events(client, auth_headers, mock_db):
@@ -285,21 +285,21 @@ def test_projects_require_api_key(client):
     assert response.status_code == 401
 
 
-def test_get_script_returns_script_version(client, auth_headers, mock_db):
+def test_get_code_returns_code_version(client, auth_headers, mock_db):
     from datetime import datetime, timezone
     from types import SimpleNamespace
 
     project_id = uuid4()
-    script_id = uuid4()
+    code_id = uuid4()
 
     project = MagicMock()
     project.id = project_id
-    project.current_script_version_id = script_id
+    project.current_code_version_id = code_id
 
     # Use SimpleNamespace so missing camelCase attrs raise AttributeError,
     # allowing Pydantic v2 alias_generator fallback to snake_case field names.
-    sv = SimpleNamespace(
-        id=script_id,
+    code_version = SimpleNamespace(
+        id=code_id,
         project_id=project_id,
         version_number=1,
         scenes=[{
@@ -339,9 +339,9 @@ def test_get_script_returns_script_version(client, auth_headers, mock_db):
         created_at=datetime.now(timezone.utc),
     )
 
-    mock_db.get = AsyncMock(side_effect=lambda model, pk: project if pk == project_id else sv)
+    mock_db.get = AsyncMock(side_effect=lambda model, pk: project if pk == project_id else code_version)
 
-    response = client.get(f"/api/projects/{project_id}/script", headers=auth_headers)
+    response = client.get(f"/api/projects/{project_id}/code", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["versionNumber"] == 1
@@ -352,28 +352,28 @@ def test_get_script_returns_script_version(client, auth_headers, mock_db):
     assert data["factChecks"][0]["sceneIndex"] == 0
 
 
-def test_get_script_returns_404_if_no_script(client, auth_headers, mock_db):
+def test_get_code_returns_404_if_no_code(client, auth_headers, mock_db):
     project = MagicMock()
-    project.current_script_version_id = None
+    project.current_code_version_id = None
     mock_db.get = AsyncMock(return_value=project)
 
-    response = client.get(f"/api/projects/{uuid4()}/script", headers=auth_headers)
+    response = client.get(f"/api/projects/{uuid4()}/code", headers=auth_headers)
     assert response.status_code == 404
 
 
-def test_get_script_returns_404_if_project_missing(client, auth_headers, mock_db):
+def test_get_code_returns_404_if_project_missing(client, auth_headers, mock_db):
     mock_db.get = AsyncMock(return_value=None)
-    response = client.get(f"/api/projects/{uuid4()}/script", headers=auth_headers)
+    response = client.get(f"/api/projects/{uuid4()}/code", headers=auth_headers)
     assert response.status_code == 404
 
 
-def test_get_script_serializes_nested_beats_as_camel_case(
+def test_get_code_serializes_nested_beats_as_camel_case(
     client, auth_headers, mock_db,
 ):
     project = make_project()
-    project.current_script_version_id = uuid4()
-    script_version = SimpleNamespace(
-        id=project.current_script_version_id,
+    project.current_code_version_id = uuid4()
+    code_version = SimpleNamespace(
+        id=project.current_code_version_id,
         project_id=project.id,
         version_number=1,
         scenes=[{
@@ -398,12 +398,12 @@ def test_get_script_serializes_nested_beats_as_camel_case(
     )
     mock_db.get = AsyncMock(
         side_effect=lambda model, pk: (
-            project if model.__name__ == "VideoProject" else script_version
+            project if model.__name__ == "VideoProject" else code_version
         )
     )
 
     response = client.get(
-        f"/api/projects/{project.id}/script",
+        f"/api/projects/{project.id}/code",
         headers=auth_headers,
     )
 
@@ -416,16 +416,16 @@ def test_get_script_serializes_nested_beats_as_camel_case(
     assert "beat_index" not in beat
 
 
-def test_repair_script_code_sends_all_scenes_and_error_to_ai(
+def test_repair_code_sends_all_scenes_and_error_to_ai(
     client, auth_headers, mock_db,
 ):
-    project = make_project(status="script_review", render_engine="manim")
-    project.current_script_version_id = uuid4()
-    script_version = MagicMock()
-    script_version.prompt_snapshot = {"components": {}}
+    project = make_project(status="code_review", render_engine="manim")
+    project.current_code_version_id = uuid4()
+    code_version = MagicMock()
+    code_version.prompt_snapshot = {"components": {}}
     mock_db.get = AsyncMock(
         side_effect=lambda model, pk: (
-            project if model.__name__ == "VideoProject" else script_version
+            project if model.__name__ == "VideoProject" else code_version
         )
     )
     provider = MagicMock()
@@ -466,7 +466,7 @@ def test_repair_script_code_sends_all_scenes_and_error_to_ai(
     with patch("app.api.projects.get_ai_provider", return_value=provider), \
          patch("app.api.projects.style_components_from_snapshot", return_value={}):
         response = client.post(
-            f"/api/projects/{project.id}/script/repair",
+            f"/api/projects/{project.id}/code/repair",
             headers=auth_headers,
             json={
                 "errorMessage": "unexpected keyword argument 'label'",
@@ -483,14 +483,14 @@ def test_repair_script_code_sends_all_scenes_and_error_to_ai(
     assert call["scenes"][1]["code"] == "NumberLine(label_direction=DOWN)"
 
 
-def test_repair_script_code_only_allowed_during_script_review(
+def test_repair_code_only_allowed_during_code_review(
     client, auth_headers, mock_db,
 ):
     project = make_project(status="video_generating")
     mock_db.get = AsyncMock(return_value=project)
 
     response = client.post(
-        f"/api/projects/{project.id}/script/repair",
+        f"/api/projects/{project.id}/code/repair",
         headers=auth_headers,
         json={
             "errorMessage": "render failed",

@@ -3,30 +3,30 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
-def make_project(script_version_id=None, aspect_ratio="landscape"):
+def make_project(code_version_id=None, aspect_ratio="landscape"):
     p = MagicMock()
     p.id = uuid.uuid4()
     p.topic_id = uuid.uuid4()
     p.tts_voice = "male_calm"
     p.render_engine = "manim"
     p.aspect_ratio = aspect_ratio
-    p.current_script_version_id = script_version_id or uuid.uuid4()
+    p.current_code_version_id = code_version_id or uuid.uuid4()
     p.current_video_asset_id = None
     return p
 
 
-def make_script_version(project_id, scenes=None):
-    sv = MagicMock()
-    sv.id = uuid.uuid4()
-    sv.project_id = project_id
-    sv.render_engine = "manim"
-    sv.scenes = scenes or [
+def make_code_version(project_id, scenes=None):
+    code_version = MagicMock()
+    code_version.id = uuid.uuid4()
+    code_version.project_id = project_id
+    code_version.render_engine = "manim"
+    code_version.scenes = scenes or [
         {
             "scene_index": 0,
             "narration": "Hello world",
             "description": "intro",
             "code": "self.play(Write(Text('Hello')))",
-            "audio_key": "audio/proj/sv/scene_0.mp3",
+            "audio_key": "audio/proj/code_version/scene_0.mp3",
             "duration_seconds": 3.5,
             "tts_status": "ready",
         },
@@ -35,12 +35,12 @@ def make_script_version(project_id, scenes=None):
             "narration": "Goodbye",
             "description": "outro",
             "code": "self.play(FadeOut(Text('Hello')))",
-            "audio_key": "audio/proj/sv/scene_1.mp3",
+            "audio_key": "audio/proj/code_version/scene_1.mp3",
             "duration_seconds": 2.0,
             "tts_status": "ready",
         },
     ]
-    return sv
+    return code_version
 
 
 def make_task(project_id):
@@ -57,7 +57,7 @@ async def test_render_worker_success():
     from app.engines.render.base import RenderResultWithBytes as _RenderResultWithBytes
 
     project = make_project()
-    sv = make_script_version(project.id)
+    code_version = make_code_version(project.id)
     task = make_task(project.id)
 
     render_result = _RenderResultWithBytes(
@@ -69,7 +69,7 @@ async def test_render_worker_success():
     project_mock = MagicMock()
 
     mock_db = MagicMock()
-    mock_db.get.side_effect = [project, sv, asset_mock, project_mock]
+    mock_db.get.side_effect = [project, code_version, asset_mock, project_mock]
 
     mock_render = AsyncMock()
     mock_render.render = AsyncMock(return_value=render_result)
@@ -97,10 +97,10 @@ async def test_render_worker_uses_portrait_resolution():
     from app.engines.render.base import RenderResultWithBytes
 
     project = make_project(aspect_ratio="portrait")
-    sv = make_script_version(project.id)
+    code_version = make_code_version(project.id)
     task = make_task(project.id)
     mock_db = MagicMock()
-    mock_db.get.side_effect = [project, sv, MagicMock(), MagicMock()]
+    mock_db.get.side_effect = [project, code_version, MagicMock(), MagicMock()]
     captured_resolution = None
 
     async def capture_render(request, work_dir):
@@ -135,7 +135,7 @@ async def test_render_worker_scene_without_audio_key():
     from app.engines.render.base import SceneInput
 
     project = make_project()
-    sv = make_script_version(project.id, scenes=[
+    code_version = make_code_version(project.id, scenes=[
         {
             "scene_index": 0,
             "narration": "Hello",
@@ -156,7 +156,7 @@ async def test_render_worker_scene_without_audio_key():
     asset_mock = MagicMock()
     project_mock = MagicMock()
     mock_db = MagicMock()
-    mock_db.get.side_effect = [project, sv, asset_mock, project_mock]
+    mock_db.get.side_effect = [project, code_version, asset_mock, project_mock]
 
     captured_inputs = []
 

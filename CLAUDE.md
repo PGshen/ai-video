@@ -33,7 +33,7 @@ backend/          Python FastAPI 后端
     schemas/      Pydantic request/response schemas
     engines/      可插拔引擎层（render / tts / ai）
     workflows/    Temporal workflow + activities
-    workers/      BaseWorker + ScriptWorker + RenderWorker
+    workers/      BaseWorker + CodeWorker + RenderWorker
     config.py     Pydantic settings（从 .env 读取）
     auth.py       API Key 验证 Depends
     db.py         async engine（FastAPI）+ sync engine（Worker）
@@ -55,9 +55,9 @@ frontend/         React + Vite 前端
 
 - **不设数据库外键约束**：表间关联在应用层维护，`_id` 字段仅是命名约定
 - **状态权威来源是 Temporal**：`video_projects.status` 是镜像，用于前端快速查询
-- **镜头是最小原子单位**：脚本以 `scenes[]` 数组组织，每个镜头有独立 narration/code
+- **镜头是最小原子单位**：视频内容以 `scenes[]` 数组组织，每个镜头有独立 narration/code
 - **渲染时整体提交**：所有镜头代码合并后一次性提交给渲染引擎（镜头间存在依赖）
-- **两道人工审核闸门不可跳过**：`script_review`（闸门①）和 `video_review`（闸门②）
+- **三道人工审核闸门不可跳过**：`narrative_review`、`code_review` 和 `video_review`
 
 ## 技术选型
 
@@ -108,5 +108,5 @@ cd backend
 
 - **Sprint 0（已完成）**：基础设施骨架，所有 API 返回 stub
 - **Sprint 1（已完成）**：选题池 + 项目状态机（Temporal Workflow 空壳跑通）
-- **Sprint 2**：脚本生成 + 内容审核
+- **Sprint 2**：叙事生成、代码生成与内容审核
 - **Sprint 3**：视频生成 + 视频审核

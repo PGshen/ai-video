@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
-  VideoProject, ProjectEvent, ReviewRequest, ScriptVersion, NarrativeVersion,
+  VideoProject, ProjectEvent, ReviewRequest, CodeVersion, NarrativeVersion,
   Scene, CodeRepairResponse,
 } from "@/types";
 
@@ -139,18 +139,18 @@ export function useSubmitReview() {
       qc.invalidateQueries({ queryKey: ["projects"] });
       qc.invalidateQueries({ queryKey: ["projects", vars.projectId] });
       qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "events"] });
-      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "script"] });
-      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "script-versions"] });
+      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "code"] });
+      qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "code-versions"] });
       qc.invalidateQueries({ queryKey: ["projects", vars.projectId, "narrative-versions"] });
     },
   });
 }
 
-export function useProjectScript(projectId: string) {
-  return useQuery<ScriptVersion | undefined>({
-    queryKey: ["projects", projectId, "script"],
+export function useProjectCode(projectId: string) {
+  return useQuery<CodeVersion | undefined>({
+    queryKey: ["projects", projectId, "code"],
     queryFn: () =>
-      api.get<ScriptVersion>(`/api/projects/${projectId}/script`).catch((e: Error & { status?: number }) => {
+      api.get<CodeVersion>(`/api/projects/${projectId}/code`).catch((e: Error & { status?: number }) => {
         if (e.status === 404) return undefined;
         throw e;
       }),
@@ -159,7 +159,7 @@ export function useProjectScript(projectId: string) {
   });
 }
 
-export function useRepairScriptCode() {
+export function useRepairCode() {
   return useMutation({
     mutationFn: ({
       projectId,
@@ -170,7 +170,7 @@ export function useRepairScriptCode() {
       errorMessage: string;
       scenes: Scene[];
     }) =>
-      api.post<CodeRepairResponse>(`/api/projects/${projectId}/script/repair`, {
+      api.post<CodeRepairResponse>(`/api/projects/${projectId}/code/repair`, {
         errorMessage,
         scenes,
       }),
@@ -199,11 +199,11 @@ export function useNarrativeVersion(projectId: string, versionId: string | null)
   });
 }
 
-export function useScriptVersions(projectId: string) {
-  return useQuery<ScriptVersion[]>({
-    queryKey: ["projects", projectId, "script-versions"],
+export function useCodeVersions(projectId: string) {
+  return useQuery<CodeVersion[]>({
+    queryKey: ["projects", projectId, "code-versions"],
     queryFn: () =>
-      api.get<ScriptVersion[]>(`/api/projects/${projectId}/script-versions`),
+      api.get<CodeVersion[]>(`/api/projects/${projectId}/code-versions`),
     enabled: !!projectId,
     retry: false,
   });
@@ -220,12 +220,12 @@ export function useVideoUrl(projectId: string, assetId: string | null) {
   });
 }
 
-export function useScriptVersion(projectId: string, versionId: string | null) {
-  return useQuery<ScriptVersion>({
-    queryKey: ["projects", projectId, "script-versions", versionId],
+export function useCodeVersion(projectId: string, versionId: string | null) {
+  return useQuery<CodeVersion>({
+    queryKey: ["projects", projectId, "code-versions", versionId],
     queryFn: () =>
-      api.get<ScriptVersion>(
-        `/api/projects/${projectId}/script-versions/${versionId}`
+      api.get<CodeVersion>(
+        `/api/projects/${projectId}/code-versions/${versionId}`
       ),
     enabled: !!projectId && !!versionId,
     retry: false,

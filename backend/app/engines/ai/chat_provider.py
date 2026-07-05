@@ -149,12 +149,12 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
     def __init__(
         self,
         client: ChatClient,
-        script_max_tokens: int = 8192,
+        content_max_tokens: int = 8192,
         json_max_tokens: int = 4096,
         narrative_validation_retries: int = 1,
     ):
         self.client = client
-        self.script_max_tokens = script_max_tokens
+        self.content_max_tokens = content_max_tokens
         self.json_max_tokens = json_max_tokens
         self.narrative_validation_retries = max(0, narrative_validation_retries)
         self._narrative_engine_hints, self._engine_code_prompts = _load_engine_specs()
@@ -348,7 +348,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
                     name="narrative",
                     schema=NARRATIVE_SCHEMA,
                 ),
-                max_tokens=self.script_max_tokens,
+                max_tokens=self.content_max_tokens,
             )
             try:
                 payload = parse_json_object(content)
@@ -427,7 +427,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": "请为以下镜头脚本生成渲染代码 JSON：\n"
+                    "content": "请为以下镜头叙事生成渲染代码 JSON：\n"
                     + json.dumps(
                         {
                             "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
@@ -442,7 +442,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
                 name="code_generation",
                 schema=CODE_GENERATION_SCHEMA,
             ),
-            max_tokens=self.script_max_tokens,
+            max_tokens=self.content_max_tokens,
         )
         payload = parse_json_object(content)
         codes = payload.get("codes")
@@ -522,7 +522,7 @@ JSON 格式：
                 name="code_repair",
                 schema=CODE_REPAIR_SCHEMA,
             ),
-            max_tokens=self.script_max_tokens,
+            max_tokens=self.content_max_tokens,
         )
         payload = parse_json_object(content)
         repairs = payload.get("repairs")

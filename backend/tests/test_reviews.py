@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 from app.config import settings
 
@@ -117,3 +117,54 @@ def test_review_abandoned_sends_correct_signal(client, mock_db, mock_temporal):
     assert response.status_code == 200
     call_args = mock_handle.signal.call_args[0]
     assert call_args[1]["verdict"] == "abandoned"
+
+
+def test_reset_project_returns_stage_and_cancelled_count(client):
+    project_id = uuid4()
+
+    async def fake_reset(pid):
+        assert pid == str(project_id)
+        return {"stage": "generate_code", "cancelled_task_ids": ["t1", "t2"]}
+
+    with patch("app.api.reviews.reset_stuck_stage", new=fake_reset):
+        response = client.post(
+            f"/api/projects/{project_id}/reset",
+            headers=_auth(),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "reset"
+    assert body["projectId"] == str(project_id)
+    assert body["stage"] == "generate_code"
+    assert body["cancelledTaskCount"] == 2
+
+
+def test_reset_project_not_found_returns_404(client):
+    project_id = uuid4()
+
+    async def fake_reset(pid):
+        raise LookupError(f"Project {pid} not found")
+
+    with patch("app.api.reviews.reset_stuck_stage", new=fake_reset):
+        response = client.post(
+            f"/api/projects/{project_id}/reset",
+            headers=_auth(),
+        )
+
+    assert response.status_code == 404
+
+
+def test_reset_project_non_resettable_status_returns_400(client):
+    project_id = uuid4()
+
+    async def fake_reset(pid):
+        raise ValueError("Project status 'script_review' is not a resettable stage")
+
+    with patch("app.api.reviews.reset_stuck_stage", new=fake_reset):
+        response = client.post(
+            f"/api/projects/{project_id}/reset",
+            headers=_auth(),
+        )
+
+    assert response.status_code == 400

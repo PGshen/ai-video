@@ -15,6 +15,7 @@ from app.services.narrative_validator import (
     validate_and_normalize_scenes,
     validate_scenes_for_codegen,
 )
+from app.workflows.activities import reset_stuck_stage
 
 router = APIRouter(prefix="/api/projects", tags=["reviews"])
 
@@ -177,3 +178,23 @@ async def submit_review(
     ))
     await db.commit()
     return {"status": "ok"}
+
+
+@router.post("/{project_id}/reset")
+async def reset_project(
+    project_id: UUID,
+    _=Depends(verify_api_key),
+):
+    try:
+        result = await reset_stuck_stage(str(project_id))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "status": "reset",
+        "projectId": str(project_id),
+        "stage": result["stage"],
+        "cancelledTaskCount": len(result["cancelled_task_ids"]),
+    }

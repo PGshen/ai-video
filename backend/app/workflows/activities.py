@@ -96,7 +96,8 @@ async def submit_narrative_task(project_id: str) -> None:
             select(ProjectEvent)
             .where(
                 ProjectEvent.project_id == project.id,
-                ProjectEvent.event_type == "review_rejected",
+                ProjectEvent.event_type == "review_verdict",
+                ProjectEvent.payload["verdict"].astext == "rejected",
             )
             .order_by(desc(ProjectEvent.created_at))
         ).scalars().first()
@@ -121,7 +122,7 @@ async def submit_narrative_task(project_id: str) -> None:
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="narrative_generated",
-            max_retries=3,
+            max_retries=0,
         )
         db.add(task)
         db.commit()
@@ -156,7 +157,7 @@ async def submit_code_task(project_id: str) -> None:
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="code_generated",
-            max_retries=3,
+            max_retries=0,
         )
         db.add(task)
         db.commit()

@@ -35,6 +35,7 @@ import {
 } from "@/hooks/usePromptComponents";
 import type { PromptComponent, StyleAssistantMessage } from "@/types";
 import { STYLE_CATEGORIES } from "@/lib/styleCategories";
+import { StyleTemplatesPanel } from "@/components/styles/StyleTemplatesPanel";
 
 interface ComponentFormData {
   category: string;
@@ -621,13 +622,25 @@ export function StyleLibraryPage() {
           <h1 className="text-2xl font-bold">风格库</h1>
           <p className="mt-1 text-sm text-muted-foreground">管理视频生成工作流中可复用的提示词组件</p>
         </div>
-        <Button onClick={openCreate}>
-          <Sparkles data-icon="inline-start" />
-          AI 创建组件
-        </Button>
+        {activeCategory !== "templates" && (
+          <Button onClick={openCreate}>
+            <Sparkles data-icon="inline-start" />
+            AI 创建组件
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="组件类型">
+        <button
+          onClick={() => setActiveCategory("templates")}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            activeCategory === "templates"
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+          }`}
+        >
+          风格模板
+        </button>
         {STYLE_CATEGORIES.map(({ key, label }) => (
           <button
             key={key}
@@ -643,7 +656,9 @@ export function StyleLibraryPage() {
         ))}
       </div>
 
-      {isLoading ? (
+      {activeCategory === "templates" ? (
+        <StyleTemplatesPanel />
+      ) : isLoading ? (
         <p className="text-sm text-muted-foreground">加载中…</p>
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-dashed py-16 text-center">

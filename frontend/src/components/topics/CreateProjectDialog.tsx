@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCreateProject } from "@/hooks/useProjects";
 import { usePromptComponents } from "@/hooks/usePromptComponents";
+import { useStyleTemplates } from "@/hooks/useStyleTemplates";
 import type { Topic } from "@/types";
 import { STYLE_CATEGORIES } from "@/lib/styleCategories";
 
@@ -91,11 +92,15 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
   const [ttsVoice, setTtsVoice] = useState("zizi");
   const [aspectRatio, setAspectRatio] = useState("landscape");
   const [styleConfig, setStyleConfig] = useState<Record<string, string>>({});
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(
     () => new Set(contextSnippets.map((_, i) => i))
   );
   const createProject = useCreateProject();
   const navigate = useNavigate();
+  const { data: templateData } = useStyleTemplates();
+  const templates = templateData?.items ?? [];
+  const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
 
   function toggleSnippet(i: number) {
     setSelectedSnippets((prev) => {
@@ -107,6 +112,7 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
   }
 
   function setStyleCategory(category: string, value: string) {
+    setSelectedTemplateId("");
     setStyleConfig((prev) => {
       if (!value) {
         const next = { ...prev };
@@ -115,6 +121,12 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
       }
       return { ...prev, [category]: value };
     });
+  }
+
+  function applyTemplate(templateId: string) {
+    setSelectedTemplateId(templateId);
+    const template = templates.find((item) => item.id === templateId);
+    setStyleConfig(template ? { ...template.styleConfig } : {});
   }
 
   const handleSubmit = () => {
@@ -202,18 +214,54 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold">风格组件</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">按需组合提示词组件，塑造视频的整体表达</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                先套用模板快速组合，也可以继续逐项调整
+              </p>
             </div>
-            <div className="grid gap-x-4 gap-y-4 rounded-xl border bg-muted/20 p-4 sm:grid-cols-3">
-              {STYLE_CATEGORIES.map(({ key, label }) => (
-                <StyleSelect
-                  key={key}
-                  category={key}
-                  label={label}
-                  value={styleConfig[key] ?? ""}
-                  onChange={(v) => setStyleCategory(key, v)}
-                />
-              ))}
+            <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+              <div className="space-y-2 border-b pb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-xs font-medium">风格模板</Label>
+                  {selectedTemplate && (
+                    <span className="text-xs text-muted-foreground">
+                      已关联 {Object.keys(selectedTemplate.styleConfig).length} 个组件
+                    </span>
+                  )}
+                </div>
+                <Select
+                  value={selectedTemplateId}
+                  onValueChange={(value) => applyTemplate(value ?? "")}
+                >
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue>{selectedTemplate?.name ?? "不使用模板，逐项选择"}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">不使用模板，逐项选择</SelectItem>
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTemplate?.description && (
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {selectedTemplate.description}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid gap-x-4 gap-y-4 sm:grid-cols-3">
+                {STYLE_CATEGORIES.map(({ key, label }) => (
+                  <StyleSelect
+                    key={key}
+                    category={key}
+                    label={label}
+                    value={styleConfig[key] ?? ""}
+                    onChange={(v) => setStyleCategory(key, v)}
+                  />
+                ))}
+              </div>
             </div>
           </section>
 

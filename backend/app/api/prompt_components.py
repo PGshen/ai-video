@@ -3,11 +3,13 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.db import get_async_session
 from app.engines.ai.factory import get_ai_provider
 from app.models.prompt_component import PromptComponent
+from app.models.style_template import StyleTemplate
 from app.schemas.prompt_component import (
     PromptComponentCreate, PromptComponentUpdate,
     PromptComponentResponse, PromptComponentListResponse,
@@ -133,6 +135,16 @@ async def delete_prompt_component(
         raise HTTPException(status_code=404, detail="Component not found")
     if pc.is_builtin:
         raise HTTPException(status_code=403, detail="Cannot delete built-in components")
+    result = await db.execute(select(StyleTemplate))
+    for template in result.scalars().all():
+        cleaned_config = {
+            category: saved_id
+            for category, saved_id in (template.style_config or {}).items()
+            if str(saved_id) != str(component_id)
+        }
+        if cleaned_config != (template.style_config or {}):
+            template.style_config = cleaned_config
+            flag_modified(template, "style_config")
     await db.delete(pc)
     await db.commit()
 

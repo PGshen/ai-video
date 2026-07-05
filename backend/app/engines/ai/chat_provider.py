@@ -518,10 +518,7 @@ JSON 格式：
 }}
 
 渲染引擎：{render_engine}
-{color_scheme}
-{animation_style}
 {engine_hint}
-{aspect_prompt}
 
 只能输出合法 JSON object。"""
         content = await self._complete(

@@ -8,6 +8,7 @@ from app.models.project_event import ProjectEvent
 from app.models.performance_record import PerformanceRecord
 from app.models.prompt_component import PromptComponent  # noqa: F401
 from app.models.ai_call_record import AICallRecord
+from app.models.style_template import StyleTemplate
 
 __all__ = [
     "NarrativeVersion",
@@ -20,4 +21,5 @@ __all__ = [
     "PerformanceRecord",
     "PromptComponent",
     "AICallRecord",
+    "StyleTemplate",
 ]

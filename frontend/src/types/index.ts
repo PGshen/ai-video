@@ -55,6 +55,20 @@ export interface PromptComponentListResponse {
   total: number;
 }
 
+export interface StyleTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  styleConfig: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StyleTemplateListResponse {
+  items: StyleTemplate[];
+  total: number;
+}
+
 export interface StyleAssistantMessage {
   role: "user" | "assistant";
   content: string;

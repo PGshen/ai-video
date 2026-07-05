@@ -115,6 +115,18 @@ export function useDeleteProject() {
   });
 }
 
+export function useResetProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/api/projects/${id}/reset`),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["projects", id] });
+      qc.invalidateQueries({ queryKey: ["projects", id, "events"] });
+    },
+  });
+}
+
 export function useSubmitReview() {
   const qc = useQueryClient();
   return useMutation({

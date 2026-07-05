@@ -1,22 +1,28 @@
 import { useEffect, useState } from "react";
-import { Search, Trash2, X } from "lucide-react";
+import { RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useDeleteProject, useProjects } from "@/hooks/useProjects";
+import { useDeleteProject, useProjects, useResetProject } from "@/hooks/useProjects";
 import { ProjectSheet } from "@/components/projects/ProjectSheet";
 import { ListPagination } from "@/components/ListPagination";
 import {
-  timeAgo,
+  formatDateTime,
   PROJECT_STATUS_LABELS,
   PROJECT_STATUS_COLORS,
 } from "@/lib/format";
 import type { VideoProject } from "@/types";
 
 const PAGE_SIZE = 10;
+
+const RESETTABLE_STATUSES = new Set([
+  "narrative_generating",
+  "code_generating",
+  "video_generating",
+]);
 
 export default function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -48,6 +54,7 @@ export default function ProjectsPage() {
     pageSize: PAGE_SIZE,
   });
   const deleteProject = useDeleteProject();
+  const resetProject = useResetProject();
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
 
   useEffect(() => {
@@ -73,6 +80,15 @@ export default function ProjectsPage() {
         toast.success("项目已删除");
       },
       onError: (error) => toast.error(error.message || "删除失败，请重试"),
+    });
+  };
+
+  const handleReset = (project: VideoProject) => {
+    const title = project.topicTitle || "未命名项目";
+    if (!window.confirm(`确认重置项目「${title}」当前阶段？请先确认该阶段确已卡死。`)) return;
+    resetProject.mutate(project.id, {
+      onSuccess: () => toast.success("已重置，任务重新排队"),
+      onError: (error) => toast.error(error.message || "重置失败，请重试"),
     });
   };
 
@@ -159,7 +175,7 @@ export default function ProjectsPage() {
               <TableHead>渲染引擎</TableHead>
               <TableHead>画幅比例</TableHead>
               <TableHead>创建时间</TableHead>
-              <TableHead className="w-[128px]"></TableHead>
+              <TableHead>操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -200,17 +216,30 @@ export default function ProjectsPage() {
                   {project.aspectRatio === "landscape" ? "横屏" : "竖屏"}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {timeAgo(project.createdAt)}
+                  {formatDateTime(project.createdAt)}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">
-                    <Button
+                    {/* <Button
                       variant="ghost"
                       size="sm"
                       onClick={(e) => { e.stopPropagation(); setSelectedProject(project); }}
                     >
                       详情
-                    </Button>
+                    </Button> */}
+                    {RESETTABLE_STATUSES.has(project.status) && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground text-destructive"
+                        aria-label={`重置项目：${project.topicTitle || "未命名项目"}`}
+                        title="重置卡死阶段"
+                        disabled={resetProject.isPending}
+                        onClick={(e) => { e.stopPropagation(); handleReset(project); }}
+                      >
+                        <RotateCcw />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon-sm"

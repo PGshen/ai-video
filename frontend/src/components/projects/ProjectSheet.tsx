@@ -15,7 +15,7 @@ import {
   useScriptVersions, useScriptVersion, useVideoUrl, useRepairScriptCode,
 } from "@/hooks/useProjects";
 import { useNarrative } from "@/hooks/useNarrative";
-import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, timeAgo } from "@/lib/format";
+import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, formatDateTime } from "@/lib/format";
 import type {
   VideoProject, ProjectEvent, NarrativeVersion, ScriptVersion, CodeRepair,
 } from "@/types";
@@ -746,7 +746,7 @@ function MetaSection({
         <span className="text-muted-foreground">重试次数</span>
         <span className="font-medium">{project.retryCount}</span>
         <span className="text-muted-foreground">创建时间</span>
-        <span className="font-medium">{timeAgo(project.createdAt)}</span>
+        <span className="font-medium">{formatDateTime(project.createdAt)}</span>
       </div>
       <ProjectStylePrompts promptSnapshot={promptSnapshot} />
     </section>
@@ -754,6 +754,8 @@ function MetaSection({
 }
 
 // Statuses whose entry event is clickable and has associated content
+const FAILURE_STATUSES = new Set(["narrative_failed", "code_failed", "video_failed"]);
+
 const CONTENT_STATUS_MAP: Record<string, "narrative" | "script" | "video"> = {
   narrative_review: "narrative",
   script_review: "script",
@@ -835,8 +837,9 @@ function EventsSection({
 
         const rawError =
           event.payload?.["error_message"] ?? event.payload?.["render_error"];
+        const isFailureNode = FAILURE_STATUSES.has(event.toStatus ?? "");
         const renderError =
-          event.toStatus === "video_failed" ||
+          isFailureNode ||
           (event.payload?.["render_error"] && event.payload?.["trigger"] !== "video_failed")
             ? (typeof rawError === "string" ? rawError : null)
             : null;
@@ -859,7 +862,7 @@ function EventsSection({
               const isClickable = !!(contentType && versionId);
               const isSelected = selectedNode?.eventId === event.id;
               const isLast = i === annotated.length - 1;
-              const isRenderFailedNode = event.toStatus === "video_failed" || !!renderError;
+              const isRenderFailedNode = FAILURE_STATUSES.has(event.toStatus ?? "") || !!renderError;
 
               const verdictLabel = verdict?.verdict === "approved"
                 ? { text: "通过", color: "text-green-600" }
@@ -918,7 +921,7 @@ function EventsSection({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {timeAgo(event.createdAt)}
+                      {formatDateTime(event.createdAt)}
                     </p>
                     {/* Render failure error message */}
                     {renderError && (

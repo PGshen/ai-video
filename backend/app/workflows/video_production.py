@@ -137,7 +137,10 @@ class VideoProductionWorkflow:
                 **_STATUS_OPTS,
             )
             if not can_retry:
-                await self._update_status(project_id, "narrative_failed")
+                await self._update_status(
+                    project_id, "narrative_failed",
+                    payload={"error_message": result.get("error", "")},
+                )
                 return "abandoned"
             await workflow.execute_activity(
                 submit_narrative_task, args=[project_id], **_ACTIVITY_OPTS
@@ -169,7 +172,10 @@ class VideoProductionWorkflow:
                 **_STATUS_OPTS,
             )
             if not can_retry:
-                await self._update_status(project_id, "code_failed")
+                await self._update_status(
+                    project_id, "code_failed",
+                    payload={"error_message": result.get("error", "")},
+                )
                 return "abandoned"
             await workflow.execute_activity(
                 submit_code_task, args=[project_id], **_ACTIVITY_OPTS

@@ -165,6 +165,10 @@ async def submit_code_task(project_id: str) -> None:
         db.close()
 
 
+class StageNotResettableError(ValueError):
+    pass
+
+
 _RESETTABLE_STAGES: dict[str, str] = {
     "narrative_generating": "generate_narrative",
     "code_generating": "generate_code",
@@ -181,7 +185,7 @@ async def reset_stuck_stage(project_id: str) -> dict:
 
         task_type = _RESETTABLE_STAGES.get(project.status)
         if task_type is None:
-            raise ValueError(
+            raise StageNotResettableError(
                 f"Project status '{project.status}' is not a resettable stage"
             )
 

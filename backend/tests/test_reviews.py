@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 from app.config import settings
+from app.workflows.activities import StageNotResettableError
 
 
 def make_project(temporal_workflow_id="wf-1", script_version_id=None):
@@ -159,7 +160,7 @@ def test_reset_project_non_resettable_status_returns_400(client):
     project_id = uuid4()
 
     async def fake_reset(pid):
-        raise ValueError("Project status 'script_review' is not a resettable stage")
+        raise StageNotResettableError("Project status 'script_review' is not a resettable stage")
 
     with patch("app.api.reviews.reset_stuck_stage", new=fake_reset):
         response = client.post(
@@ -168,3 +169,25 @@ def test_reset_project_non_resettable_status_returns_400(client):
         )
 
     assert response.status_code == 400
+
+
+def test_reset_project_runs_off_event_loop_and_returns_200(client):
+    """reset_stuck_stage is dispatched via run_in_threadpool(asyncio.run, ...);
+    verify the coroutine still executes correctly and results/exceptions
+    propagate back through to the route's response."""
+    project_id = uuid4()
+
+    async def fake_reset(pid):
+        assert pid == str(project_id)
+        return {"stage": "render_video", "cancelled_task_ids": ["t1"]}
+
+    with patch("app.api.reviews.reset_stuck_stage", new=fake_reset):
+        response = client.post(
+            f"/api/projects/{project_id}/reset",
+            headers=_auth(),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stage"] == "render_video"
+    assert body["cancelledTaskCount"] == 1

@@ -1,5 +1,7 @@
+import asyncio
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from temporalio.client import Client as TemporalClient
@@ -15,7 +17,7 @@ from app.services.narrative_validator import (
     validate_and_normalize_scenes,
     validate_scenes_for_codegen,
 )
-from app.workflows.activities import reset_stuck_stage
+from app.workflows.activities import reset_stuck_stage, StageNotResettableError
 
 router = APIRouter(prefix="/api/projects", tags=["reviews"])
 
@@ -186,10 +188,10 @@ async def reset_project(
     _=Depends(verify_api_key),
 ):
     try:
-        result = await reset_stuck_stage(str(project_id))
+        result = await run_in_threadpool(asyncio.run, reset_stuck_stage(str(project_id)))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
+    except StageNotResettableError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {

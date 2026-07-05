@@ -14,6 +14,9 @@ def mock_db():
     # so that result.scalars() (sync) works correctly.
     execute_result = MagicMock()
     execute_result.scalars.return_value.all.return_value = []
+    execute_result.scalar_one.side_effect = (
+        lambda: len(execute_result.scalars.return_value.all.return_value)
+    )
     db.execute.return_value = execute_result
     db.get = AsyncMock(return_value=None)
     return db

@@ -11,6 +11,7 @@ import { useDeleteTopic, useTopics } from "@/hooks/useTopics";
 import { BrainstormDialog } from "@/components/topics/BrainstormDialog";
 import { CreateTopicDialog } from "@/components/topics/CreateTopicDialog";
 import { TopicSheet } from "@/components/topics/TopicSheet";
+import { ListPagination } from "@/components/ListPagination";
 import {
   formatDateTime,
   SOURCE_LABELS,
@@ -18,6 +19,8 @@ import {
   TOPIC_STATUS_COLORS,
 } from "@/lib/format";
 import type { Topic } from "@/types";
+
+const PAGE_SIZE = 10;
 
 function ScoreBadge({ score }: { score: number | null }) {
   if (score === null) return <span className="text-muted-foreground text-sm">-</span>;
@@ -39,6 +42,7 @@ export default function TopicsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [titleFilter, setTitleFilter] = useState("");
   const [debouncedTitleFilter, setDebouncedTitleFilter] = useState("");
+  const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [brainstormOpen, setBrainstormOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
@@ -54,8 +58,19 @@ export default function TopicsPage() {
   const { data, isLoading } = useTopics(
     statusFilter === "all" ? undefined : statusFilter,
     debouncedTitleFilter || undefined,
+    page,
+    PAGE_SIZE,
   );
   const deleteTopic = useDeleteTopic();
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, debouncedTitleFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const handleDelete = (topic: Topic) => {
     if (!window.confirm(`确认删除选题「${topic.title}」？此操作不可撤销。`)) return;
@@ -212,6 +227,13 @@ export default function TopicsPage() {
           </TableBody>
         </Table>
       </div>
+
+      <ListPagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={data?.total ?? 0}
+        onPageChange={setPage}
+      />
 
       <BrainstormDialog open={brainstormOpen} onClose={() => setBrainstormOpen(false)} />
       <CreateTopicDialog open={createOpen} onClose={() => setCreateOpen(false)} />

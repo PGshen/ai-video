@@ -76,6 +76,20 @@ def test_list_projects_combines_title_engine_and_aspect_ratio_filters(
     assert "portrait" in params
 
 
+def test_list_projects_applies_pagination(client, auth_headers, mock_db):
+    mock_db.execute.return_value.scalars.return_value.all.return_value = []
+
+    response = client.get(
+        "/api/projects?page=2&page_size=25",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    statement = mock_db.execute.await_args.args[0]
+    params = statement.compile().params
+    assert list(params.values()).count(25) == 2
+
+
 def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temporal):
     topic = make_topic(title="My Topic")
     topic.status = "stocked"

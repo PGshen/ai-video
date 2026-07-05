@@ -1,9 +1,9 @@
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from temporalio.client import Client as TemporalClient, WorkflowExecutionStatus
@@ -61,6 +61,8 @@ async def list_projects(
     topic_title: Optional[str] = None,
     render_engine: Optional[str] = None,
     aspect_ratio: Optional[str] = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     db: AsyncSession = Depends(get_async_session),
     _=Depends(verify_api_key),
 ):
@@ -78,7 +80,14 @@ async def list_projects(
         stmt = stmt.where(VideoProject.render_engine == render_engine)
     if aspect_ratio:
         stmt = stmt.where(VideoProject.aspect_ratio == aspect_ratio)
-    stmt = stmt.order_by(VideoProject.created_at.desc())
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar_one()
+
+    stmt = (
+        stmt.order_by(VideoProject.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     result = await db.execute(stmt)
     projects = result.scalars().all()
 
@@ -106,7 +115,7 @@ async def list_projects(
         )
         items.append(r)
 
-    return ProjectListResponse(items=items, total=len(items))
+    return ProjectListResponse(items=items, total=total)
 
 
 @router.delete("/{project_id}", status_code=204)

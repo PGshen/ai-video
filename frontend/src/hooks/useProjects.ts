@@ -20,6 +20,8 @@ interface ProjectFilters {
   topicTitle?: string;
   renderEngine?: string;
   aspectRatio?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export function useProjects(filters: ProjectFilters = {}) {
@@ -32,6 +34,8 @@ export function useProjects(filters: ProjectFilters = {}) {
       if (filters.topicTitle) params.set("topic_title", filters.topicTitle);
       if (filters.renderEngine) params.set("render_engine", filters.renderEngine);
       if (filters.aspectRatio) params.set("aspect_ratio", filters.aspectRatio);
+      params.set("page", String(filters.page ?? 1));
+      params.set("page_size", String(filters.pageSize ?? 10));
       const query = params.toString();
       return api.get<ProjectListResponse>(`/api/projects${query ? `?${query}` : ""}`);
     },

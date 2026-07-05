@@ -59,6 +59,21 @@ def test_list_topics_filters_by_title(client, auth_headers, mock_db):
     assert "lower(topics.title) LIKE lower" in str(statement)
 
 
+def test_list_topics_applies_pagination(client, auth_headers, mock_db):
+    mock_db.execute.return_value.scalars.return_value.all.return_value = []
+
+    response = client.get(
+        "/api/topics?page=3&page_size=20",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    statement = mock_db.execute.await_args.args[0]
+    params = statement.compile().params
+    assert 40 in params.values()
+    assert 20 in params.values()
+
+
 def test_create_topic(client, auth_headers, mock_db):
     created = make_topic(title="New Topic", source="manual")
     mock_db.refresh = AsyncMock(return_value=None)

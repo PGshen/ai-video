@@ -8,12 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDeleteProject, useProjects } from "@/hooks/useProjects";
 import { ProjectSheet } from "@/components/projects/ProjectSheet";
+import { ListPagination } from "@/components/ListPagination";
 import {
   timeAgo,
   PROJECT_STATUS_LABELS,
   PROJECT_STATUS_COLORS,
 } from "@/lib/format";
 import type { VideoProject } from "@/types";
+
+const PAGE_SIZE = 10;
 
 export default function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -22,6 +25,7 @@ export default function ProjectsPage() {
   const [debouncedTitleFilter, setDebouncedTitleFilter] = useState("");
   const [renderEngineFilter, setRenderEngineFilter] = useState("all");
   const [aspectRatioFilter, setAspectRatioFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [selectedProject, setSelectedProject] = useState<VideoProject | null>(null);
   const topicId = searchParams.get("topicId") ?? undefined;
   const topicTitle = searchParams.get("topicTitle");
@@ -40,8 +44,25 @@ export default function ProjectsPage() {
     topicTitle: debouncedTitleFilter || undefined,
     renderEngine: renderEngineFilter === "all" ? undefined : renderEngineFilter,
     aspectRatio: aspectRatioFilter === "all" ? undefined : aspectRatioFilter,
+    page,
+    pageSize: PAGE_SIZE,
   });
   const deleteProject = useDeleteProject();
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    statusFilter,
+    debouncedTitleFilter,
+    renderEngineFilter,
+    aspectRatioFilter,
+    topicId,
+  ]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const handleDelete = (project: VideoProject) => {
     const title = project.topicTitle || "未命名项目";
@@ -208,6 +229,13 @@ export default function ProjectsPage() {
           </TableBody>
         </Table>
       </div>
+
+      <ListPagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={data?.total ?? 0}
+        onPageChange={setPage}
+      />
 
       <ProjectSheet
         project={selectedProject}

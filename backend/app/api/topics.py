@@ -2,9 +2,9 @@ import json
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_api_key
 from app.db import get_async_session
@@ -23,6 +23,8 @@ router = APIRouter(prefix="/api/topics", tags=["topics"])
 async def list_topics(
     status: Optional[str] = None,
     title: Optional[str] = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
     db: AsyncSession = Depends(get_async_session),
     _=Depends(verify_api_key),
 ):
@@ -31,10 +33,17 @@ async def list_topics(
         stmt = stmt.where(Topic.status == status)
     if title and title.strip():
         stmt = stmt.where(Topic.title.ilike(f"%{title.strip()}%"))
-    stmt = stmt.order_by(Topic.created_at.desc())
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar_one()
+
+    stmt = (
+        stmt.order_by(Topic.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     result = await db.execute(stmt)
     items = result.scalars().all()
-    return TopicListResponse(items=items, total=len(items))
+    return TopicListResponse(items=items, total=total)
 
 
 @router.post("", response_model=TopicResponse, status_code=201)

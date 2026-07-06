@@ -23,6 +23,11 @@ def _resolve_template_dir() -> Path:
 
 _SCENE_DURATION_DECL_RE = re.compile(r"^\s*const\s+_sceneDuration\s*=.*;\s*$")
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_NOISE_LINE_RE = re.compile(
+    r"^(Rendered\s+\d+/\d+,\s*time remaining:.*|Bundling\s+\d+%.*|\d+%.*)$"
+)
+
 _REMOTION_IMPORTS = """\
 import React from 'react';
 import {
@@ -169,9 +174,16 @@ class RemotionRenderEngine:
         try:
             async with asyncio.timeout(settings.REMOTION_TIMEOUT_SECONDS):
                 async for raw in proc.stdout:
-                    line = raw.decode(errors="replace").rstrip()
-                    log_lines.append(line)
-                    logger.info("[Remotion] %s", line)
+                    decoded = raw.decode(errors="replace").rstrip("\n")
+                    # Progress updates (bundling %, "Rendered x/y") are
+                    # rewritten in place via \r; only the final frame in a
+                    # chunk carries useful content, and even that is noise.
+                    for fragment in decoded.split("\r"):
+                        line = _ANSI_ESCAPE_RE.sub("", fragment).strip()
+                        if not line or _NOISE_LINE_RE.match(line):
+                            continue
+                        log_lines.append(line)
+                        logger.info("[Remotion] %s", line)
                 await proc.wait()
         except asyncio.TimeoutError:
             proc.kill()

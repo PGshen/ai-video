@@ -169,10 +169,11 @@ class StageNotResettableError(ValueError):
     pass
 
 
-_RESETTABLE_STAGES: dict[str, str] = {
-    "narrative_generating": "generate_narrative",
-    "code_generating": "generate_code",
-    "video_generating": "render_video",
+_RESETTABLE_STAGES: dict[str, tuple[str, str | None]] = {
+    "narrative_generating": ("generate_narrative", None),
+    "code_generating": ("generate_code", None),
+    "code_failed": ("generate_code", "code_generating"),
+    "video_generating": ("render_video", None),
 }
 
 
@@ -183,11 +184,13 @@ async def reset_stuck_stage(project_id: str) -> dict:
         if project is None:
             raise LookupError(f"Project {project_id} not found")
 
-        task_type = _RESETTABLE_STAGES.get(project.status)
-        if task_type is None:
+        reset_config = _RESETTABLE_STAGES.get(project.status)
+        if reset_config is None:
             raise StageNotResettableError(
                 f"Project status '{project.status}' is not a resettable stage"
             )
+        task_type, next_status = reset_config
+        old_status = project.status
 
         stuck_tasks = db.execute(
             select(WorkerTask).where(
@@ -200,13 +203,20 @@ async def reset_stuck_stage(project_id: str) -> dict:
         for t in stuck_tasks:
             t.status = "cancelled"
 
+        if next_status is not None:
+            project.status = next_status
+
         db.add(ProjectEvent(
             project_id=project.id,
-            event_type="stuck_reset",
-            from_status=project.status,
-            to_status=project.status,
+            event_type="status_change" if next_status is not None else "stuck_reset",
+            from_status=old_status,
+            to_status=next_status or old_status,
             actor="operator",
-            payload={"stage": task_type, "cancelled_task_ids": cancelled_ids},
+            payload={
+                "stage": task_type,
+                "cancelled_task_ids": cancelled_ids,
+                **({"trigger": "manual_retry"} if next_status is not None else {}),
+            },
         ))
         db.commit()
     finally:

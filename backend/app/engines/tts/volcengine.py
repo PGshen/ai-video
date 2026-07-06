@@ -41,6 +41,7 @@ class VolcengineTTSEngine:
                 "audio_params": {
                     "format": "mp3",
                     "sample_rate": 24000,
+                    "speech_rate": 20,
                 },
             }
         }

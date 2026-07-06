@@ -21,6 +21,7 @@ const PAGE_SIZE = 10;
 const RESETTABLE_STATUSES = new Set([
   "narrative_generating",
   "code_generating",
+  "code_failed",
   "video_generating",
 ]);
 
@@ -85,9 +86,13 @@ export default function ProjectsPage() {
 
   const handleReset = (project: VideoProject) => {
     const title = project.topicTitle || "未命名项目";
-    if (!window.confirm(`确认重置项目「${title}」当前阶段？请先确认该阶段确已卡死。`)) return;
+    const isCodeRetry = project.status === "code_failed";
+    const message = isCodeRetry
+      ? `确认重试项目「${title}」的代码生成？`
+      : `确认重置项目「${title}」当前阶段？请先确认该阶段确已卡死。`;
+    if (!window.confirm(message)) return;
     resetProject.mutate(project.id, {
-      onSuccess: () => toast.success("已重置，任务重新排队"),
+      onSuccess: () => toast.success(isCodeRetry ? "已重新排队生成代码" : "已重置，任务重新排队"),
       onError: (error) => toast.error(error.message || "重置失败，请重试"),
     });
   };
@@ -232,8 +237,8 @@ export default function ProjectsPage() {
                         variant="ghost"
                         size="icon-sm"
                         className="text-muted-foreground text-destructive"
-                        aria-label={`重置项目：${project.topicTitle || "未命名项目"}`}
-                        title="重置卡死阶段"
+                        aria-label={`${project.status === "code_failed" ? "重试代码生成" : "重置项目"}：${project.topicTitle || "未命名项目"}`}
+                        title={project.status === "code_failed" ? "重试代码生成" : "重置卡死阶段"}
                         disabled={resetProject.isPending}
                         onClick={(e) => { e.stopPropagation(); handleReset(project); }}
                       >

@@ -21,6 +21,8 @@ _CHINESE_TEX_TEMPLATE_LINES = [
     r'_chinese_tex_template.add_to_preamble(r"\usepackage[UTF8,fontset=fandol]{ctex}")',
 ]
 _DOUBLE_ESCAPED_TEX_COMMAND = re.compile(r"\\\\(?=[A-Za-z])")
+_PROGRESS_BAR_RE = re.compile(r"\d+%\|")
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _TEX_CONSTRUCTORS = {
     "BulletedList",
     "MathTex",
@@ -109,12 +111,14 @@ class _TexTemplateInjector(ast.NodeTransformer):
 #   falsely flags every Manim name (Circle, Text, Scene, …) as undefined
 # - UnusedVariable: an assigned-but-unused local doesn't affect runtime
 #   behavior, so it's not worth triggering a repair round over
+# - UnusedImport: an unused import doesn't affect runtime behavior either
 _PYFLAKES_STAR_NOISE = (
     pyflakes_messages.ImportStarUsed,
     pyflakes_messages.ImportStarUsage,  # "'X' may be undefined, or defined from star imports"
     pyflakes_messages.UndefinedName,
     pyflakes_messages.UndefinedLocal,
     pyflakes_messages.UnusedVariable,
+    pyflakes_messages.UnusedImport,
 )
 
 
@@ -243,8 +247,18 @@ class ManimRenderEngine:
             if proc.returncode != 0:
                 # The exception type/message is on the last lines of a
                 # traceback, so tail the log rather than truncating its head.
-                logger.info("[ManimValidate] dry_run failed:\n%s", log[-2000:])
-                return False, log
+                filtered_log = "\n".join(
+                    line
+                    for line in (
+                        _ANSI_ESCAPE_RE.sub("", raw_line).strip()
+                        for raw_line in re.split(r"[\r\n]", log)
+                    )
+                    if line
+                    and "Caching disabled" not in line
+                    and not _PROGRESS_BAR_RE.search(line)
+                )
+                logger.info("[ManimValidate] dry_run failed:\n%s", filtered_log[-2000:])
+                return False, filtered_log[-2000:]
 
             logger.info("[ManimValidate] dry_run passed")
             return True, ""

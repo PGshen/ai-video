@@ -175,7 +175,10 @@ class VideoProductionWorkflow:
                     project_id, "code_failed",
                     payload={"error_message": result.get("error", "")},
                 )
-                return "abandoned"
+                # Keep the workflow alive at code_failed. An operator can
+                # manually retry from the UI, which requeues generate_code and
+                # sends the next code_generated signal back here.
+                continue
             await workflow.execute_activity(
                 submit_code_task, args=[project_id], **_ACTIVITY_OPTS
             )

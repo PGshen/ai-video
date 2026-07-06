@@ -67,6 +67,32 @@ async def test_reset_stuck_stage_cancels_old_tasks_and_resubmits():
 
 
 @pytest.mark.asyncio
+async def test_reset_stuck_stage_retries_code_failed_project():
+    project_id = uuid4()
+    project = SimpleNamespace(id=project_id, status="code_failed")
+    db = MagicMock()
+    db.get.return_value = project
+    db.execute.return_value.scalars.return_value.all.return_value = []
+
+    with patch("app.workflows.activities.get_sync_session", return_value=db), \
+         patch("app.workflows.activities.submit_code_task", new_callable=AsyncMock) as mock_submit:
+        result = await reset_stuck_stage(str(project_id))
+
+    assert project.status == "code_generating"
+    mock_submit.assert_awaited_once_with(str(project_id))
+    event = db.add.call_args.args[0]
+    assert event.event_type == "status_change"
+    assert event.from_status == "code_failed"
+    assert event.to_status == "code_generating"
+    assert event.payload == {
+        "stage": "generate_code",
+        "cancelled_task_ids": [],
+        "trigger": "manual_retry",
+    }
+    assert result == {"stage": "generate_code", "cancelled_task_ids": []}
+
+
+@pytest.mark.asyncio
 async def test_reset_stuck_stage_narrative_generating_resubmits_narrative_task():
     project_id = uuid4()
     project = SimpleNamespace(id=project_id, status="narrative_generating")

@@ -13,6 +13,7 @@ import {
   useProject, useProjectEvents, useProjectCode, useSubmitReview,
   useNarrativeVersions, useNarrativeVersion,
   useCodeVersions, useCodeVersion, useVideoUrl, useRepairCode,
+  useResetProject,
 } from "@/hooks/useProjects";
 import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, formatDateTime } from "@/lib/format";
@@ -71,6 +72,7 @@ export function ProjectSheet({ project, onClose }: Props) {
   );
   const submitReview = useSubmitReview();
   const repairCode = useRepairCode();
+  const resetProject = useResetProject();
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [rejectionDetail, setRejectionDetail] = useState("");
@@ -233,6 +235,14 @@ export function ProjectSheet({ project, onClose }: Props) {
     );
   };
 
+  const handleCodeRetry = () => {
+    if (!project) return;
+    resetProject.mutate(project.id, {
+      onSuccess: () => toast.success("已重新排队生成代码"),
+      onError: (error) => toast.error(error.message || "重试失败，请稍后再试"),
+    });
+  };
+
   const handleVideoApprove = () => {
     if (!project) return;
     submitReview.mutate(
@@ -367,6 +377,8 @@ export function ProjectSheet({ project, onClose }: Props) {
               onApprove={handleApprove}
               onReject={handleReject}
               onAbandon={handleAbandon}
+              onCodeRetry={handleCodeRetry}
+              codeRetryPending={resetProject.isPending}
               currentVideoAsset={projectDetail?.currentVideoAsset ?? null}
               videoUrl={videoUrlData?.url ?? null}
               onVideoApprove={handleVideoApprove}
@@ -419,6 +431,8 @@ interface RightPanelProps {
   onApprove: () => void;
   onReject: () => void;
   onAbandon: () => void;
+  onCodeRetry: () => void;
+  codeRetryPending: boolean;
   currentVideoAsset: import("@/types").VideoAsset | null;
   videoUrl: string | null;
   onVideoApprove: () => void;
@@ -437,7 +451,7 @@ function RightPanel({
   canReject,
   showRejectInput, rejectionDetail, setRejectionDetail,
   targetStage, setTargetStage,
-  submitPending, onApprove, onReject, onAbandon,
+  submitPending, onApprove, onReject, onAbandon, onCodeRetry, codeRetryPending,
   currentVideoAsset, videoUrl, onVideoApprove,
   showVideoRejectInput, videoRejectionDetail, setVideoRejectionDetail,
   videoTargetStage, setVideoTargetStage, onVideoReject,
@@ -563,10 +577,15 @@ function RightPanel({
 
   if (project.status === "narrative_failed" || project.status === "code_failed") {
     return (
-      <div className="flex items-center justify-center flex-1">
+      <div className="flex flex-col items-center justify-center flex-1 gap-3 px-6 text-center">
         <p className="text-destructive text-sm">
-          {project.status === "narrative_failed" ? "叙事脚本生成失败" : "代码生成失败"}，请联系管理员
+          {project.status === "narrative_failed" ? "叙事脚本生成失败，请联系管理员" : "代码生成失败"}
         </p>
+        {project.status === "code_failed" && (
+          <Button onClick={onCodeRetry} disabled={codeRetryPending}>
+            重试代码生成
+          </Button>
+        )}
       </div>
     );
   }

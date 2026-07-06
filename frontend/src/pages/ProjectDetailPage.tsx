@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { SceneBeats } from "@/components/projects/SceneBeats";
-import { useProject, useProjectCode, useSubmitReview } from "@/hooks/useProjects";
+import { useProject, useProjectCode, useResetProject, useSubmitReview } from "@/hooks/useProjects";
 import type { ProjectStatus } from "@/types";
 
 type Verdict = "approved" | "rejected" | "needs_revision";
@@ -36,6 +36,7 @@ export default function ProjectDetailPage() {
   const { data: project, isLoading: projectLoading } = useProject(id!);
   const { data: codeVersion, isLoading: codeLoading } = useProjectCode(id!);
   const submitReview = useSubmitReview();
+  const resetProject = useResetProject();
 
   const [verdicts, setVerdicts] = useState<Record<number, VerdictState>>({});
   const [rejectionDetail, setRejectionDetail] = useState("");
@@ -89,6 +90,10 @@ export default function ProjectDetailPage() {
     });
   };
 
+  const handleCodeRetry = () => {
+    resetProject.mutate(id!);
+  };
+
   if (projectLoading) {
     return <div className="p-6 text-muted-foreground">加载中…</div>;
   }
@@ -122,7 +127,18 @@ export default function ProjectDetailPage() {
 
       {(project.status === "narrative_failed" || project.status === "code_failed") && (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-destructive">{STATUS_LABELS[project.status]}，请联系管理员</p>
+          <div className="space-y-3 text-center">
+            <p className="text-destructive">
+              {project.status === "narrative_failed"
+                ? `${STATUS_LABELS[project.status]}，请联系管理员`
+                : STATUS_LABELS[project.status]}
+            </p>
+            {project.status === "code_failed" && (
+              <Button onClick={handleCodeRetry} disabled={resetProject.isPending}>
+                重试代码生成
+              </Button>
+            )}
+          </div>
         </div>
       )}
 

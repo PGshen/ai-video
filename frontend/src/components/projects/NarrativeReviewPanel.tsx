@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { useSubmitReview } from "@/hooks/useProjects";
 import { useRegenerateTts } from "@/hooks/useNarrative";
-import type { NarrativeVersion, NarrativeScene, NarrativeBeat } from "@/types";
+import type {
+  NarrativeVersion, NarrativeScene, NarrativeBeat, RejectionContext, SceneReviewAnnotation,
+} from "@/types";
 
 type Verdict = "approved" | "rejected" | "needs_revision";
 interface VerdictState { verdict: Verdict; note: string; }
@@ -24,6 +26,50 @@ interface SceneState {
 interface Props {
   projectId: string;
   narrative: NarrativeVersion;
+}
+
+const normalizeAnnotations = (
+  annotations: RejectionContext["scene_annotations"] | SceneReviewAnnotation[] | undefined,
+): SceneReviewAnnotation[] => {
+  if (!annotations) return [];
+  return annotations
+    .map((item) => {
+      const raw = item as SceneReviewAnnotation & {
+        scene_index?: number;
+        narrative_issue?: string | null;
+        code_issue?: string | null;
+      };
+      return {
+        sceneIndex: raw.sceneIndex ?? raw.scene_index ?? -1,
+        narrativeIssue: raw.narrativeIssue ?? raw.narrative_issue ?? null,
+        codeIssue: raw.codeIssue ?? raw.code_issue ?? null,
+      };
+    })
+    .filter((item) => item.sceneIndex >= 0 && (item.narrativeIssue || item.codeIssue));
+};
+
+function NarrativeRejectionContext({ context }: { context: RejectionContext | null }) {
+  const annotations = normalizeAnnotations(context?.sceneAnnotations ?? context?.scene_annotations)
+    .filter((annotation) => annotation.narrativeIssue);
+  const detail = context?.rejectionDetail ?? context?.rejection_detail ?? null;
+  if (!detail && annotations.length === 0) return null;
+
+  return (
+    <div className="mb-3 rounded-lg border border-amber-300/60 bg-amber-50 p-3">
+      <p className="text-xs font-semibold text-amber-800">来自上次视频审核的叙事标注</p>
+      {detail && <p className="mt-2 text-xs leading-relaxed text-amber-900">{detail}</p>}
+      {annotations.length > 0 && (
+        <div className="mt-2 grid gap-2 md:grid-cols-2">
+          {annotations.map((annotation) => (
+            <div key={annotation.sceneIndex} className="rounded-md border border-amber-200 bg-background/70 p-2 text-xs">
+              <p className="font-medium text-foreground">镜头 {annotation.sceneIndex}</p>
+              <p className="mt-1 text-muted-foreground">{annotation.narrativeIssue}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function NarrativeReviewPanel({ projectId, narrative }: Props) {
@@ -190,12 +236,16 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       setRejectionError("请填写内容驳回原因，AI 重新生成时会参考此信息。");
       return;
     }
+    const inheritedAnnotations = normalizeAnnotations(
+      narrative.rejectionContext?.sceneAnnotations ?? narrative.rejectionContext?.scene_annotations,
+    );
     submitReview.mutate({
       projectId,
       gate: "narrative",
       verdict: "rejected",
       rejectionType: "content",
       rejectionDetail: detail,
+      ...(inheritedAnnotations.length > 0 ? { sceneAnnotations: inheritedAnnotations } : {}),
     });
   };
 
@@ -205,6 +255,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
 
   return (
     <div className="flex flex-col h-full">
+      <NarrativeRejectionContext context={narrative.rejectionContext} />
       <div className="flex flex-1 overflow-hidden gap-4">
         {/* Left: scene list */}
         <ScrollArea className="flex-1">

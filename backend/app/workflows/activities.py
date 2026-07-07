@@ -143,6 +143,16 @@ async def submit_code_task(project_id: str) -> None:
             raise ValueError("Current narrative version has no prompt snapshot")
         prompt_snapshot = narrative.prompt_snapshot
         style_components = style_components_from_snapshot(prompt_snapshot)
+        rejection_event = db.execute(
+            select(ProjectEvent)
+            .where(
+                ProjectEvent.project_id == project.id,
+                ProjectEvent.event_type == "review_verdict",
+                ProjectEvent.payload["verdict"].astext == "rejected",
+            )
+            .order_by(desc(ProjectEvent.created_at))
+        ).scalars().first()
+        rejection_context = rejection_event.payload if rejection_event else None
 
         task = WorkerTask(
             project_id=project.id,
@@ -154,6 +164,7 @@ async def submit_code_task(project_id: str) -> None:
                 "aspect_ratio": project.aspect_ratio,
                 "style_components": style_components,
                 "prompt_snapshot": prompt_snapshot,
+                "rejection_context": rejection_context,
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="code_generated",

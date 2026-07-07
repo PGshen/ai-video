@@ -161,6 +161,12 @@ async def submit_review(
         "rejection_detail": body.rejection_detail,
         "target_stage": body.target_stage,
     }
+    scene_annotations = (
+        [annotation.model_dump() for annotation in body.scene_annotations]
+        if body.scene_annotations else None
+    )
+    if scene_annotations:
+        signal_payload["scene_annotations"] = scene_annotations
 
     # 只有 Temporal 成功接收操作后才记录结果，避免时间线出现“假成功”。
     review_status = project.status
@@ -175,6 +181,8 @@ async def submit_review(
         event_payload["rejection_detail"] = body.rejection_detail
     if body.target_stage:
         event_payload["target_stage"] = body.target_stage
+    if scene_annotations:
+        event_payload["scene_annotations"] = scene_annotations
     if reviewed_version is not None:
         event_payload["content_version_id"] = str(reviewed_version.id)
         event_payload["content_version_number"] = reviewed_version.version_number

@@ -273,6 +273,41 @@ def test_submit_video_review_sends_signal(client, auth_headers, mock_db, mock_te
     assert call_args[0][1]["target_stage"] == "code"
 
 
+def test_submit_video_review_with_scene_annotations(client, auth_headers, mock_db, mock_temporal):
+    project = make_project(temporal_workflow_id="video-production-abc")
+    mock_db.get.return_value = project
+    mock_handle = AsyncMock()
+    mock_temporal.get_workflow_handle = MagicMock(return_value=mock_handle)
+
+    response = client.post(
+        f"/api/projects/{project.id}/review",
+        headers=auth_headers,
+        json={
+            "gate": "video",
+            "verdict": "rejected",
+            "rejectionDetail": "按镜头修正",
+            "targetStage": "code",
+            "sceneAnnotations": [
+                {
+                    "sceneIndex": 0,
+                    "narrativeIssue": "旁白节奏太快",
+                    "codeIssue": "动画没有跟上口播",
+                },
+                {"sceneIndex": 1, "narrativeIssue": "   ", "codeIssue": ""},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    call_args = mock_handle.signal.call_args
+    assert call_args[0][0] == "video_review"
+    assert call_args[0][1]["scene_annotations"] == [{
+        "scene_index": 0,
+        "narrative_issue": "旁白节奏太快",
+        "code_issue": "动画没有跟上口播",
+    }]
+
+
 def test_list_project_events(client, auth_headers, mock_db):
     mock_db.execute.return_value.scalars.return_value.all.return_value = []
     response = client.get(f"/api/projects/{uuid4()}/events", headers=auth_headers)

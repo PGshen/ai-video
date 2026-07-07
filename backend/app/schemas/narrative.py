@@ -44,5 +44,6 @@ class NarrativeVersionSchema(BaseModel):
     scenes: Optional[list[NarrativeSceneSchema]]
     fact_checks: Optional[list[FactCheckItemSchema]]
     ai_model: Optional[str]
+    rejection_context: Optional[dict] = None
     prompt_snapshot: Optional[dict] = None
     created_at: datetime

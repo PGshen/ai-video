@@ -30,6 +30,7 @@ class StubProvider:
         render_engine: str,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
+        rejection_context: dict | None = None,
     ) -> CodeGenerationResult:
         await asyncio.sleep(0)
         return CodeGenerationResult(codes=["" for _ in scenes])

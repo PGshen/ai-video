@@ -70,6 +70,7 @@ class CodeVersionSchema(BaseModel):
     fact_checks: Optional[list[FactCheckItemSchema]]
     render_engine: str
     ai_model: Optional[str]
+    rejection_context: Optional[dict] = None
     prompt_snapshot: Optional[dict] = None
     created_at: datetime
 

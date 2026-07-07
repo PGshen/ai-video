@@ -199,6 +199,7 @@ export interface NarrativeVersion {
   scenes: NarrativeScene[];
   factChecks: FactCheckItem[];
   aiModel: string | null;
+  rejectionContext: RejectionContext | null;
   promptSnapshot: Record<string, unknown> | null;
   createdAt: string;
 }
@@ -279,6 +280,7 @@ export interface ReviewRequest {
   rejectionType?: string;
   rejectionDetail?: string;
   targetStage?: "narrative" | "code";
+  sceneAnnotations?: SceneReviewAnnotation[];
   factCheckVerdicts?: Array<{
     index: number;
     verdict: "approved" | "rejected" | "needs_revision";
@@ -308,11 +310,31 @@ export interface CodeRepairResponse {
 }
 
 // ═══ 驳回上下文 ═══
+export interface SceneReviewAnnotation {
+  sceneIndex: number;
+  narrativeIssue?: string | null;
+  codeIssue?: string | null;
+}
+
 export interface RejectionContext {
-  rejectionType: string;
-  rejectionDetail: string;
-  targetStage: string;
-  rejectedAt: string;
+  gate?: "narrative" | "code" | "video";
+  verdict?: string;
+  rejectionType?: string | null;
+  rejectionDetail?: string | null;
+  rejection_type?: string | null;
+  rejection_detail?: string | null;
+  targetStage?: string | null;
+  target_stage?: string | null;
+  rejectedAt?: string;
+  sceneAnnotations?: SceneReviewAnnotation[];
+  scene_annotations?: Array<{
+    scene_index?: number;
+    sceneIndex?: number;
+    narrative_issue?: string | null;
+    narrativeIssue?: string | null;
+    code_issue?: string | null;
+    codeIssue?: string | null;
+  }>;
 }
 
 // ═══ 异步任务 ═══

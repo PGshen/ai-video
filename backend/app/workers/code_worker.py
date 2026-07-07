@@ -25,6 +25,7 @@ class CodeWorker(BaseWorker):
         aspect_ratio = payload.get("aspect_ratio")
         style_components: dict[str, str] = payload.get("style_components") or {}
         prompt_snapshot: dict = payload.get("prompt_snapshot") or {}
+        rejection_context = payload.get("rejection_context")
         if not prompt_snapshot:
             raise ValueError("generate_code task requires prompt_snapshot")
 
@@ -72,6 +73,7 @@ class CodeWorker(BaseWorker):
                 render_engine=render_engine,
                 style_components=style_components,
                 aspect_ratio=aspect_ratio,
+                rejection_context=rejection_context,
             )
             logger.info("[CodeWorker] AI done: codes=%d", len(result.codes))
 
@@ -158,6 +160,7 @@ class CodeWorker(BaseWorker):
                 fact_checks=fact_checks,
                 render_engine=render_engine,
                 ai_model=provider.model_name,
+                rejection_context=rejection_context,
                 prompt_snapshot=prompt_snapshot,
             )
             db.add(code_version)

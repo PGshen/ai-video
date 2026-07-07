@@ -208,6 +208,7 @@ export default function AICallRecordsPage() {
           <option value="deepseek">DeepSeek</option>
           <option value="openrouter">OpenRouter</option>
           <option value="gemini">Gemini</option>
+          <option value="doubao">Doubao</option>
         </select>
         <div className="flex min-w-64 gap-2">
           <Input

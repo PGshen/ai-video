@@ -1,5 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  ChevronDown, ChevronRight, Code2, FileText, MessageSquareWarning,
+  PanelLeftClose, PanelLeftOpen, Play,
+} from "lucide-react";
 import { toast } from "sonner";
 import { SidePanel, SidePanelHeader } from "@/components/ui/side-panel";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +23,7 @@ import { useNarrative } from "@/hooks/useNarrative";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, formatDateTime } from "@/lib/format";
 import type {
   VideoProject, ProjectEvent, NarrativeVersion, CodeVersion, CodeRepair,
+  Scene, SceneReviewAnnotation, RejectionContext,
 } from "@/types";
 
 interface Props {
@@ -39,6 +44,62 @@ interface SelectedNode {
   eventId: number;
   videoAssetId?: string | null;
 }
+
+interface SceneTiming {
+  sceneIndex: number;
+  start: number;
+  end: number;
+  duration: number;
+}
+
+const clampDuration = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+
+const formatSeconds = (seconds: number) => {
+  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  const mins = Math.floor(safe / 60);
+  const secs = Math.floor(safe % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+};
+
+const normalizeAnnotations = (
+  annotations: RejectionContext["scene_annotations"] | SceneReviewAnnotation[] | undefined,
+): SceneReviewAnnotation[] => {
+  if (!annotations) return [];
+  return annotations
+    .map((item) => {
+      const raw = item as SceneReviewAnnotation & {
+        scene_index?: number;
+        narrative_issue?: string | null;
+        code_issue?: string | null;
+      };
+      return {
+        sceneIndex: raw.sceneIndex ?? raw.scene_index ?? -1,
+        narrativeIssue: raw.narrativeIssue ?? raw.narrative_issue ?? null,
+        codeIssue: raw.codeIssue ?? raw.code_issue ?? null,
+      };
+    })
+    .filter((item) => item.sceneIndex >= 0 && (item.narrativeIssue || item.codeIssue));
+};
+
+const annotationsFromContext = (context: RejectionContext | null | undefined) =>
+  normalizeAnnotations(context?.sceneAnnotations ?? context?.scene_annotations);
+
+const rejectionDetailFromContext = (context: RejectionContext | null | undefined) =>
+  context?.rejectionDetail ?? context?.rejection_detail ?? null;
+
+const buildAnnotationSummary = (annotations: SceneReviewAnnotation[]) => {
+  if (annotations.length === 0) return "";
+  return annotations
+    .map((item) => {
+      const parts = [
+        item.narrativeIssue ? `叙事：${item.narrativeIssue}` : "",
+        item.codeIssue ? `代码：${item.codeIssue}` : "",
+      ].filter(Boolean);
+      return `镜头 ${item.sceneIndex}: ${parts.join("；")}`;
+    })
+    .join("\n");
+};
 
 export function ProjectSheet({ project, onClose }: Props) {
   // Keep the last non-null project so SidePanel's exit animation has content to render
@@ -82,6 +143,10 @@ export function ProjectSheet({ project, onClose }: Props) {
   const [videoRejectionDetail, setVideoRejectionDetail] = useState("");
   const [videoTargetStage, setVideoTargetStage] = useState<"narrative" | "code">("code");
   const [submitted, setSubmitted] = useState(false);
+  const [metaCollapsed, setMetaCollapsed] = useState(false);
+  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+  const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
+  const [sceneAnnotations, setSceneAnnotations] = useState<Map<number, SceneReviewAnnotation>>(new Map());
 
   useEffect(() => {
     setSubmitted(false);
@@ -91,6 +156,7 @@ export function ProjectSheet({ project, onClose }: Props) {
     setShowVideoRejectInput(false);
     setVideoRejectionDetail("");
     setVideoTargetStage("code");
+    setSceneAnnotations(new Map());
   }, [displayProject?.id]);
 
   // Fetch selected historical version on demand
@@ -214,8 +280,18 @@ export function ProjectSheet({ project, onClose }: Props) {
   const handleReject = () => {
     if (!project) return;
     if (!showRejectInput) { setShowRejectInput(true); return; }
+    const inheritedAnnotations = annotationsFromContext(codeVersion?.rejectionContext);
+    const inheritedDetail = rejectionDetailFromContext(codeVersion?.rejectionContext);
+    const detail = rejectionDetail.trim() || inheritedDetail || buildAnnotationSummary(inheritedAnnotations);
     submitReview.mutate(
-      { projectId: project.id, gate: "code", verdict: "rejected", rejectionDetail, targetStage },
+      {
+        projectId: project.id,
+        gate: "code",
+        verdict: "rejected",
+        rejectionDetail: detail,
+        targetStage,
+        ...(inheritedAnnotations.length > 0 ? { sceneAnnotations: inheritedAnnotations } : {}),
+      },
       {
         onSuccess: () => { setSubmitted(true); toast.success("已驳回，AI 将重新生成"); },
         onError: () => toast.error("提交失败，请重试"),
@@ -254,14 +330,43 @@ export function ProjectSheet({ project, onClose }: Props) {
     );
   };
 
+  const updateSceneAnnotation = (
+    sceneIndex: number,
+    field: "narrativeIssue" | "codeIssue",
+    value: string,
+  ) => {
+    setSceneAnnotations((prev) => {
+      const next = new Map(prev);
+      const current = next.get(sceneIndex) ?? { sceneIndex };
+      const updated = { ...current, [field]: value };
+      if (!updated.narrativeIssue?.trim() && !updated.codeIssue?.trim()) {
+        next.delete(sceneIndex);
+      } else {
+        next.set(sceneIndex, updated);
+      }
+      return next;
+    });
+  };
+
+  const buildSceneAnnotations = () =>
+    Array.from(sceneAnnotations.values())
+      .map((item) => ({
+        sceneIndex: item.sceneIndex,
+        narrativeIssue: item.narrativeIssue?.trim() || undefined,
+        codeIssue: item.codeIssue?.trim() || undefined,
+      }))
+      .filter((item) => item.narrativeIssue || item.codeIssue);
+
   const handleVideoReject = () => {
     if (!project) return;
     if (!showVideoRejectInput) {
       setShowVideoRejectInput(true);
       return;
     }
-    if (!videoRejectionDetail.trim()) {
-      toast.error("请填写驳回原因");
+    const annotations = buildSceneAnnotations();
+    const detail = videoRejectionDetail.trim() || buildAnnotationSummary(annotations);
+    if (!detail && annotations.length === 0) {
+      toast.error("请填写驳回原因或标注至少一个镜头问题");
       return;
     }
     submitReview.mutate(
@@ -269,8 +374,9 @@ export function ProjectSheet({ project, onClose }: Props) {
         projectId: project.id,
         gate: "video",
         verdict: "rejected",
-        rejectionDetail: videoRejectionDetail.trim(),
+        rejectionDetail: detail,
         targetStage: videoTargetStage,
+        ...(annotations.length > 0 ? { sceneAnnotations: annotations } : {}),
       },
       {
         onSuccess: () => {
@@ -315,35 +421,56 @@ export function ProjectSheet({ project, onClose }: Props) {
     <SidePanel open={!!project} onClose={onClose} widthClass="w-[90vw] max-w-[95vw]">
       <SidePanelHeader>
         <div className="pr-7 flex items-start justify-between">
-          <div>
+          <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold leading-snug">{displayProject.topicTitle}</h2>
-            <div className="flex items-center gap-2 mt-2">
-              <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor}`}>
-                {statusLabel}
-              </span>
-              {displayProject.retryCount > 0 && (
-                <span className="text-xs text-muted-foreground">已驳回 {displayProject.retryCount} 次</span>
-              )}
-            </div>
+            <span className={`px-2 py-0.5 rounded text-xs font-medium shrink-0 ${statusColor}`}>
+              {statusLabel}
+            </span>
+            {displayProject.retryCount > 0 && (
+              <span className="text-xs text-muted-foreground shrink-0">已驳回 {displayProject.retryCount} 次</span>
+            )}
           </div>
         </div>
       </SidePanelHeader>
 
-      {/* 主体：左栏固定 + 右栏弹性 */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* 左栏：元数据 + 时间线 */}
-        <div className="w-72 shrink-0 border-r flex min-h-0 flex-col overflow-hidden p-5">
-          <MetaSection
-            project={displayProject}
-            promptSnapshot={visiblePromptSnapshot}
-          />
-          <EventsSection
-            eventsData={eventsData}
-            narrativeVersions={narrativeVersions}
-            codeVersions={codeVersions}
-            selectedNode={selectedNode}
-            onSelectNode={setSelectedNode}
-          />
+        <div className={`${leftRailCollapsed ? "w-12" : "w-72"} shrink-0 border-r flex min-h-0 flex-col overflow-hidden transition-[width]`}>
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            {!leftRailCollapsed && (
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                项目信息
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => setLeftRailCollapsed((value) => !value)}
+              title={leftRailCollapsed ? "展开侧栏" : "收起侧栏"}
+              className={leftRailCollapsed ? "mx-auto" : ""}
+            >
+              {leftRailCollapsed ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
+            </Button>
+          </div>
+          {!leftRailCollapsed && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
+              <MetaSection
+                project={displayProject}
+                promptSnapshot={visiblePromptSnapshot}
+                collapsed={metaCollapsed}
+                onToggle={() => setMetaCollapsed((value) => !value)}
+              />
+              <EventsSection
+                eventsData={eventsData}
+                narrativeVersions={narrativeVersions}
+                codeVersions={codeVersions}
+                selectedNode={selectedNode}
+                onSelectNode={setSelectedNode}
+                collapsed={timelineCollapsed}
+                onToggle={() => setTimelineCollapsed((value) => !value)}
+              />
+            </div>
+          )}
         </div>
 
         {/* 右栏：历史视图 or 当前审核视图 */}
@@ -387,6 +514,8 @@ export function ProjectSheet({ project, onClose }: Props) {
               setVideoRejectionDetail={setVideoRejectionDetail}
               videoTargetStage={videoTargetStage}
               setVideoTargetStage={setVideoTargetStage}
+              sceneAnnotations={sceneAnnotations}
+              onSceneAnnotationChange={updateSceneAnnotation}
               onVideoReject={handleVideoReject}
               onVideoRetry={handleVideoRetry}
               onVideoAbandon={handleVideoAbandon}
@@ -441,6 +570,12 @@ interface RightPanelProps {
   setVideoRejectionDetail: (value: string) => void;
   videoTargetStage: "narrative" | "code";
   setVideoTargetStage: (value: "narrative" | "code") => void;
+  sceneAnnotations: Map<number, SceneReviewAnnotation>;
+  onSceneAnnotationChange: (
+    sceneIndex: number,
+    field: "narrativeIssue" | "codeIssue",
+    value: string,
+  ) => void;
   onVideoReject: () => void;
   onVideoRetry: () => void;
   onVideoAbandon: () => void;
@@ -454,7 +589,7 @@ function RightPanel({
   submitPending, onApprove, onReject, onAbandon, onCodeRetry, codeRetryPending,
   currentVideoAsset, videoUrl, onVideoApprove,
   showVideoRejectInput, videoRejectionDetail, setVideoRejectionDetail,
-  videoTargetStage, setVideoTargetStage, onVideoReject,
+  videoTargetStage, setVideoTargetStage, sceneAnnotations, onSceneAnnotationChange, onVideoReject,
   onVideoRetry, onVideoAbandon,
   editedCode, setEditedCode,
   codeRepairs, appliedRepairs, repairPending, onAiRepair, onApplyRepair,
@@ -487,19 +622,13 @@ function RightPanel({
   if (project.status === "video_review" || project.status === "published") {
     return (
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-        <div className="flex-1 min-h-0 p-5">
-          {videoUrl ? (
-            <video
-              src={videoUrl}
-              controls
-              className="w-full h-full max-h-[60vh] rounded-lg bg-black"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
-              视频加载中…
-            </div>
-          )}
-        </div>
+        <VideoReviewWorkspace
+          videoUrl={videoUrl}
+          scenes={codeVersion?.scenes ?? []}
+          readOnly={project.status === "published"}
+          annotations={sceneAnnotations}
+          onAnnotationChange={onSceneAnnotationChange}
+        />
         {project.status === "video_review" && (
           <div className="px-5 py-4 border-t space-y-3">
             {showVideoRejectInput && (
@@ -507,7 +636,7 @@ function RightPanel({
                 <Textarea
                   value={videoRejectionDetail}
                   onChange={(event) => setVideoRejectionDetail(event.target.value)}
-                  placeholder="请说明视频驳回原因"
+                  placeholder="请说明整体驳回原因；也可以直接在右侧按镜头标注问题"
                   className="text-sm min-h-[72px]"
                 />
                 <div className="flex gap-5 text-sm">
@@ -600,6 +729,12 @@ function RightPanel({
 
   return (
     <>
+      {codeVersion?.rejectionContext && (
+        <RejectionContextNotice
+          context={codeVersion.rejectionContext}
+          preferredIssue="code"
+        />
+      )}
       {/* 渲染失败错误提示 */}
       {isRenderFailed && (renderFailureError || currentVideoAsset?.errorMessage) && (
         <div className="mx-4 mt-3 p-3 rounded-lg border border-destructive/40 bg-destructive/5">
@@ -745,29 +880,282 @@ function RightPanel({
   );
 }
 
+function RejectionContextNotice({
+  context,
+  preferredIssue,
+}: {
+  context: RejectionContext;
+  preferredIssue: "narrative" | "code";
+}) {
+  const annotations = annotationsFromContext(context).filter((annotation) =>
+    preferredIssue === "narrative"
+      ? annotation.narrativeIssue
+      : annotation.codeIssue || annotation.narrativeIssue,
+  );
+  const detail = rejectionDetailFromContext(context);
+  if (!detail && annotations.length === 0) return null;
+
+  return (
+    <div className="mx-4 mt-3 rounded-lg border border-amber-300/60 bg-amber-50 p-3">
+      <div className="flex items-center gap-2">
+        <MessageSquareWarning className="size-4 text-amber-700" />
+        <p className="text-xs font-semibold text-amber-800">
+          来自上次视频审核的标注
+        </p>
+      </div>
+      {detail && (
+        <p className="mt-2 text-xs leading-relaxed text-amber-900">{detail}</p>
+      )}
+      {annotations.length > 0 && (
+        <div className="mt-2 grid gap-2 md:grid-cols-2">
+          {annotations.map((annotation) => (
+            <div key={annotation.sceneIndex} className="rounded-md border border-amber-200 bg-background/70 p-2 text-xs">
+              <p className="font-medium text-foreground">镜头 {annotation.sceneIndex}</p>
+              {annotation.narrativeIssue && (
+                <p className="mt-1 text-muted-foreground">叙事：{annotation.narrativeIssue}</p>
+              )}
+              {annotation.codeIssue && (
+                <p className="mt-1 text-muted-foreground">代码：{annotation.codeIssue}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VideoReviewWorkspace({
+  videoUrl,
+  scenes,
+  readOnly,
+  annotations,
+  onAnnotationChange,
+}: {
+  videoUrl: string | null;
+  scenes: Scene[];
+  readOnly: boolean;
+  annotations: Map<number, SceneReviewAnnotation>;
+  onAnnotationChange: (
+    sceneIndex: number,
+    field: "narrativeIssue" | "codeIssue",
+    value: string,
+  ) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const sceneRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+
+  const timings = useMemo<SceneTiming[]>(() => {
+    if (scenes.length === 0) return [];
+    const explicitDurations = scenes.map((scene) =>
+      clampDuration(scene.durationSeconds ?? scene.estimatedDurationSeconds),
+    );
+    const hasAnyDuration = explicitDurations.some((duration) => duration > 0);
+    const fallbackDuration =
+      videoDuration > 0 && !hasAnyDuration ? videoDuration / scenes.length : 6;
+    let cursor = 0;
+    const ranges = scenes.map((scene, index) => {
+      const duration = explicitDurations[index] || fallbackDuration;
+      const start = cursor;
+      const end = cursor + duration;
+      cursor = end;
+      return { sceneIndex: scene.sceneIndex, start, end, duration };
+    });
+    if (videoDuration > 0 && ranges.length > 0) {
+      ranges[ranges.length - 1] = {
+        ...ranges[ranges.length - 1],
+        end: Math.max(videoDuration, ranges[ranges.length - 1].end),
+      };
+    }
+    return ranges;
+  }, [scenes, videoDuration]);
+
+  const currentSceneIndex = useMemo(() => {
+    const current = timings.find(
+      (timing, index) =>
+        currentTime >= timing.start &&
+        (currentTime < timing.end || index === timings.length - 1),
+    );
+    return current?.sceneIndex ?? scenes[0]?.sceneIndex ?? null;
+  }, [currentTime, scenes, timings]);
+
+  useEffect(() => {
+    if (currentSceneIndex == null) return;
+    sceneRefs.current.get(currentSceneIndex)?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }, [currentSceneIndex]);
+
+  const seekToScene = (sceneIndex: number) => {
+    const timing = timings.find((item) => item.sceneIndex === sceneIndex);
+    if (!timing || !videoRef.current) return;
+    videoRef.current.currentTime = timing.start;
+    setCurrentTime(timing.start);
+    void videoRef.current.play().catch(() => undefined);
+  };
+
+  return (
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col p-5">
+        {videoUrl ? (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            controls
+            className="h-full max-h-[68vh] w-full rounded-lg bg-black object-contain"
+            onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)}
+            onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center rounded-lg border bg-muted/20 text-sm text-muted-foreground">
+            视频加载中…
+          </div>
+        )}
+      </div>
+      <div className="flex w-[380px] shrink-0 flex-col border-l min-h-0">
+        <div className="flex items-center justify-between border-b px-4 py-2.5">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              镜头审核
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {annotations.size} 个镜头已标注
+            </p>
+          </div>
+          {currentSceneIndex != null && (
+            <Badge variant="secondary" className="text-xs">
+              当前 镜头 {currentSceneIndex}
+            </Badge>
+          )}
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-3 p-4">
+            {scenes.length === 0 && (
+              <p className="text-sm text-muted-foreground">暂无镜头信息</p>
+            )}
+            {scenes.map((scene) => {
+              const timing = timings.find((item) => item.sceneIndex === scene.sceneIndex);
+              const annotation = annotations.get(scene.sceneIndex);
+              const active = currentSceneIndex === scene.sceneIndex;
+              return (
+                <div
+                  key={scene.sceneIndex}
+                  ref={(node) => {
+                    if (node) sceneRefs.current.set(scene.sceneIndex, node);
+                    else sceneRefs.current.delete(scene.sceneIndex);
+                  }}
+                  className={`rounded-lg border p-3 transition-colors ${
+                    active ? "border-primary bg-primary/5" : "bg-background"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex min-w-0 items-center gap-2 text-left"
+                      onClick={() => seekToScene(scene.sceneIndex)}
+                    >
+                      <span className={`inline-flex size-6 shrink-0 items-center justify-center rounded-md ${
+                        active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      }`}>
+                        {active ? <Play className="size-3" /> : scene.sceneIndex}
+                      </span>
+                      <span className="truncate text-sm font-medium">
+                        镜头 {scene.sceneIndex}
+                      </span>
+                    </button>
+                    {timing && (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {formatSeconds(timing.start)} - {formatSeconds(timing.end)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-sm text-foreground">
+                    {scene.description}
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                    {scene.narration}
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <FileText className="size-3" />
+                      叙事问题
+                    </label>
+                    <Textarea
+                      value={annotation?.narrativeIssue ?? ""}
+                      onChange={(event) =>
+                        onAnnotationChange(scene.sceneIndex, "narrativeIssue", event.target.value)
+                      }
+                      readOnly={readOnly}
+                      rows={2}
+                      placeholder="旁白、结构、事实、节奏等问题"
+                      className="text-xs"
+                    />
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Code2 className="size-3" />
+                      代码问题
+                    </label>
+                    <Textarea
+                      value={annotation?.codeIssue ?? ""}
+                      onChange={(event) =>
+                        onAnnotationChange(scene.sceneIndex, "codeIssue", event.target.value)
+                      }
+                      readOnly={readOnly}
+                      rows={2}
+                      placeholder="动画实现、画面同步、渲染效果等问题"
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
 function MetaSection({
   project,
   promptSnapshot,
+  collapsed,
+  onToggle,
 }: {
   project: VideoProject;
   promptSnapshot: Record<string, unknown> | null;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   return (
     <section className="shrink-0 space-y-3 pb-4">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">项目配置</p>
-      <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
-        <span className="text-muted-foreground">渲染引擎</span>
-        <span className="font-medium">{project.renderEngine}</span>
-        <span className="text-muted-foreground">TTS 声音</span>
-        <span className="font-medium">{project.ttsVoice}</span>
-        <span className="text-muted-foreground">画幅比例</span>
-        <span className="font-medium">{project.aspectRatio === "landscape" ? "横屏 16:9" : "竖屏 9:16"}</span>
-        <span className="text-muted-foreground">重试次数</span>
-        <span className="font-medium">{project.retryCount}</span>
-        <span className="text-muted-foreground">创建时间</span>
-        <span className="font-medium">{formatDateTime(project.createdAt)}</span>
-      </div>
-      <ProjectStylePrompts promptSnapshot={promptSnapshot} />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">项目配置</span>
+        {collapsed ? <ChevronRight className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+      </button>
+      {!collapsed && (
+        <>
+          <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+            <span className="text-muted-foreground">渲染引擎</span>
+            <span className="font-medium">{project.renderEngine}</span>
+            <span className="text-muted-foreground">TTS 声音</span>
+            <span className="font-medium">{project.ttsVoice}</span>
+            <span className="text-muted-foreground">画幅比例</span>
+            <span className="font-medium">{project.aspectRatio === "landscape" ? "横屏 16:9" : "竖屏 9:16"}</span>
+            <span className="text-muted-foreground">重试次数</span>
+            <span className="font-medium">{project.retryCount}</span>
+            <span className="text-muted-foreground">创建时间</span>
+            <span className="font-medium">{formatDateTime(project.createdAt)}</span>
+          </div>
+          <ProjectStylePrompts promptSnapshot={promptSnapshot} />
+        </>
+      )}
     </section>
   );
 }
@@ -788,10 +1176,12 @@ interface EventsSectionProps {
   codeVersions: CodeVersion[];
   selectedNode: SelectedNode | null;
   onSelectNode: (node: SelectedNode | null) => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }
 
 function EventsSection({
-  eventsData, narrativeVersions, codeVersions, selectedNode, onSelectNode,
+  eventsData, narrativeVersions, codeVersions, selectedNode, onSelectNode, collapsed, onToggle,
 }: EventsSectionProps) {
   const annotated = useMemo(() => {
     const allEvents = eventsData?.items ?? [];
@@ -821,6 +1211,7 @@ function EventsSection({
           target_stage?: string;
           content_version_id?: string;
           content_version_number?: number;
+          scene_annotations?: RejectionContext["scene_annotations"];
         } | undefined;
 
         // For video nodes, versionId/number come from the event directly; no "version" entity exists.
@@ -869,9 +1260,19 @@ function EventsSection({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
-      <p className="shrink-0 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-        状态时间线
-      </p>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex shrink-0 items-center justify-between text-left"
+      >
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          状态时间线
+        </span>
+        {collapsed ? <ChevronRight className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+      </button>
+      {collapsed ? (
+        <p className="text-xs text-muted-foreground">已收起</p>
+      ) : (
       <ScrollArea className="min-h-0 flex-1">
         {!annotated.length ? (
           <p className="text-sm text-muted-foreground">暂无事件记录</p>
@@ -962,6 +1363,22 @@ function EventsSection({
                             {verdict.rejection_detail}
                           </p>
                         )}
+                        {verdict?.scene_annotations && verdict.scene_annotations.length > 0 && (
+                          <details className="mt-1" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                            <summary className="cursor-pointer text-xs text-primary/80">
+                              {normalizeAnnotations(verdict.scene_annotations).length} 个镜头标注
+                            </summary>
+                            <div className="mt-1 space-y-1">
+                              {normalizeAnnotations(verdict.scene_annotations).map((annotation) => (
+                                <div key={annotation.sceneIndex} className="rounded bg-muted/40 p-1.5 text-xs text-muted-foreground">
+                                  <p className="font-medium text-foreground">镜头 {annotation.sceneIndex}</p>
+                                  {annotation.narrativeIssue && <p>叙事：{annotation.narrativeIssue}</p>}
+                                  {annotation.codeIssue && <p>代码：{annotation.codeIssue}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
                         {verdict?.target_stage && verdict.verdict === "rejected" && (
                           <p className="text-xs text-muted-foreground">
                             回退至：{verdict.target_stage === "code"
@@ -983,6 +1400,7 @@ function EventsSection({
           </div>
         )}
       </ScrollArea>
+      )}
     </section>
   );
 }

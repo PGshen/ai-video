@@ -252,6 +252,8 @@ class VideoProductionWorkflow:
                if review.get("rejection_type") else {}),
             **({"rejection_detail": review["rejection_detail"]}
                if review.get("rejection_detail") else {}),
+            **({"scene_annotations": review["scene_annotations"]}
+               if review.get("scene_annotations") else {}),
         }
 
         if target == "narrative":

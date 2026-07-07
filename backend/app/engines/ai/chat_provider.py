@@ -437,26 +437,30 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         render_engine: str,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
+        rejection_context: dict | None = None,
     ) -> CodeGenerationResult:
         system_prompt = self._build_code_system_prompt(
             render_engine=render_engine,
             style_components=style_components or {},
             aspect_ratio=aspect_ratio,
         )
+        user_payload: dict = {
+            "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
+            "scenes": scenes,
+        }
+        if rejection_context:
+            user_payload["rejection_context"] = rejection_context
+            user_note = "（注意：这是一次重新生成，请优先修正 rejection_context 中标注的代码问题，并参考相关叙事问题）"
+        else:
+            user_note = ""
         content = await self._complete(
             "code_generation",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": "请为以下镜头叙事生成渲染代码 JSON：\n"
-                    + json.dumps(
-                        {
-                            "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
-                            "scenes": scenes,
-                        },
-                        ensure_ascii=False,
-                    ),
+                    "content": f"请为以下镜头叙事生成渲染代码 JSON{user_note}：\n"
+                    + json.dumps(user_payload, ensure_ascii=False),
                 },
             ],
             response_format=response_format_for(
@@ -585,7 +589,7 @@ JSON 格式示例：
 {
   "candidates": [
     {
-      "title": "一个反直觉、可论证、适合动画化的选题标题",
+      "title": "一个有吸引力、可论证、适合动画化的选题标题",
       "description": "一句话说明选题切入角度和知识价值",
       "tags": ["物理", "认知"]
     }
@@ -595,7 +599,7 @@ JSON 格式示例：
 要求：
 - candidates 数量必须匹配用户要求。
 - title 适合自媒体知识视频标题，避免空泛。
-- description 说明反直觉点、可论证点或可视化潜力。
+- description 说明吸引力（重要）、可论证点或可视化潜力。
 - tags 使用 2 到 5 个中文短标签。
 - 只能输出合法 JSON object。"""
         user_prompt = f"请围绕「{topic_direction}」生成 {count} 个候选选题 JSON。"

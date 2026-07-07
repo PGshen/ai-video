@@ -416,6 +416,7 @@ class AIProvider(Protocol):
         render_engine: str,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
+        rejection_context: dict | None = None,
     ) -> CodeGenerationResult: ...
 
     async def repair_code(

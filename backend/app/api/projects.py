@@ -338,6 +338,7 @@ async def get_current_narrative(
         scenes=enriched_scenes,
         fact_checks=nv.fact_checks,
         ai_model=nv.ai_model,
+        rejection_context=nv.rejection_context,
         prompt_snapshot=nv.prompt_snapshot,
         created_at=nv.created_at,
     )

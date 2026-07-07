@@ -1,0 +1,95 @@
+import json
+
+import httpx
+import pytest
+
+from app.engines.ai.chat_provider import ChatAIProvider
+from app.engines.ai.doubao import DoubaoClient
+
+
+def make_client(handler) -> DoubaoClient:
+    return DoubaoClient(
+        api_key="test-key",
+        model="doubao-seed-1-6-250615",
+        transport=httpx.MockTransport(handler),
+    )
+
+
+@pytest.mark.asyncio
+async def test_doubao_client_uses_official_chat_completion_shape_and_auth_header():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert request.url.path == "/api/v3/chat/completions"
+        assert request.headers["authorization"] == "Bearer test-key"
+        assert payload["model"] == "doubao-seed-1-6-250615"
+        assert payload["response_format"] == {"type": "json_object"}
+        assert payload["max_tokens"] == 123
+        assert payload["stream"] is False
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": true}'}}]})
+
+    content = await make_client(handler).create_chat_completion(
+        messages=[{"role": "user", "content": "hello"}],
+        response_format={"type": "json_object"},
+        max_tokens=123,
+    )
+
+    assert content == '{"ok": true}'
+
+
+@pytest.mark.asyncio
+async def test_chat_ai_provider_brainstorm_uses_json_mode_and_parses_candidates():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["response_format"] == {"type": "json_object"}
+        assert "选题策划助手" in payload["messages"][0]["content"]
+        assert "候选选题" in payload["messages"][1]["content"]
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "candidates": [
+                                        {
+                                            "title": "为什么冰会浮在水上",
+                                            "description": "密度反常的可视化解释",
+                                            "tags": ["物理", "化学"],
+                                        }
+                                    ]
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    result = await ChatAIProvider(make_client(handler)).brainstorm_topics("科学", 1)
+
+    assert result.candidates[0]["title"] == "为什么冰会浮在水上"
+
+
+@pytest.mark.asyncio
+async def test_doubao_client_stream_yields_delta_content():
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["stream"] is True
+        body = "\n\n".join(
+            [
+                'data: {"choices":[{"delta":{"content":"第一段"},"index":0}]}',
+                'data: {"choices":[{"delta":{"content":"第二段"},"index":0}]}',
+                "data: [DONE]",
+            ]
+        )
+        return httpx.Response(200, content=body)
+
+    chunks = []
+    async for chunk in make_client(handler).stream_chat_completion(
+        messages=[{"role": "user", "content": "介绍背景"}],
+    ):
+        chunks.append(chunk)
+
+    assert chunks == ["第一段", "第二段"]

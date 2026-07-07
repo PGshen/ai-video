@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     GEMINI_CACHED_INPUT_COST_PER_MILLION: float = 0
     GEMINI_OUTPUT_COST_PER_MILLION: float = 0
     DOUBAO_API_KEY: str = ""
-    DOUBAO_BASE_URL: str = "https://ark.cn-beijing.volcengine.com/api/v3"
-    DOUBAO_MODEL: str = "doubao-seed-1-6-250615"
+    DOUBAO_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    DOUBAO_MODEL: str = "doubao-seed-evolving"
     DOUBAO_TIMEOUT_SECONDS: float = 600.0
     DOUBAO_CONTENT_MAX_TOKENS: int = 100000
     DOUBAO_JSON_MAX_TOKENS: int = 100000

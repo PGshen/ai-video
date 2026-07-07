@@ -282,7 +282,7 @@ async def repair_code(
     if len(scene_indices) != len(set(scene_indices)):
         raise HTTPException(status_code=422, detail="Scene indices must be unique")
 
-    provider = get_ai_provider()
+    provider = get_ai_provider("code_repair")
     code_version = (
         await db.get(CodeVersion, project.current_code_version_id)
         if project.current_code_version_id

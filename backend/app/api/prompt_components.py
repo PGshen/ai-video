@@ -73,7 +73,7 @@ async def assist_prompt_component(
     body: StyleAssistantRequest,
     _=Depends(verify_api_key),
 ):
-    provider = get_ai_provider()
+    provider = get_ai_provider("style_assistant")
     try:
         result = await provider.assist_style_prompt(
             category=body.category,

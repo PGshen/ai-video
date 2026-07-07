@@ -3,9 +3,10 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/topics", label: "选题池" },
-  { to: "/projects", label: "项目列表" },
+  { to: "/projects", label: "视频项目" },
   { to: "/style-library", label: "风格库" },
-  { to: "/ai-calls", label: "AI 调用记录" },
+  { to: "/ai-model-settings", label: "模型配置" },
+  { to: "/ai-calls", label: "AI 记录" },
 ];
 
 export default function Layout() {

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from temporalio.client import Client as TemporalClient
-from app.api import topics, projects, reviews, worker_tasks, ai_call_records
+from app.api import topics, projects, reviews, worker_tasks, ai_call_records, ai_model_settings
 from app.api.prompt_components import router as prompt_components_router
 from app.api.style_templates import router as style_templates_router
 from app.config import settings
@@ -42,3 +42,4 @@ app.include_router(worker_tasks.router)
 app.include_router(prompt_components_router)
 app.include_router(style_templates_router)
 app.include_router(ai_call_records.router)
+app.include_router(ai_model_settings.router)

@@ -73,7 +73,7 @@ async def brainstorm_topics(
     body: BrainstormRequest,
     _=Depends(verify_api_key),
 ):
-    provider = get_ai_provider()
+    provider = get_ai_provider("topic_brainstorm")
     try:
         result = await provider.brainstorm_topics(body.topic_direction, body.count)
     except Exception as exc:
@@ -174,7 +174,7 @@ async def research_topic(
         system_prompt = None
         user_message = body.message
 
-    provider = get_ai_provider()
+    provider = get_ai_provider("topic_research")
 
     async def event_stream():
         full_response = []

@@ -57,7 +57,7 @@ class CodeWorker(BaseWorker):
                 len(scenes),
             )
 
-            provider = get_ai_provider()
+            provider = get_ai_provider("code_generation")
             logger.info("[CodeWorker] calling AI provider model=%s", provider.model_name)
             codegen_scenes = [
                 {
@@ -107,7 +107,8 @@ class CodeWorker(BaseWorker):
                     round_num + 1,
                     _MAX_VALIDATION_ROUNDS,
                 )
-                repair_result = await provider.repair_code(
+                repair_provider = get_ai_provider("code_repair")
+                repair_result = await repair_provider.repair_code(
                     scenes=merged_scenes,
                     render_engine=render_engine,
                     error_message=errors,

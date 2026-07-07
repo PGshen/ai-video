@@ -81,6 +81,58 @@ export interface StyleAssistantResponse {
   promptText: string;
 }
 
+// ═══ AI 模型配置 ═══
+export type AIProviderType = "deepseek" | "openrouter" | "gemini" | "doubao";
+
+export interface AIModelProvider {
+  id: string;
+  name: string;
+  providerType: AIProviderType;
+  baseUrl: string;
+  timeoutSeconds: number;
+  siteUrl: string | null;
+  siteName: string | null;
+  isActive: boolean;
+  apiKeySet: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIProviderModel {
+  id: string;
+  providerId: string;
+  name: string;
+  model: string;
+  contentMaxTokens: number;
+  jsonMaxTokens: number;
+  inputCostPerMillion: string;
+  cachedInputCostPerMillion: string;
+  outputCostPerMillion: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIBusinessModelConfig {
+  id: string;
+  business: string;
+  modelId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIBusinessOption {
+  key: string;
+  label: string;
+}
+
+export interface AIModelSettingsResponse {
+  providers: AIModelProvider[];
+  models: AIProviderModel[];
+  businessConfigs: AIBusinessModelConfig[];
+  businessOptions: AIBusinessOption[];
+}
+
 // ═══ AI 调用记录 ═══
 export type AICallStatus =
   | "pending"

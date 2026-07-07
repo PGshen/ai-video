@@ -87,7 +87,7 @@ class NarrativeWorker(BaseWorker):
             bool(rejection_context),
         )
 
-        provider = get_ai_provider()
+        provider = get_ai_provider("narrative_generation")
         logger.info("[NarrativeWorker] calling AI provider model=%s", provider.model_name)
         result = await provider.generate_narrative(
             topic_title=topic_title,

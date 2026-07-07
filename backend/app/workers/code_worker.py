@@ -26,6 +26,7 @@ class CodeWorker(BaseWorker):
         style_components: dict[str, str] = payload.get("style_components") or {}
         prompt_snapshot: dict = payload.get("prompt_snapshot") or {}
         rejection_context = payload.get("rejection_context")
+        previous_code_scenes = payload.get("previous_code_scenes")
         if not prompt_snapshot:
             raise ValueError("generate_code task requires prompt_snapshot")
 
@@ -74,6 +75,7 @@ class CodeWorker(BaseWorker):
                 style_components=style_components,
                 aspect_ratio=aspect_ratio,
                 rejection_context=rejection_context,
+                previous_code_scenes=previous_code_scenes,
             )
             logger.info("[CodeWorker] AI done: codes=%d", len(result.codes))
 

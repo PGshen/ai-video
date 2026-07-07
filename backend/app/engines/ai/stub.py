@@ -17,6 +17,7 @@ class StubProvider:
         topic_description: str,
         render_engine: str,
         rejection_context: dict | None = None,
+        previous_scenes: list[dict] | None = None,
         narrative_context: list[dict] | None = None,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
@@ -31,6 +32,7 @@ class StubProvider:
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
         rejection_context: dict | None = None,
+        previous_code_scenes: list[dict] | None = None,
     ) -> CodeGenerationResult:
         await asyncio.sleep(0)
         return CodeGenerationResult(codes=["" for _ in scenes])

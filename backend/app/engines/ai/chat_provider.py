@@ -242,7 +242,9 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "- 第一个镜头需要按照【视觉系统】要求设置背景颜色",
             "- scenes 是镜头数组，scene_index 从 0 连续递增；镜头数量遵循 pacing 组件",
             "- 每个镜头包含 narration、description、beats、estimated_duration_seconds",
+            "- 不再使用的镜头元素需要及时退场或消失，避免画面残留，这个很容易被忽略",
             "- fact_checks 覆盖脚本中的关键事实论断和可能争议点",
+            "- 镜头数量和视频总时长需要满足 pacing 组件要求，不可偷懒。如pacing组件未要求镜头数量，则至少 16 个镜头，时长2-3分钟",
             "- 只能输出合法 JSON object",
         ]
         return "\n".join(parts)
@@ -317,6 +319,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         topic_description: str,
         render_engine: str,
         rejection_context: dict | None = None,
+        previous_scenes: list[dict] | None = None,
         narrative_context: list[dict] | None = None,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
@@ -333,9 +336,14 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "render_engine": render_engine,
             "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
         }
-        if rejection_context:
+        if rejection_context and previous_scenes:
             user_payload["rejection_context"] = rejection_context
-            user_note = "（注意：这是一次重新生成，请参考 rejection_context 中的驳回原因修正叙事结构）"
+            user_payload["previous_scenes"] = previous_scenes
+            user_note = (
+                "（注意：这是一次重新生成，previous_scenes 是上一版被驳回的完整叙事脚本，"
+                "请在其基础上根据 rejection_context 中的驳回原因做针对性修改，"
+                "不要抛弃未被指出问题的部分，仅重写需要修正之处）"
+            )
         else:
             user_note = ""
 
@@ -438,6 +446,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
         rejection_context: dict | None = None,
+        previous_code_scenes: list[dict] | None = None,
     ) -> CodeGenerationResult:
         system_prompt = self._build_code_system_prompt(
             render_engine=render_engine,
@@ -450,7 +459,15 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         }
         if rejection_context:
             user_payload["rejection_context"] = rejection_context
-            user_note = "（注意：这是一次重新生成，请优先修正 rejection_context 中标注的代码问题，并参考相关叙事问题）"
+            if previous_code_scenes:
+                user_payload["previous_code_scenes"] = previous_code_scenes
+                user_note = (
+                    "（注意：这是一次重新生成，previous_code_scenes 是上一版被驳回的完整渲染代码（含每个镜头的 code），"
+                    "请在其基础上根据 rejection_context 中标注的问题做针对性修改，"
+                    "未被指出问题的镜头代码应尽量保留，仅重写需要修正之处）"
+                )
+            else:
+                user_note = "（注意：这是一次重新生成，请优先修正 rejection_context 中标注的代码问题，并参考相关叙事问题）"
         else:
             user_note = ""
         content = await self._complete(

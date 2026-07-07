@@ -102,6 +102,11 @@ async def submit_narrative_task(project_id: str) -> None:
             .order_by(desc(ProjectEvent.created_at))
         ).scalars().first()
         rejection_context = rejection_event.payload if rejection_event else None
+        previous_scenes = None
+        if rejection_context and project.current_narrative_version_id:
+            previous_narrative = db.get(NarrativeVersion, project.current_narrative_version_id)
+            if previous_narrative is not None:
+                previous_scenes = previous_narrative.scenes
 
         style_components, prompt_snapshot = build_prompt_snapshot(db, project)
 
@@ -116,6 +121,7 @@ async def submit_narrative_task(project_id: str) -> None:
                 "render_engine": project.render_engine,
                 "aspect_ratio": project.aspect_ratio,
                 "rejection_context": rejection_context,
+                "previous_scenes": previous_scenes,
                 "narrative_context": project.narrative_context or [],
                 "style_components": style_components,
                 "prompt_snapshot": prompt_snapshot,
@@ -153,6 +159,11 @@ async def submit_code_task(project_id: str) -> None:
             .order_by(desc(ProjectEvent.created_at))
         ).scalars().first()
         rejection_context = rejection_event.payload if rejection_event else None
+        previous_code_scenes = None
+        if rejection_context and project.current_code_version_id:
+            previous_code_version = db.get(CodeVersion, project.current_code_version_id)
+            if previous_code_version is not None:
+                previous_code_scenes = previous_code_version.scenes
 
         task = WorkerTask(
             project_id=project.id,
@@ -165,6 +176,7 @@ async def submit_code_task(project_id: str) -> None:
                 "style_components": style_components,
                 "prompt_snapshot": prompt_snapshot,
                 "rejection_context": rejection_context,
+                "previous_code_scenes": previous_code_scenes,
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="code_generated",

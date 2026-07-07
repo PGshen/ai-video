@@ -71,6 +71,7 @@ class NarrativeWorker(BaseWorker):
         render_engine = payload.get("render_engine", "manim")
         aspect_ratio = payload.get("aspect_ratio", "landscape")
         rejection_context = payload.get("rejection_context")
+        previous_scenes = payload.get("previous_scenes")
         narrative_context = payload.get("narrative_context") or []
         style_components: dict[str, str] = payload.get("style_components") or {}
         prompt_snapshot: dict = payload.get("prompt_snapshot") or {}
@@ -93,6 +94,7 @@ class NarrativeWorker(BaseWorker):
             topic_description=topic_description,
             render_engine=render_engine,
             rejection_context=rejection_context,
+            previous_scenes=previous_scenes,
             narrative_context=narrative_context,
             style_components=style_components,
             aspect_ratio=aspect_ratio,

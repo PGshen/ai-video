@@ -11,8 +11,8 @@ const navItems = [
 
 export default function Layout() {
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-48 border-r bg-muted/40 flex flex-col p-4 gap-2">
+    <div className="flex h-screen overflow-hidden">
+      <aside className="flex w-48 shrink-0 flex-col gap-2 overflow-y-auto border-r bg-muted/40 p-4">
         <div className="font-bold text-lg mb-4">AI 视频工厂</div>
         {navItems.map((item) => (
           <NavLink
@@ -31,7 +31,7 @@ export default function Layout() {
           </NavLink>
         ))}
       </aside>
-      <main className="flex-1">
+      <main className="min-w-0 flex-1 overflow-y-auto">
         <Outlet />
       </main>
     </div>

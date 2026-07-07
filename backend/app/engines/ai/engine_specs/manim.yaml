@@ -45,6 +45,18 @@ narrative_hint: |
      金黄，随后其下方淡入短标注，右侧对应的柱形同步生长到相应高度"
 
 code_prompt: |
+  【Manim 版本】
+  当前渲染环境使用 Manim Community v0.20.1，一律按此版本的 API 生成代码，不要使用其他版本
+  （尤其是网上常见的旧版教程/ManimGL）中存在但本版本已不存在的参数或方法。
+
+  【高频报错点——生成代码前必须自查】
+  - VMobject/Arrow/Line 等不支持 set_stroke(dash_length=..., dashed_ratio=...)；
+    这两个关键字在 v0.20.1 中不存在。画虚线请改用 DashedLine(start, end, dash_length=...)
+    或 DashedVMobject(some_vmobject, num_dashes=...) 包装已有对象，不要对 set_stroke 传这些参数
+  - Sector(...) 构造时只能传 outer_radius（以及可选 inner_radius/angle/start_angle），
+    禁止再额外传入会与内部实现冲突的重复关键字；如需要环形扇形用 AnnularSector(inner_radius=, outer_radius=)，
+    不要同时通过 Sector 再传一次 outer_radius 类的参数导致 "got multiple values for keyword argument"
+
   【Manim 代码规范】
 
   渲染引擎已生成外层结构（from manim import *、Scene 类定义、construct() 等），code 字段只写 construct() 方法体内的代码片段：

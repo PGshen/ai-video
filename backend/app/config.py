@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     TEMPORAL_TASK_QUEUE: str = "video-production"
     API_KEY: str = "dev-api-key-change-in-prod"
     MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
+    MINIO_PUBLIC_SECURE: bool = False
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     ANTHROPIC_API_KEY: str = ""

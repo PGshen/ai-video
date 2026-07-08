@@ -40,7 +40,18 @@ def download_to_file(key: str, local_path: str) -> None:
 
 
 def get_presigned_url(key: str, expires_seconds: int = 3600) -> str:
-    client = _get_client()
+    # Signed against the publicly reachable endpoint (e.g. ai-video.zero-zero.cc) rather than
+    # MINIO_ENDPOINT (e.g. minio:9000), which only resolves inside the Docker network.
+    # region is pinned explicitly because presigned_get_object otherwise calls GetBucketLocation
+    # against this same endpoint to discover it — a real network request the container can't
+    # make against the public endpoint (only the internal one is reachable from here).
+    client = Minio(
+        settings.MINIO_PUBLIC_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=settings.MINIO_PUBLIC_SECURE,
+        region="us-east-1",
+    )
     return client.presigned_get_object(
         bucket_name=settings.MINIO_BUCKET,
         object_name=key,

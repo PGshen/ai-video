@@ -92,7 +92,9 @@ cp backend/.env.example backend/.env
 | `TEMPORAL_ADDRESS` | `localhost:7233` | Temporal 服务地址 |
 | `TEMPORAL_TASK_QUEUE` | `video-production` | Temporal Task Queue |
 | `API_KEY` | `dev-api-key-change-in-prod` | 后端 API Key |
-| `MINIO_ENDPOINT` | `localhost:9000` | MinIO/S3 Endpoint |
+| `MINIO_ENDPOINT` | `localhost:9000` | MinIO/S3 Endpoint（容器内部访问，docker-compose 会覆盖为 `minio:9000`） |
+| `MINIO_PUBLIC_ENDPOINT` | `localhost:9000` | 生成预签名 URL 用，必须是浏览器可访问的地址（生产环境填 nginx 反代域名） |
+| `MINIO_PUBLIC_SECURE` | `false` | 预签名 URL 是否用 https，生产环境经 nginx 反代时应设为 `true` |
 | `AI_PROVIDER` | `deepseek` | 当前默认 AI Provider |
 | `TTS_ENGINE` | `volcengine` | 当前默认 TTS 引擎 |
 | `REMOTION_TEMPLATE_DIR` | `remotion-template` | Remotion 模板目录 |
@@ -107,6 +109,34 @@ cp frontend/.env.example frontend/.env
 VITE_API_BASE_URL=http://localhost:8000
 VITE_API_KEY=dev-api-key-change-in-prod
 ```
+
+## 本地开发与生产容器部署的差异
+
+本项目本地用 `docker-compose` 起一套（服务名互相直连），生产环境通常还会在前面挂一层 nginx 做域名反代，两者在几个地方容易踩坑：
+
+### MinIO 预签名 URL：容器内网地址 vs 浏览器可访问地址
+
+- `MINIO_ENDPOINT`：backend/worker 容器用它直连 MinIO 做实际的上传/下载。`docker-compose.yml` 会把它覆盖为容器网络里的服务名 `minio:9000`——这个名字宿主机和浏览器都解析不了，是正常现象，不用改。
+- `MINIO_PUBLIC_ENDPOINT` / `MINIO_PUBLIC_SECURE`：只用于生成预签名 URL（`GET /api/projects/:id/video-url` 等），必须填**浏览器能访问到的地址**：
+  - 本地开发：`localhost:9000`，`MINIO_PUBLIC_SECURE=false`。
+  - 生产部署：nginx 反代出去的公网域名（例如 `ai-video-s3.zero-zero.cc`），`MINIO_PUBLIC_SECURE=true`。需要额外给这个域名建一条 nginx server block 反代到 MinIO 的 9000 端口，并在 DNS 加一条记录指向服务器公网 IP，否则前端拿到的视频/音频链接在浏览器里打不开。
+- `backend/app/storage.py` 生成预签名 URL 时显式传了 `region="us-east-1"`：MinIO SDK 如果不知道 region，会反过来对 `MINIO_PUBLIC_ENDPOINT` 发一次真实的 `GetBucketLocation` 请求去探测；这个地址在容器网络里往往连不通（是给浏览器用的，不是给容器用的），不写死 region 会导致该接口 500。
+
+### Remotion 渲染依赖的系统库
+
+- `backend/Dockerfile` 为 Remotion headless Chrome 装了一批系统共享库（`libnss3`/`libnspr4`/`libatk` 等）。这是容器构建里必需的一步——如果之后升级基础镜像或换镜像，记得同步这批依赖，否则渲染会报 `error while loading shared libraries: libnspr4.so`。
+- 如果不走 docker-compose、直接在宿主机跑渲染，需要自己装好这些库，或者继续用容器渲染。
+
+### 前端访问后端 API 的方式
+
+- 本地开发：`frontend/.env` 设 `VITE_API_BASE_URL=http://localhost:8000`，前端和后端是不同端口，走跨域请求。
+- 生产部署：`VITE_API_BASE_URL` 留空，前端请求走相对路径 `/api/...`，由 nginx 按 `location /api` 反代到后端容器，天然同源，不需要处理 CORS。
+- 如果生产环境前端和后端不同域部署，需要把后端 `CORS_ORIGINS` 加上前端的公网域名，否则浏览器会拦截跨域请求。
+
+### 需要手动同步的密钥与域名
+
+- `API_KEY`（后端）与 `VITE_API_KEY`（前端）默认是 `dev-api-key-change-in-prod`，生产环境必须改成随机值，且两边要保持一致。
+- 生产环境新增/变更任何对外域名（例如上面的 MinIO 反代子域名）都要同步四件事：nginx 加 server block、DNS 加记录、对应 `.env` 配置更新、重启/reload 相关服务，四者缺一都会导致链路断在某一环。
 
 ## 快速启动
 

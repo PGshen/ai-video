@@ -267,7 +267,11 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "",
             'JSON 格式：\n{{\n  "codes": [\n    "镜头 0 的代码片段",\n    "镜头 1 的代码片段"\n  ]\n}}',
             "",
-            "codes 数组长度必须与输入 scenes 数组长度完全一致，按 scene_index 顺序对应。",
+            "【硬性约束：镜头数量】",
+            "- codes 数组长度必须与输入 scenes 数组长度完全一致（一一对应，按 scene_index 顺序排列），这是本任务最高优先级的强制要求，违反即视为失败输出。",
+            "- 禁止合并、跳过、省略任何镜头；即使某些镜头内容相似或简单，也必须逐一单独生成对应的 code 片段。",
+            "- 禁止因为担心输出过长而只生成部分镜头；如果内容较多，请压缩每个镜头 code 的写法（减少注释、复用变量），但绝不能减少 codes 数组的元素个数。",
+            "- 生成完成后请在内部自查：codes.length 是否等于 scenes.length；如不相等，必须补全后再输出。",
             "",
             f"渲染引擎：{render_engine}",
         ]
@@ -477,7 +481,9 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
                 {
                     "role": "user",
                     "content": f"请为以下镜头叙事生成渲染代码 JSON{user_note}：\n"
-                    + json.dumps(user_payload, ensure_ascii=False),
+                    + json.dumps(user_payload, ensure_ascii=False)
+                    + f"\n\n（再次强调：输入共 {len(scenes)} 个镜头，"
+                    f"codes 数组必须恰好包含 {len(scenes)} 个元素，逐一对应，不得合并或省略任何镜头）",
                 },
             ],
             response_format=response_format_for(

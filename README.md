@@ -1,0 +1,322 @@
+# AI 知识视频生产工作流平台
+
+面向自媒体创作者的 AI 驱动知识视频端到端生产工作流系统。平台把「选题发现 -> 叙事生成与审核 -> 代码生成与审核 -> TTS 与视频渲染 -> 成片审核 -> 发布与数据回流」组织为可追溯、可重试、带人工闸门的持久化工作流。
+
+本项目当前处于 Sprint 2/3 演进阶段：基础设施、选题池、项目状态机、叙事生成、代码生成、内容审核、AI 模型配置、风格库、调用记录和 Remotion/Manim 渲染能力已具备骨架或实现。
+
+## 核心特性
+
+- 选题池管理：手动录入、AI 头脑风暴、研究资料沉淀、四维评分与状态流转。
+- 视频项目状态机：以 Temporal Workflow 为权威状态源，数据库状态用于前端快速查询。
+- 分阶段内容生产：先生成叙事版本并审核，再生成渲染代码并审核。
+- 镜头级结构化内容：视频以 `scenes[]` 组织，每个镜头包含旁白、画面描述、代码、节拍和时长信息。
+- 事实核查表：关键论断附带来源、置信度、假设条件、争议点和审核结论。
+- 可插拔引擎：AI Provider、TTS Engine、Render Engine 均通过接口抽象接入。
+- 人工审核闸门：`narrative_review`、`code_review`、`video_review` 三道闸门不可跳过。
+- 产物存储与回放：音频、视频和渲染产物通过 MinIO/S3 管理。
+- 运营配置：支持 AI 模型配置、Prompt 组件、风格模板、AI 调用记录与成本追踪。
+
+## 技术栈
+
+| 层级 | 技术 |
+| --- | --- |
+| 前端 | React 19、TypeScript、Vite、Tailwind CSS v4、shadcn/ui、TanStack Query |
+| 后端 | Python 3.12、FastAPI、SQLAlchemy、Alembic、Pydantic |
+| 工作流 | Temporal Python SDK |
+| 数据库 | PostgreSQL 16 |
+| 对象存储 | MinIO / S3 |
+| AI | DeepSeek、OpenRouter、Gemini、Doubao 等可插拔 Provider |
+| TTS | Volcengine TTS，可扩展其他引擎 |
+| 渲染 | Manim、Remotion |
+
+## 目录结构
+
+```text
+.
+├── backend/                 # FastAPI 后端
+│   ├── app/
+│   │   ├── api/             # 路由层
+│   │   ├── models/          # SQLAlchemy ORM 模型
+│   │   ├── schemas/         # Pydantic Schema
+│   │   ├── engines/         # AI / TTS / Render 可插拔引擎
+│   │   ├── services/        # 业务服务与校验逻辑
+│   │   ├── workflows/       # Temporal Workflow 与 Activities
+│   │   ├── workers/         # 叙事、代码、渲染 Worker
+│   │   ├── config.py        # 后端配置
+│   │   └── main.py          # FastAPI 入口
+│   ├── alembic/             # 数据库迁移
+│   ├── tests/               # 后端测试
+│   └── sql/                 # 初始化 SQL
+├── frontend/                # React + Vite 前端
+│   └── src/
+│       ├── pages/           # 页面
+│       ├── components/      # 业务组件与 UI 组件
+│       ├── hooks/           # TanStack Query hooks
+│       ├── lib/             # API 与工具函数
+│       └── types/           # 前后端共享语义的 TS 类型
+├── remotion-template/       # Remotion 渲染模板
+├── temporal-config/         # Temporal 本地配置
+├── docs/                    # PRD、技术方案与迭代设计文档
+├── docker-compose.yml       # 本地基础设施
+└── Makefile                 # 常用开发命令
+```
+
+## 环境要求
+
+- Docker / Docker Compose
+- Python 3.12+
+- uv
+- Node.js 24+
+- pnpm 10+
+
+如果在 Codex 沙箱环境中运行命令，`PATH` 可能不包含 `uv` 和 `pnpm`，请使用绝对路径或显式注入 Node 路径：
+
+```bash
+/Users/peng/.local/bin/uv run pytest tests/ -v
+PATH="/Users/peng/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm build
+```
+
+## 环境变量
+
+后端配置文件位于 `backend/.env`，可从示例复制：
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+常用后端变量：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql+asyncpg://app:password@localhost:5432/video_workflow` | FastAPI 异步数据库连接 |
+| `DATABASE_SYNC_URL` | `postgresql+psycopg2://app:password@localhost:5432/video_workflow` | Worker 同步数据库连接 |
+| `TEMPORAL_ADDRESS` | `localhost:7233` | Temporal 服务地址 |
+| `TEMPORAL_TASK_QUEUE` | `video-production` | Temporal Task Queue |
+| `API_KEY` | `dev-api-key-change-in-prod` | 后端 API Key |
+| `MINIO_ENDPOINT` | `localhost:9000` | MinIO/S3 Endpoint |
+| `AI_PROVIDER` | `deepseek` | 当前默认 AI Provider |
+| `TTS_ENGINE` | `volcengine` | 当前默认 TTS 引擎 |
+| `REMOTION_TEMPLATE_DIR` | `remotion-template` | Remotion 模板目录 |
+
+前端配置文件位于 `frontend/.env`，可从示例复制：
+
+```bash
+cp frontend/.env.example frontend/.env
+```
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+VITE_API_KEY=dev-api-key-change-in-prod
+```
+
+## 快速启动
+
+1. 启动基础设施：
+
+```bash
+make up
+```
+
+服务端口：
+
+| 服务 | 地址 |
+| --- | --- |
+| PostgreSQL | `localhost:5432` |
+| Temporal | `localhost:7233` |
+| Temporal UI | http://localhost:8080 |
+| MinIO API | `localhost:9000` |
+| MinIO Console | http://localhost:9001 |
+
+2. 安装依赖：
+
+```bash
+cd backend
+uv sync
+
+cd ../frontend
+pnpm install
+
+cd ../remotion-template
+pnpm install
+```
+
+3. 执行数据库迁移：
+
+```bash
+make migrate
+```
+
+如需导入初始化 SQL：
+
+```bash
+make init-db
+```
+
+4. 分别启动后端、Worker 和前端：
+
+```bash
+make dev-backend
+```
+
+```bash
+make dev-worker
+```
+
+```bash
+make dev-frontend
+```
+
+启动后访问：
+
+- 前端：http://localhost:5173
+- 后端健康检查：http://localhost:8000/health
+- OpenAPI 文档：http://localhost:8000/docs
+- Temporal UI：http://localhost:8080
+
+## 常用命令
+
+```bash
+# 启动 / 停止基础设施
+make up
+make down
+
+# 数据库迁移
+make migrate
+
+# 启动后端
+make dev-backend
+
+# 启动合并 Worker（Temporal Worker + 任务轮询 Worker）
+make dev-worker
+
+# 启动前端
+make dev-frontend
+
+# 后端测试
+cd backend
+uv run pytest tests/ -v
+
+# 前端构建
+cd frontend
+pnpm build
+
+# 前端 lint
+cd frontend
+pnpm lint
+```
+
+## 核心工作流
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft: 创建项目
+    draft --> narrative_generating: 触发叙事生成
+    narrative_generating --> narrative_review: 生成成功
+    narrative_generating --> narrative_failed: 生成失败
+    narrative_failed --> narrative_generating: 重试
+    narrative_review --> code_generating: 叙事审核通过
+    narrative_review --> narrative_generating: 驳回
+    code_generating --> code_review: 生成成功
+    code_generating --> code_failed: 生成失败
+    code_failed --> code_generating: 重试
+    code_review --> video_generating: 代码审核通过
+    code_review --> code_generating: 驳回代码
+    code_review --> narrative_generating: 驳回叙事
+    video_generating --> video_review: 渲染完成
+    video_generating --> video_failed: 渲染失败
+    video_failed --> code_review: 退回修复
+    video_review --> published: 终审通过
+    video_review --> code_review: 驳回代码
+    video_review --> narrative_review: 驳回叙事
+    draft --> abandoned: 废弃
+    narrative_review --> abandoned: 废弃
+    code_review --> abandoned: 废弃
+    video_review --> abandoned: 废弃
+    published --> [*]
+    abandoned --> [*]
+```
+
+### 异步任务模式
+
+耗时任务统一采用「Temporal Workflow + `worker_tasks` 表 + Worker 轮询 + Signal 回调」模式：
+
+1. Workflow 进入生成或渲染阶段。
+2. Activity 创建一条 `worker_tasks` 记录并返回。
+3. Workflow 挂起等待 Signal。
+4. Worker 轮询 `pending` 任务，执行 AI 生成、TTS 或渲染。
+5. Worker 回写结果，并向 Workflow 发送完成 Signal。
+6. Workflow 被唤醒，推进到下一个状态或失败重试。
+
+## 主要页面
+
+| 路径 | 说明 |
+| --- | --- |
+| `/topics` | 选题池、AI 头脑风暴、研究资料 |
+| `/projects` | 视频项目列表 |
+| `/projects/:id` | 项目详情、叙事审核、代码审核、视频审核 |
+| `/projects/:id/performance` | 发布表现回流 |
+| `/style-library` | 风格模板与 Prompt 组件 |
+| `/ai-model-settings` | AI Provider、模型与业务场景配置 |
+| `/ai-calls` | AI 调用记录、耗时和成本 |
+
+## API 概览
+
+所有业务 API 默认需要 `X-API-Key` 请求头。
+
+| 前缀 | 说明 |
+| --- | --- |
+| `/api/topics` | 选题 CRUD、AI 头脑风暴、选题研究 |
+| `/api/projects` | 项目 CRUD、版本读取、审核、重置、视频 URL、表现回流 |
+| `/api/worker-tasks` | Worker 任务查询 |
+| `/api/style-templates` | 风格模板管理 |
+| `/api/prompt-components` | Prompt 组件管理与辅助生成 |
+| `/api/ai-model-settings` | AI Provider、模型、业务模型配置 |
+| `/api/ai-call-records` | AI 调用记录查询 |
+
+## 数据与架构约束
+
+- 不使用数据库外键约束，表间关联由应用层维护，`*_id` 字段仅表达关联意图。
+- Temporal Workflow 是项目状态权威来源，`video_projects.status` 是给前端查询用的镜像字段。
+- 镜头是最小内容原子单位，但渲染时必须整体提交，因为镜头间可能存在代码依赖。
+- 三道人工审核闸门不可跳过：叙事审核、代码审核、视频审核。
+- 审核驳回必须带结构化原因，系统按驳回类型路由到叙事重写、代码重写、代码修复或废弃。
+- Tailwind v4 是当前前端的预期配置方式，通过 `frontend/src/index.css` 中的 `@import "tailwindcss"` 启用，不需要 `tailwind.config.js`。
+
+## 测试
+
+后端测试：
+
+```bash
+cd backend
+uv run pytest tests/ -v
+```
+
+按模块运行：
+
+```bash
+cd backend
+uv run pytest tests/test_projects.py -v
+uv run pytest tests/test_workflow.py -v
+uv run pytest tests/test_remotion_render_engine.py -v
+```
+
+前端构建检查：
+
+```bash
+cd frontend
+pnpm build
+```
+
+## 文档
+
+- [产品需求文档](docs/PRD_产品需求文档.md)
+- [技术实现方案](docs/TECH_技术实现方案.md)
+- [迭代设计与计划](docs/superpowers/)
+
+## 开发提示
+
+- 后端 `.env` 从 `backend/.env` 读取，前端 `.env` 从 `frontend/.env` 读取。
+- `make dev-worker` 启动的是开发用合并 Worker，会同时运行 Temporal Worker、Narrative Worker、Code Worker 和 Render Worker。
+- Remotion 渲染依赖 `remotion-template/node_modules`，首次渲染前需要在 `remotion-template/` 执行 `pnpm install`。
+- 本地 MinIO 默认账号密码为 `minioadmin` / `minioadmin`。
+- 如果更换 `API_KEY`，需要同步更新 `frontend/.env` 的 `VITE_API_KEY`。

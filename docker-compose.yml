@@ -102,9 +102,14 @@ services:
       DATABASE_SYNC_URL: postgresql+psycopg2://app:${DB_PASSWORD:-password}@postgres:5432/video_workflow
       TEMPORAL_ADDRESS: temporal:7233
       MINIO_ENDPOINT: minio:9000
+      REMOTION_TEMPLATE_DIR: /remotion-template
+      npm_config_store_dir: /pnpm-store
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv
+      - ./remotion-template:/remotion-template
+      - remotion_node_modules:/remotion-template/node_modules
+      - remotion_pnpm_store:/pnpm-store
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,7 +117,7 @@ services:
         condition: service_started
       minio:
         condition: service_started
-    command: sh -c "uv sync --frozen && uv run python -m app.workers.combined_worker"
+    command: sh -c "cd /remotion-template && pnpm install && cd /app && uv sync --frozen && uv run python -m app.workers.combined_worker"
 
 volumes:
   pgdata:
@@ -120,3 +125,5 @@ volumes:
   frontend_node_modules:
   frontend_pnpm_store:
   backend_venv:
+  remotion_node_modules:
+  remotion_pnpm_store:

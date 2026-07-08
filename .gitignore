@@ -12,6 +12,10 @@ dist/
 node_modules/
 dist/
 .env.local
+.pnpm-store/
+
+# Crash dumps
+core.[0-9]*
 
 # OS
 .DS_Store

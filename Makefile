@@ -11,16 +11,16 @@ down:
 	docker-compose down
 
 migrate:
-	cd backend && uv run alembic upgrade head
+	docker-compose run --rm backend sh -c "uv sync --frozen && uv run alembic upgrade head"
 
 init-db: up
 	docker-compose exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) -v ON_ERROR_STOP=1 < $(INIT_SQL)
 
 dev-backend:
-	cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	docker-compose up backend
 
 dev-worker:
-	cd backend && uv run python -m app.workers.combined_worker
+	docker-compose up worker
 
 dev-frontend:
-	cd frontend && pnpm dev
+	docker-compose up frontend

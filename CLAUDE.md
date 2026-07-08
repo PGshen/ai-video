@@ -6,21 +6,32 @@
 
 ## 快速启动
 
+`backend`（uvicorn --reload）、`worker`、`frontend`（vite）都是 `docker-compose.yml` 里的常规服务，源码通过 volume 挂载、容器内热重载，不需要在宿主机安装 Python / Node。
+
 ```bash
-# 1. 启动基础设施（postgres / temporal / minio）
+# 一条命令启动全部服务：postgres / temporal / minio / backend / worker / frontend
 make up
 
-# 2. 数据库迁移
+# 首次启动或有新迁移时执行
 make migrate
+```
 
-# 3. 启动后端（新终端）
-make dev-backend   # → http://localhost:8000
+启动后访问：
 
-# 4. 启动 Worker（新终端）
-make dev-worker
+- 后端 → http://localhost:8000 （OpenAPI: `/docs`）
+- 前端 → http://localhost:5173
+- Temporal UI → http://localhost:8080
 
-# 5. 启动前端（新终端）
-make dev-frontend  # → http://localhost:5173
+只想在前台跟踪某一个服务的日志（Ctrl-C 只会停掉这一个，不影响其它已在后台运行的服务）：
+
+```bash
+make dev-backend   # 或 make dev-worker / make dev-frontend
+```
+
+停止全部服务：
+
+```bash
+make down
 ```
 
 ## 目录结构
@@ -76,23 +87,33 @@ frontend/         React + Vite 前端
 ### BaseWorker `db.merge(task)` 问题（Sprint 2 修复）
 `backend/app/workers/base_worker.py` 中 `BaseWorker._persist_task()` 使用了 `db.merge(task)`（SQLAlchemy Session merge）。在 Sprint 0 阶段 Worker 未真正连接数据库，该行为不影响当前测试。Sprint 2 真正接入数据库写入时需要改为 `db.add(task)` + `db.flush()` 或改用 upsert 语义，否则在无主键的新对象上 merge 行为未定义。
 
+### backend/worker/frontend 容器化（老旧 glibc 宿主机兼容）
+部分部署环境（如 CentOS 7，glibc 2.17）装不了 Node ≥18 或较新的 Python 官方发行版所需的编译产物（manim 的 `glcontext`/`moderngl` 等原生扩展依赖 glibc ≥2.28）。因此 `backend`、`worker`、`frontend` 都已做成 `docker-compose.yml` 里的常规服务（`backend/Dockerfile` 基于 `python:3.12-slim`，内置 manim 所需的 cairo/pango/ffmpeg/texlive；`frontend` 直接用官方 `node:22-slim` 镜像），源码用 volume 挂载、依赖装在容器内的 `.venv` / `node_modules` 卷里。宿主机不再需要安装 Python 3.12 / Node 24 / uv / pnpm 即可开发。如果宿主机 glibc 较新（如 Mac / 较新的 Linux 发行版），仍可选择直接在宿主机跑 `uv run` / `pnpm`，两种方式不冲突。
+
 ## 环境变量
 
 后端从 `backend/.env` 读取（参考 `backend/.env.example`）。
 前端从 `frontend/.env` 读取（参考 `frontend/.env.example`）。
 
-## 命令行工具路径（沙箱环境）
+## 命令行工具路径
 
-Claude Code 沙箱的 `PATH` 不包含 `~/.local/bin` 和 nvm shims，必须使用绝对路径：
+在容器化 `backend`/`worker`/`frontend` 之后，日常开发和测试优先通过 `docker-compose run` 执行，宿主机是否装了 `uv`/`pnpm`/`node` 都无所谓：
+
+```bash
+docker-compose run --rm backend uv run pytest tests/ -v
+docker-compose run --rm backend uv run alembic upgrade head
+docker-compose run --rm frontend pnpm build
+docker-compose run --rm frontend pnpm lint
+```
+
+如果宿主机 glibc 较新、且本地已装好 `uv` / Node 24+ / pnpm（例如 Mac），也可以直接在宿主机跑，但 Claude Code 沙箱的 `PATH` 不包含 `~/.local/bin` 和 nvm shims，需要用绝对路径（路径以实际机器为准，下面是示例）：
 
 ```bash
 # Python / uv
-/Users/peng/.local/bin/uv run pytest tests/ -v
-/Users/peng/.local/bin/uv run python ...
+~/.local/bin/uv run pytest tests/ -v
 
 # Node / pnpm（需先把 node 加入 PATH）
-PATH="/Users/peng/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm build
-PATH="/Users/peng/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm install
+PATH="$HOME/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm build
 ```
 
 不要使用裸命令 `uv` / `pnpm` / `npm`，会返回 "command not found"。
@@ -100,8 +121,7 @@ PATH="/Users/peng/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm install
 ## 测试
 
 ```bash
-cd backend
-/Users/peng/.local/bin/uv run pytest tests/ -v
+docker-compose run --rm backend uv run pytest tests/ -v
 ```
 
 ## 当前 Sprint 状态

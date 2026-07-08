@@ -57,23 +57,22 @@
 ├── remotion-template/       # Remotion 渲染模板
 ├── temporal-config/         # Temporal 本地配置
 ├── docs/                    # PRD、技术方案与迭代设计文档
-├── docker-compose.yml       # 本地基础设施
+├── docker-compose.yml       # 本地基础设施 + backend/worker/frontend 容器
+├── backend/Dockerfile       # 后端/Worker 镜像（含 manim 系统依赖）
 └── Makefile                 # 常用开发命令
 ```
 
 ## 环境要求
 
 - Docker / Docker Compose
-- Python 3.12+
-- uv
-- Node.js 24+
-- pnpm 10+
 
-如果在 Codex 沙箱环境中运行命令，`PATH` 可能不包含 `uv` 和 `pnpm`，请使用绝对路径或显式注入 Node 路径：
+`backend`、`worker`、`frontend` 都是 `docker-compose.yml` 里的常规服务，依赖（Python 3.12 / uv / manim 的系统库、Node 22 / pnpm）都装在容器镜像和容器卷里，**宿主机不需要安装 Python / uv / Node / pnpm**。这也是为了兼容老旧 glibc 的宿主机（例如 CentOS 7）——较新版本的 Node 与部分 Python 原生扩展（manim 的 `glcontext`/`moderngl`）都要求 glibc ≥ 2.28，装不上。
+
+如果宿主机 glibc 较新（Mac、较新的 Linux 发行版）且已经装好 `uv` / Node 24+ / pnpm 10+，也可以不走容器、直接在宿主机跑 `uv run` / `pnpm` 命令，两种方式不冲突。在 Codex 沙箱环境中运行命令时，`PATH` 可能不包含 `uv` 和 `pnpm`，需要使用绝对路径或显式注入 Node 路径：
 
 ```bash
-/Users/peng/.local/bin/uv run pytest tests/ -v
-PATH="/Users/peng/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm build
+~/.local/bin/uv run pytest tests/ -v
+PATH="$HOME/.nvm/versions/node/v24.11.0/bin:$PATH" pnpm build
 ```
 
 ## 环境变量
@@ -111,7 +110,9 @@ VITE_API_KEY=dev-api-key-change-in-prod
 
 ## 快速启动
 
-1. 启动基础设施：
+`backend`（uvicorn --reload）、`worker`、`frontend`（vite）都是 `docker-compose.yml` 里的常规服务，源码通过 volume 挂载、容器内热重载；依赖（`uv sync` / `pnpm install`）在容器启动时自动执行并缓存到容器卷里，不需要在宿主机单独安装。
+
+1. 一条命令启动全部服务：
 
 ```bash
 make up
@@ -126,21 +127,10 @@ make up
 | Temporal UI | http://localhost:8080 |
 | MinIO API | `localhost:9000` |
 | MinIO Console | http://localhost:9001 |
+| 后端 | http://localhost:8000 |
+| 前端 | http://localhost:5173 |
 
-2. 安装依赖：
-
-```bash
-cd backend
-uv sync
-
-cd ../frontend
-pnpm install
-
-cd ../remotion-template
-pnpm install
-```
-
-3. 执行数据库迁移：
+2. 执行数据库迁移：
 
 ```bash
 make migrate
@@ -152,20 +142,6 @@ make migrate
 make init-db
 ```
 
-4. 分别启动后端、Worker 和前端：
-
-```bash
-make dev-backend
-```
-
-```bash
-make dev-worker
-```
-
-```bash
-make dev-frontend
-```
-
 启动后访问：
 
 - 前端：http://localhost:5173
@@ -173,36 +149,42 @@ make dev-frontend
 - OpenAPI 文档：http://localhost:8000/docs
 - Temporal UI：http://localhost:8080
 
+只想在前台跟踪某一个服务的日志（Ctrl-C 只会停掉这一个，不影响其它已在后台运行的服务）：
+
+```bash
+make dev-backend   # 或 make dev-worker / make dev-frontend
+```
+
+Remotion 渲染模板未容器化，仍需手动安装一次依赖：
+
+```bash
+cd remotion-template
+pnpm install
+```
+
 ## 常用命令
 
 ```bash
-# 启动 / 停止基础设施
+# 启动 / 停止全部服务（postgres / temporal / minio / backend / worker / frontend）
 make up
 make down
 
 # 数据库迁移
 make migrate
 
-# 启动后端
+# 前台跟踪单个服务日志
 make dev-backend
-
-# 启动合并 Worker（Temporal Worker + 任务轮询 Worker）
 make dev-worker
-
-# 启动前端
 make dev-frontend
 
 # 后端测试
-cd backend
-uv run pytest tests/ -v
+docker-compose run --rm backend uv run pytest tests/ -v
 
 # 前端构建
-cd frontend
-pnpm build
+docker-compose run --rm frontend pnpm build
 
 # 前端 lint
-cd frontend
-pnpm lint
+docker-compose run --rm frontend pnpm lint
 ```
 
 ## 核心工作流
@@ -287,24 +269,21 @@ stateDiagram-v2
 后端测试：
 
 ```bash
-cd backend
-uv run pytest tests/ -v
+docker-compose run --rm backend uv run pytest tests/ -v
 ```
 
 按模块运行：
 
 ```bash
-cd backend
-uv run pytest tests/test_projects.py -v
-uv run pytest tests/test_workflow.py -v
-uv run pytest tests/test_remotion_render_engine.py -v
+docker-compose run --rm backend uv run pytest tests/test_projects.py -v
+docker-compose run --rm backend uv run pytest tests/test_workflow.py -v
+docker-compose run --rm backend uv run pytest tests/test_remotion_render_engine.py -v
 ```
 
 前端构建检查：
 
 ```bash
-cd frontend
-pnpm build
+docker-compose run --rm frontend pnpm build
 ```
 
 ## 文档
@@ -320,3 +299,5 @@ pnpm build
 - Remotion 渲染依赖 `remotion-template/node_modules`，首次渲染前需要在 `remotion-template/` 执行 `pnpm install`。
 - 本地 MinIO 默认账号密码为 `minioadmin` / `minioadmin`。
 - 如果更换 `API_KEY`，需要同步更新 `frontend/.env` 的 `VITE_API_KEY`。
+- `backend`/`worker` 容器共用同一个 `backend_venv` 卷，`frontend` 容器使用 `frontend_node_modules` 卷；改了 `pyproject.toml`/`package.json` 后重新 `make up` 会自动 `uv sync`/`pnpm install`，一般不需要手动清卷。
+- `docker-compose.yml` 里 `backend`/`worker` 的 `DATABASE_URL`/`TEMPORAL_ADDRESS`/`MINIO_ENDPOINT` 通过 `environment:` 覆盖为容器网络里的服务名（`postgres`/`temporal`/`minio`），会比 `backend/.env` 里写的 `localhost` 优先生效。

@@ -315,7 +315,7 @@ def test_list_project_events(client, auth_headers, mock_db):
     assert response.json()["items"] == []
 
 
-def test_projects_require_api_key(client):
+def test_projects_require_login(client):
     response = client.get("/api/projects")
     assert response.status_code == 401
 

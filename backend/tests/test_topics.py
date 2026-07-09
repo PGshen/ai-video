@@ -162,7 +162,7 @@ def test_brainstorm_returns_candidates(client, auth_headers):
     assert len(data["candidates"]) == 3
 
 
-def test_topics_require_api_key(client):
+def test_topics_require_login(client):
     response = client.get("/api/topics")
     assert response.status_code == 401
 

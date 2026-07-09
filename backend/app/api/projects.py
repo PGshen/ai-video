@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from temporalio.client import Client as TemporalClient, WorkflowExecutionStatus
-from app.auth import verify_api_key
+from app.auth import require_active_user
 from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
@@ -64,7 +64,7 @@ async def list_projects(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     stmt = select(VideoProject)
     if status:
@@ -123,7 +123,7 @@ async def delete_project(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
     temporal: TemporalClient = Depends(get_temporal_client),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:
@@ -162,7 +162,7 @@ async def create_project(
     body: ProjectCreate,
     db: AsyncSession = Depends(get_async_session),
     temporal: TemporalClient = Depends(get_temporal_client),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     import uuid as _uuid
     topic = await db.get(Topic, body.topic_id)
@@ -210,7 +210,7 @@ async def create_project(
 async def get_project(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:
@@ -231,7 +231,7 @@ async def get_project(
 async def list_events(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     stmt = select(ProjectEvent).where(
         ProjectEvent.project_id == project_id
@@ -245,7 +245,7 @@ async def list_events(
 async def get_current_code(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:
@@ -263,7 +263,7 @@ async def repair_code(
     project_id: UUID,
     body: CodeRepairRequest,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:
@@ -311,7 +311,7 @@ async def repair_code(
 async def get_current_narrative(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:
@@ -348,7 +348,7 @@ async def get_current_narrative(
 async def list_narrative_versions(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     result = await db.execute(
         select(NarrativeVersion)
@@ -363,7 +363,7 @@ async def get_narrative_version(
     project_id: UUID,
     nv_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     nv = await db.get(NarrativeVersion, nv_id)
     if nv is None or nv.project_id != project_id:
@@ -375,7 +375,7 @@ async def get_narrative_version(
 async def list_code_versions(
     project_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     result = await db.execute(
         select(CodeVersion)
@@ -390,7 +390,7 @@ async def get_code_version(
     project_id: UUID,
     code_version_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     code_version = await db.get(CodeVersion, code_version_id)
     if code_version is None or code_version.project_id != project_id:
@@ -403,7 +403,7 @@ async def get_video_url(
     project_id: UUID,
     asset_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:
@@ -421,7 +421,7 @@ async def get_video_url(
 
 
 @router.post("/{project_id}/performance")
-async def record_performance(project_id: UUID, _=Depends(verify_api_key)):
+async def record_performance(project_id: UUID, _=Depends(require_active_user)):
     return {"status": "TODO", "endpoint": f"POST /api/projects/{project_id}/performance"}
 
 
@@ -448,7 +448,7 @@ async def regenerate_scene_tts(
     project_id: UUID,
     body: RegenerateTtsRequest,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:

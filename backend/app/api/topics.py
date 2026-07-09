@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.auth import verify_api_key
+from app.auth import require_active_user
 from app.db import get_async_session
 from app.engines.ai.factory import get_ai_provider
 from app.models.project import VideoProject
@@ -26,7 +26,7 @@ async def list_topics(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     stmt = select(Topic)
     if status:
@@ -50,7 +50,7 @@ async def list_topics(
 async def create_topic(
     body: TopicCreate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     topic = Topic(
         title=body.title,
@@ -71,7 +71,7 @@ async def create_topic(
 @router.post("/brainstorm", response_model=BrainstormResponse)
 async def brainstorm_topics(
     body: BrainstormRequest,
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     provider = get_ai_provider("topic_brainstorm")
     try:
@@ -86,7 +86,7 @@ async def update_topic(
     topic_id: UUID,
     body: TopicUpdate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     topic = await db.get(Topic, topic_id)
     if topic is None:
@@ -116,7 +116,7 @@ async def update_topic(
 async def delete_topic(
     topic_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     topic = await db.get(Topic, topic_id)
     if topic is None:
@@ -152,7 +152,7 @@ async def research_topic(
     topic_id: UUID,
     body: ResearchMessageRequest,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     topic = await db.get(Topic, topic_id)
     if topic is None:

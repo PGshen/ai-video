@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_api_key
+from app.auth import require_active_user
 from app.db import get_async_session
 from app.engines.ai.factory import BUSINESS_OPTIONS
 from app.models.ai_model_config import (
@@ -79,7 +79,7 @@ def _business_response(config: AIBusinessModelConfig) -> AIBusinessModelConfigRe
 @router.get("", response_model=AIModelSettingsResponse)
 async def get_model_settings(
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     providers = (
         await db.execute(select(AIModelProvider).order_by(AIModelProvider.created_at.desc()))
@@ -106,7 +106,7 @@ async def get_model_settings(
 async def create_provider(
     body: AIModelProviderCreate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     provider = AIModelProvider(
         id=uuid.uuid4(),
@@ -123,7 +123,7 @@ async def update_provider(
     provider_id: uuid.UUID,
     body: AIModelProviderUpdate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     provider = await db.get(AIModelProvider, provider_id)
     if provider is None:
@@ -144,7 +144,7 @@ async def update_provider(
 async def delete_provider(
     provider_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     provider = await db.get(AIModelProvider, provider_id)
     if provider is None:
@@ -168,7 +168,7 @@ async def delete_provider(
 async def create_model(
     body: AIProviderModelCreate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     provider = await db.get(AIModelProvider, body.provider_id)
     if provider is None:
@@ -186,7 +186,7 @@ async def update_model(
     model_id: uuid.UUID,
     body: AIProviderModelUpdate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     model = await db.get(AIProviderModel, model_id)
     if model is None:
@@ -210,7 +210,7 @@ async def update_model(
 async def delete_model(
     model_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     model = await db.get(AIProviderModel, model_id)
     if model is None:
@@ -235,7 +235,7 @@ async def set_business_config(
     business: str,
     body: AIBusinessModelConfigUpdate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     allowed = {key for key, _ in BUSINESS_OPTIONS}
     if business not in allowed:
@@ -278,7 +278,7 @@ async def set_business_config(
 async def delete_business_config(
     business: str,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     result = await db.execute(
         select(AIBusinessModelConfig).where(AIBusinessModelConfig.business == business)

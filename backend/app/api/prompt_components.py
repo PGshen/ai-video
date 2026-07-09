@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.auth import verify_api_key
+from app.auth import require_active_user
 from app.db import get_async_session
 from app.engines.ai.factory import get_ai_provider
 from app.models.prompt_component import PromptComponent
@@ -38,7 +38,7 @@ def _to_response(pc: PromptComponent) -> PromptComponentResponse:
 async def list_prompt_components(
     category: Optional[str] = None,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     stmt = select(PromptComponent).order_by(PromptComponent.is_builtin.desc(), PromptComponent.name)
     if category:
@@ -52,7 +52,7 @@ async def list_prompt_components(
 async def create_prompt_component(
     body: PromptComponentCreate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     pc = PromptComponent(
         id=uuid.uuid4(),
@@ -71,7 +71,7 @@ async def create_prompt_component(
 @router.post("/assist", response_model=StyleAssistantResponse)
 async def assist_prompt_component(
     body: StyleAssistantRequest,
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     provider = get_ai_provider("style_assistant")
     try:
@@ -104,7 +104,7 @@ async def update_prompt_component(
     component_id: uuid.UUID,
     body: PromptComponentUpdate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     pc = await db.get(PromptComponent, component_id)
     if pc is None:
@@ -128,7 +128,7 @@ async def update_prompt_component(
 async def delete_prompt_component(
     component_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     pc = await db.get(PromptComponent, component_id)
     if pc is None:
@@ -153,7 +153,7 @@ async def delete_prompt_component(
 async def duplicate_prompt_component(
     component_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     pc = await db.get(PromptComponent, component_id)
     if pc is None:

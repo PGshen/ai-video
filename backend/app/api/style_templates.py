@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_api_key
+from app.auth import require_active_user
 from app.db import get_async_session
 from app.models.prompt_component import PromptComponent
 from app.models.style_template import StyleTemplate
@@ -69,7 +69,7 @@ async def _validate_style_config(
 @router.get("", response_model=StyleTemplateListResponse)
 async def list_style_templates(
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     result = await db.execute(
         select(StyleTemplate).order_by(StyleTemplate.updated_at.desc())
@@ -84,7 +84,7 @@ async def list_style_templates(
 async def create_style_template(
     body: StyleTemplateCreate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     style_config = await _validate_style_config(db, body.style_config)
     template = StyleTemplate(
@@ -104,7 +104,7 @@ async def update_style_template(
     template_id: uuid.UUID,
     body: StyleTemplateUpdate,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     template = await db.get(StyleTemplate, template_id)
     if template is None:
@@ -124,7 +124,7 @@ async def update_style_template(
 async def delete_style_template(
     template_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     template = await db.get(StyleTemplate, template_id)
     if template is None:

@@ -35,7 +35,7 @@ backend/          Python FastAPI 后端
     workflows/    Temporal workflow + activities
     workers/      BaseWorker + CodeWorker + RenderWorker
     config.py     Pydantic settings（从 .env 读取）
-    auth.py       API Key 验证 Depends
+    auth.py       登录 Cookie 鉴权 Depends
     db.py         async engine（FastAPI）+ sync engine（Worker）
     main.py       FastAPI 应用入口
   alembic/        DB migrations
@@ -44,7 +44,7 @@ backend/          Python FastAPI 后端
 frontend/         React + Vite 前端
   src/
     types/        TypeScript 类型定义（与后端 schema 对应）
-    lib/api.ts    fetch 封装，自动注入 X-API-Key
+    lib/api.ts    fetch 封装，自动携带登录 Cookie
     hooks/        TanStack Query hooks
     pages/        页面组件
     components/   UI 组件
@@ -65,7 +65,7 @@ frontend/         React + Vite 前端
 |------|------|
 | Python 包管理 | uv |
 | 前端构建 | Vite 5 |
-| 鉴权 | X-API-Key 请求头（环境变量 API_KEY） |
+| 鉴权 | HttpOnly 登录 Cookie |
 | 异步任务 | Temporal（工作流）+ worker_tasks 表（任务轮询）|
 
 ## 已知偏差与注意事项

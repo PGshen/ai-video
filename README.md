@@ -91,7 +91,9 @@ cp backend/.env.example backend/.env
 | `DATABASE_SYNC_URL` | `postgresql+psycopg2://app:password@localhost:5432/video_workflow` | Worker 同步数据库连接 |
 | `TEMPORAL_ADDRESS` | `localhost:7233` | Temporal 服务地址 |
 | `TEMPORAL_TASK_QUEUE` | `video-production` | Temporal Task Queue |
-| `API_KEY` | `dev-api-key-change-in-prod` | 后端 API Key |
+| `AUTH_SECRET_KEY` | `dev-auth-secret-change-in-prod` | 登录 Cookie 签名密钥，生产环境必须替换 |
+| `AUTH_BOOTSTRAP_ADMIN_USERNAME` | `admin` | 首次启动自动创建管理员用户名（仅用户表为空时生效） |
+| `AUTH_BOOTSTRAP_ADMIN_PASSWORD` | `change-this-password` | 首次启动自动创建管理员密码，生产环境必须替换 |
 | `MINIO_ENDPOINT` | `localhost:9000` | MinIO/S3 Endpoint（容器内部访问，docker-compose 会覆盖为 `minio:9000`） |
 | `MINIO_PUBLIC_ENDPOINT` | `localhost:9000` | 生成预签名 URL 用，必须是浏览器可访问的地址（生产环境填 nginx 反代域名） |
 | `MINIO_PUBLIC_SECURE` | `false` | 预签名 URL 是否用 https，生产环境经 nginx 反代时应设为 `true` |
@@ -107,7 +109,6 @@ cp frontend/.env.example frontend/.env
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000
-VITE_API_KEY=dev-api-key-change-in-prod
 ```
 
 ## 本地开发与生产容器部署的差异
@@ -135,7 +136,8 @@ VITE_API_KEY=dev-api-key-change-in-prod
 
 ### 需要手动同步的密钥与域名
 
-- `API_KEY`（后端）与 `VITE_API_KEY`（前端）默认是 `dev-api-key-change-in-prod`，生产环境必须改成随机值，且两边要保持一致。
+- `AUTH_SECRET_KEY` 必须在生产环境改成随机长字符串；登录态由后端设置 HttpOnly Cookie，前端不再保存 API Key。
+- 首次部署时设置 `AUTH_BOOTSTRAP_ADMIN_USERNAME` / `AUTH_BOOTSTRAP_ADMIN_PASSWORD` 创建管理员；创建后建议清空 bootstrap 密码配置并重启。
 - 生产环境新增/变更任何对外域名（例如上面的 MinIO 反代子域名）都要同步四件事：nginx 加 server block、DNS 加记录、对应 `.env` 配置更新、重启/reload 相关服务，四者缺一都会导致链路断在某一环。
 
 ## 快速启动
@@ -263,13 +265,16 @@ stateDiagram-v2
 | `/style-library` | 风格模板与 Prompt 组件 |
 | `/ai-model-settings` | AI Provider、模型与业务场景配置 |
 | `/ai-calls` | AI 调用记录、耗时和成本 |
+| `/users` | 用户管理（管理员） |
 
 ## API 概览
 
-所有业务 API 默认需要 `X-API-Key` 请求头。
+除 `/health` 与 `/api/auth/login` 外，业务 API 默认需要登录 Cookie。登录成功后后端写入 HttpOnly Cookie，前端请求自动携带。
 
 | 前缀 | 说明 |
 | --- | --- |
+| `/api/auth` | 登录、退出、当前用户 |
+| `/api/users` | 用户管理（管理员） |
 | `/api/topics` | 选题 CRUD、AI 头脑风暴、选题研究 |
 | `/api/projects` | 项目 CRUD、版本读取、审核、重置、视频 URL、表现回流 |
 | `/api/worker-tasks` | Worker 任务查询 |
@@ -321,6 +326,6 @@ docker-compose run --rm frontend pnpm build
 - `make dev-worker` 启动的是开发用合并 Worker，会同时运行 Temporal Worker、Narrative Worker、Code Worker 和 Render Worker。
 - Remotion 渲染依赖 `remotion-template/node_modules`，`worker` 容器启动时会自动 `cd remotion-template && pnpm install`（依赖缓存在 `remotion_node_modules` 卷里），不需要在宿主机手动安装。
 - 本地 MinIO 默认账号密码为 `minioadmin` / `minioadmin`。
-- 如果更换 `API_KEY`，需要同步更新 `frontend/.env` 的 `VITE_API_KEY`。
+- 如果更换 `AUTH_SECRET_KEY`，现有登录 Cookie 会全部失效，用户需要重新登录。
 - `backend`/`worker` 容器共用同一个 `backend_venv` 卷，`frontend` 容器使用 `frontend_node_modules` 卷；改了 `pyproject.toml`/`package.json` 后重新 `make up` 会自动 `uv sync`/`pnpm install`，一般不需要手动清卷。
 - `docker-compose.yml` 里 `backend`/`worker` 的 `DATABASE_URL`/`TEMPORAL_ADDRESS`/`MINIO_ENDPOINT` 通过 `environment:` 覆盖为容器网络里的服务名（`postgres`/`temporal`/`minio`），会比 `backend/.env` 里写的 `localhost` 优先生效。

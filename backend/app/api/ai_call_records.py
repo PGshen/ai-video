@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_api_key
+from app.auth import require_active_user
 from app.db import get_async_session
 from app.models.ai_call_record import AICallRecord
 from app.schemas.ai_call_record import (
@@ -78,7 +78,7 @@ async def list_ai_call_records(
     started_after: datetime | None = None,
     started_before: datetime | None = None,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     clauses = _filters(
         status, provider, business, model, started_after, started_before
@@ -133,7 +133,7 @@ async def list_ai_call_records(
 async def get_ai_call_record(
     record_id: UUID,
     db: AsyncSession = Depends(get_async_session),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     record = await db.get(AICallRecord, record_id)
     if record is None:

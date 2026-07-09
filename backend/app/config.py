@@ -6,7 +6,12 @@ class Settings(BaseSettings):
     DATABASE_SYNC_URL: str = "postgresql+psycopg2://app:password@localhost:5432/video_workflow"
     TEMPORAL_ADDRESS: str = "localhost:7233"
     TEMPORAL_TASK_QUEUE: str = "video-production"
-    API_KEY: str = "dev-api-key-change-in-prod"
+    AUTH_SECRET_KEY: str = "dev-auth-secret-change-in-prod"
+    AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    AUTH_COOKIE_NAME: str = "ai_video_session"
+    AUTH_COOKIE_SECURE: bool = False
+    AUTH_BOOTSTRAP_ADMIN_USERNAME: str = ""
+    AUTH_BOOTSTRAP_ADMIN_PASSWORD: str = ""
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
     MINIO_PUBLIC_SECURE: bool = False

@@ -7,7 +7,6 @@ import { ChatMessageMarkdown } from "@/components/ui/chat-message";
 import type { Topic, ResearchMessage } from "@/types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-const API_KEY = import.meta.env.VITE_API_KEY ?? "";
 
 interface ChatEntry {
   id: string;
@@ -115,12 +114,16 @@ export function ResearchChat({ topic, onSnippetSelect }: Props) {
     try {
       const res = await fetch(`${BASE_URL}/api/topics/${topic.id}/research`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": API_KEY,
         },
         body: JSON.stringify({ message, use_default_prompt: useDefaultPrompt }),
       });
+
+      if (res.status === 401) {
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      }
 
       if (!res.ok || !res.body) {
         setEntries((prev) =>

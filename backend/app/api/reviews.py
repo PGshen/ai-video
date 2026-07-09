@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from temporalio.client import Client as TemporalClient
-from app.auth import verify_api_key
+from app.auth import require_active_user
 from app.db import get_async_session
 from app.deps import get_temporal_client
 from app.models.project import VideoProject
@@ -28,7 +28,7 @@ async def submit_review(
     body: ReviewRequest,
     db: AsyncSession = Depends(get_async_session),
     temporal: TemporalClient = Depends(get_temporal_client),
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     project = await db.get(VideoProject, project_id)
     if project is None:
@@ -201,7 +201,7 @@ async def submit_review(
 @router.post("/{project_id}/reset")
 async def reset_project(
     project_id: UUID,
-    _=Depends(verify_api_key),
+    _=Depends(require_active_user),
 ):
     try:
         result = await run_in_threadpool(asyncio.run, reset_stuck_stage(str(project_id)))

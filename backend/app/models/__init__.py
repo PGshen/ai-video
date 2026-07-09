@@ -14,6 +14,7 @@ from app.models.ai_model_config import (
     AIProviderModel,
 )
 from app.models.style_template import StyleTemplate
+from app.models.user import User
 
 __all__ = [
     "NarrativeVersion",
@@ -30,4 +31,5 @@ __all__ = [
     "AIProviderModel",
     "AIBusinessModelConfig",
     "StyleTemplate",
+    "User",
 ]

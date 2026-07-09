@@ -1,4 +1,23 @@
 // ═══ 选题 ═══
+export interface CurrentUser {
+  id: string;
+  username: string;
+  displayName: string | null;
+  role: "admin" | "user";
+  isActive: boolean;
+}
+
+export interface ManagedUser extends CurrentUser {
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserListResponse {
+  items: ManagedUser[];
+  total: number;
+}
+
 export interface ResearchMessage {
   role: "user" | "assistant";
   content: string;

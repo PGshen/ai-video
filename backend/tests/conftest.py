@@ -5,6 +5,7 @@ from app.main import app
 from app.deps import get_temporal_client
 from app.db import get_async_session
 from app.config import settings
+from app.security import CurrentUser, create_access_token
 
 
 @pytest.fixture
@@ -48,4 +49,13 @@ def client(mock_db, mock_temporal):
 
 @pytest.fixture
 def auth_headers():
-    return {"X-API-Key": settings.API_KEY}
+    token = create_access_token(
+        CurrentUser(
+            id="00000000-0000-0000-0000-000000000001",
+            username="test-admin",
+            display_name="Test Admin",
+            role="admin",
+            is_active=True,
+        )
+    )
+    return {"Cookie": f"{settings.AUTH_COOKIE_NAME}={token}"}

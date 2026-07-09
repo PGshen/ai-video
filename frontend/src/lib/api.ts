@@ -1,5 +1,4 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-const API_KEY = import.meta.env.VITE_API_KEY ?? "";
 
 async function request<T>(
   method: string,
@@ -8,14 +7,17 @@ async function request<T>(
 ): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": API_KEY,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    }
     const errorBody = await response.json().catch(() => null);
     const detail =
       errorBody && typeof errorBody.detail === "string"

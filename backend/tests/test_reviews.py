@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 from app.config import settings
+from app.security import CurrentUser, create_access_token
 from app.workflows.activities import StageNotResettableError
 
 
@@ -31,7 +32,16 @@ def make_code_version():
 
 
 def _auth():
-    return {"X-API-Key": settings.API_KEY}
+    token = create_access_token(
+        CurrentUser(
+            id="00000000-0000-0000-0000-000000000001",
+            username="test-admin",
+            display_name="Test Admin",
+            role="admin",
+            is_active=True,
+        )
+    )
+    return {"Cookie": f"{settings.AUTH_COOKIE_NAME}={token}"}
 
 
 def test_review_with_verdicts_creates_new_version(client, mock_db, mock_temporal):

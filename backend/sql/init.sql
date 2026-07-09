@@ -165,6 +165,19 @@ CREATE TABLE IF NOT EXISTS public.topics (
 	research_data JSONB DEFAULT '[]'::jsonb NOT NULL, 
 	CONSTRAINT topics_pkey PRIMARY KEY (id)
 );
+CREATE TABLE IF NOT EXISTS public.users (
+	id UUID NOT NULL, 
+	username VARCHAR(80) NOT NULL, 
+	password_hash VARCHAR(255) NOT NULL, 
+	display_name VARCHAR(100), 
+	role VARCHAR(20) NOT NULL, 
+	is_active BOOLEAN NOT NULL, 
+	last_login_at TIMESTAMP WITH TIME ZONE, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	CONSTRAINT users_pkey PRIMARY KEY (id), 
+	CONSTRAINT uq_users_username UNIQUE NULLS DISTINCT (username)
+);
 CREATE TABLE IF NOT EXISTS public.video_assets (
 	id UUID NOT NULL, 
 	project_id UUID NOT NULL, 
@@ -225,11 +238,14 @@ CREATE INDEX IF NOT EXISTS ix_ai_model_providers_provider_type ON public.ai_mode
 CREATE INDEX IF NOT EXISTS ix_ai_provider_models_model ON public.ai_provider_models (model);
 CREATE INDEX IF NOT EXISTS ix_ai_provider_models_provider_id ON public.ai_provider_models (provider_id);
 CREATE INDEX IF NOT EXISTS idx_code_versions_project_id ON public.code_versions (project_id);
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON public.users (is_active);
+CREATE INDEX IF NOT EXISTS idx_users_role ON public.users (role);
+CREATE INDEX IF NOT EXISTS idx_users_username ON public.users (username);
 CREATE INDEX IF NOT EXISTS ix_prompt_components_category ON public.prompt_components (category);
 
 -- Data: alembic_version
 INSERT INTO "alembic_version" ("version_num")
-VALUES ('e1f2a3b4c5d6')
+VALUES ('9b1c2d3e4f5a')
 ON CONFLICT ("version_num") DO NOTHING;
 
 -- Data: prompt_components

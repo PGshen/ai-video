@@ -185,13 +185,6 @@ make init-db
 make dev-backend   # 或 make dev-worker / make dev-frontend
 ```
 
-Remotion 渲染模板未容器化，仍需手动安装一次依赖：
-
-```bash
-cd remotion-template
-pnpm install
-```
-
 ## 常用命令
 
 ```bash
@@ -326,7 +319,7 @@ docker-compose run --rm frontend pnpm build
 
 - 后端 `.env` 从 `backend/.env` 读取，前端 `.env` 从 `frontend/.env` 读取。
 - `make dev-worker` 启动的是开发用合并 Worker，会同时运行 Temporal Worker、Narrative Worker、Code Worker 和 Render Worker。
-- Remotion 渲染依赖 `remotion-template/node_modules`，首次渲染前需要在 `remotion-template/` 执行 `pnpm install`。
+- Remotion 渲染依赖 `remotion-template/node_modules`，`worker` 容器启动时会自动 `cd remotion-template && pnpm install`（依赖缓存在 `remotion_node_modules` 卷里），不需要在宿主机手动安装。
 - 本地 MinIO 默认账号密码为 `minioadmin` / `minioadmin`。
 - 如果更换 `API_KEY`，需要同步更新 `frontend/.env` 的 `VITE_API_KEY`。
 - `backend`/`worker` 容器共用同一个 `backend_venv` 卷，`frontend` 容器使用 `frontend_node_modules` 卷；改了 `pyproject.toml`/`package.json` 后重新 `make up` 会自动 `uv sync`/`pnpm install`，一般不需要手动清卷。

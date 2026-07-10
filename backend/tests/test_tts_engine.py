@@ -1,14 +1,21 @@
 import base64
-import pytest
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
+
+import httpx
+import pytest
+
 from app.engines.tts.base import TTSRequest, TTSResult
 from app.engines.tts.volcengine import VolcengineTTSEngine
 
 
 @pytest.fixture
 def engine():
-    return VolcengineTTSEngine(api_key="test-key", resource_id="seed-tts-2.0")
+    return VolcengineTTSEngine(
+        api_key="test-key",
+        resource_id="seed-tts-2.0",
+        retry_base_delay_seconds=0,
+    )
 
 
 def _make_stream_mock(lines: list[str]):
@@ -34,6 +41,42 @@ def _make_stream_mock(lines: list[str]):
         yield mock_client
 
     return _async_client
+
+
+def _make_stream_sequence_mock(responses):
+    """Build a client mock whose stream response changes for each attempt."""
+    call_count = 0
+
+    @asynccontextmanager
+    async def _stream(*args, **kwargs):
+        nonlocal call_count
+        response = responses[call_count]
+        call_count += 1
+        if isinstance(response, Exception):
+            raise response
+
+        lines, status_code = response
+
+        async def _aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = status_code
+        mock_resp.aiter_lines = _aiter_lines
+        yield mock_resp
+
+    mock_client = MagicMock()
+    mock_client.stream = _stream
+
+    @asynccontextmanager
+    async def _async_client(*args, **kwargs):
+        yield mock_client
+
+    def _call_count():
+        return call_count
+
+    return _async_client, _call_count
 
 
 @pytest.mark.asyncio
@@ -102,6 +145,103 @@ async def test_synthesize_api_error(engine):
 
     assert result.success is False
     assert "invalid api key" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_synthesize_retries_transient_api_error(engine):
+    import json
+
+    audio_bytes = b"audio-after-retry"
+    transient_error = {"code": 50000, "message": "service unavailable", "data": ""}
+    success = {
+        "code": 0,
+        "message": "",
+        "data": base64.b64encode(audio_bytes).decode(),
+    }
+    async_client, call_count = _make_stream_sequence_mock(
+        [
+            ([json.dumps(transient_error)], 200),
+            ([json.dumps(success)], 200),
+        ]
+    )
+
+    with patch("httpx.AsyncClient", async_client):
+        result = await engine.synthesize(TTSRequest(text="hello", voice="zizi"))
+
+    assert result.success is True
+    assert result.audio_bytes == audio_bytes
+    assert call_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_synthesize_retries_network_error(engine):
+    import json
+
+    audio_bytes = b"audio-after-network-error"
+    request = httpx.Request("POST", "https://example.test/tts")
+    network_error = httpx.ConnectError("connection reset", request=request)
+    success = {
+        "code": 0,
+        "message": "",
+        "data": base64.b64encode(audio_bytes).decode(),
+    }
+    async_client, call_count = _make_stream_sequence_mock(
+        [network_error, ([json.dumps(success)], 200)]
+    )
+
+    with patch("httpx.AsyncClient", async_client):
+        result = await engine.synthesize(TTSRequest(text="hello", voice="zizi"))
+
+    assert result.success is True
+    assert result.audio_bytes == audio_bytes
+    assert call_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_synthesize_does_not_retry_non_retryable_http_error(engine):
+    async_client, call_count = _make_stream_sequence_mock([([], 400)])
+
+    with patch("httpx.AsyncClient", async_client):
+        result = await engine.synthesize(TTSRequest(text="hello", voice="zizi"))
+
+    assert result.success is False
+    assert result.error_message == "TTS HTTP request failed (HTTP 400)"
+    assert call_count() == 1
+
+
+@pytest.mark.asyncio
+async def test_synthesize_stops_after_max_retries_with_exponential_backoff():
+    import json
+
+    engine = VolcengineTTSEngine(
+        api_key="test-key",
+        max_retries=2,
+        retry_base_delay_seconds=0.25,
+    )
+    transient_error = json.dumps(
+        {"code": 50000, "message": "service unavailable", "data": ""}
+    )
+    async_client, call_count = _make_stream_sequence_mock(
+        [
+            ([transient_error], 200),
+            ([transient_error], 200),
+            ([transient_error], 200),
+        ]
+    )
+
+    with (
+        patch("httpx.AsyncClient", async_client),
+        patch(
+            "app.engines.tts.volcengine.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as sleep,
+    ):
+        result = await engine.synthesize(TTSRequest(text="hello", voice="zizi"))
+
+    assert result.success is False
+    assert result.error_message == "service unavailable"
+    assert call_count() == 3
+    assert sleep.await_args_list == [call(0.25), call(0.5)]
 
 
 @pytest.mark.asyncio

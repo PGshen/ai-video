@@ -1,12 +1,14 @@
 import asyncio
 import ast
 import contextlib
+import inspect
 import logging
 import os
 import re
 import tempfile
 from pathlib import Path
 
+import manim
 import pyflakes.checker
 import pyflakes.messages as pyflakes_messages
 
@@ -139,6 +141,65 @@ def _static_check(script: str) -> list[str]:
     ]
 
 
+def _signature_check(script: str) -> list[str]:
+    """Validate call-site arguments against real Manim callables' signatures.
+
+    Catches "wrong number/name of arguments" (TypeError-class) mistakes for
+    any call that resolves to a name in the ``manim`` namespace, without
+    executing a single line of Manim code. This is the class of bug pyflakes
+    can never catch (star-import makes names invisible to it, and arity
+    checking isn't in its scope regardless): e.g. a hallucinated
+    ``RoundedRectangle(width, height, corner_radius)`` positional signature
+    when the real constructor only takes ``corner_radius`` plus keywords.
+    """
+    try:
+        tree = ast.parse(script)
+    except SyntaxError:
+        return []
+
+    errors: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _callable_name(node.func)
+        if name is None:
+            continue
+        obj = getattr(manim, name, None)
+        if obj is None or not (inspect.isclass(obj) or inspect.isfunction(obj)):
+            continue
+        # *args / **kwargs unpacking makes static arity checking meaningless.
+        if any(isinstance(arg, ast.Starred) for arg in node.args):
+            continue
+        if any(kw.arg is None for kw in node.keywords):
+            continue
+
+        target = obj.__init__ if inspect.isclass(obj) else obj
+        try:
+            params = list(inspect.signature(target).parameters.values())
+        except (TypeError, ValueError):
+            continue
+        if inspect.isclass(obj) and params and params[0].name == "self":
+            params = params[1:]
+
+        try:
+            inspect.Signature(params).bind(
+                *([None] * len(node.args)),
+                **{kw.arg: None for kw in node.keywords},
+            )
+        except TypeError as exc:
+            errors.append(f"line {node.lineno}: {name}(...) {exc}")
+
+    return errors
+
+
+def _callable_name(func: ast.expr) -> str | None:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
 def _is_tex_constructor(node: ast.expr) -> bool:
     if isinstance(node, ast.Name):
         return node.id in _TEX_CONSTRUCTORS
@@ -189,6 +250,7 @@ config.dry_run = True
 config.disable_caching = True
 
 sys.path.insert(0, {tmpdir!r})
+
 try:
     from scene import MainScene
     MainScene().render()
@@ -218,6 +280,15 @@ class ManimRenderEngine:
         if static_errors:
             logger.info("[ManimValidate] static errors: %d\n%s", len(static_errors), "\n".join(static_errors))
             return False, "\n".join(static_errors)
+
+        signature_errors = _signature_check(script)
+        if signature_errors:
+            logger.info(
+                "[ManimValidate] signature errors: %d\n%s",
+                len(signature_errors),
+                "\n".join(signature_errors),
+            )
+            return False, "\n".join(signature_errors)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             script_path = os.path.join(tmpdir, "scene.py")

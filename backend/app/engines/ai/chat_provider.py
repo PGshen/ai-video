@@ -28,6 +28,23 @@ from app.video_format import normalize_aspect_ratio, resolution_for_aspect_ratio
 
 _SPECS_DIR = Path(__file__).parent / "engine_specs"
 
+_CODEGEN_SCENE_FIELDS = (
+    "scene_index",
+    "narration",
+    "description",
+    "duration_seconds",
+    "beats",
+    "code",
+)
+
+
+def _strip_codegen_fields(scenes: list[dict]) -> list[dict]:
+    """Drop TTS-only fields (e.g. word_timestamps) that code generation/repair never uses."""
+    return [
+        {k: scene[k] for k in _CODEGEN_SCENE_FIELDS if k in scene}
+        for scene in scenes
+    ]
+
 
 def _load_engine_specs() -> tuple[dict[str, str], dict[str, str]]:
     """Load narrative_hint and code_prompt from engine_specs/*.yaml."""
@@ -464,7 +481,8 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         if rejection_context:
             user_payload["rejection_context"] = rejection_context
             if previous_code_scenes:
-                user_payload["previous_code_scenes"] = previous_code_scenes
+                user_payload["previous_code_scenes"] = _strip_codegen_fields(previous_code_scenes)
+                del user_payload["scenes"]
                 user_note = (
                     "（注意：这是一次重新生成，previous_code_scenes 是上一版被驳回的完整渲染代码（含每个镜头的 code），"
                     "请在其基础上根据 rejection_context 中标注的问题做针对性修改，"
@@ -561,7 +579,7 @@ JSON 格式：
                             "render_engine": render_engine,
                             "aspect_ratio": normalize_aspect_ratio(aspect_ratio),
                             "error_message": error_message,
-                            "scenes": scenes,
+                            "scenes": _strip_codegen_fields(scenes),
                         },
                         ensure_ascii=False,
                     ),

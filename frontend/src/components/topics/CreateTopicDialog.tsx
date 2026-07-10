@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateTopic } from "@/hooks/useTopics";
+import { SOURCE_LABELS } from "@/lib/format";
 
 interface Props {
   open: boolean;
@@ -51,12 +52,11 @@ export function CreateTopicDialog({ open, onClose }: Props) {
           <div className="space-y-1.5">
             <Label>来源</Label>
             <Select value={source} onValueChange={(v) => v && setSource(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue>{SOURCE_LABELS[source] ?? source}</SelectValue></SelectTrigger>
               <SelectContent>
-                <SelectItem value="manual">手动</SelectItem>
-                <SelectItem value="ai_brainstorm">AI 生成</SelectItem>
-                <SelectItem value="audience">受众</SelectItem>
-                <SelectItem value="competitor">竞品</SelectItem>
+                {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

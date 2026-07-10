@@ -1,7 +1,11 @@
 import ast
 
 from app.engines.render.base import SceneInput
-from app.engines.render.manim import _build_manim_script, _prepare_manim_code
+from app.engines.render.manim import (
+    ManimRenderEngine,
+    _build_manim_script,
+    _prepare_manim_code,
+)
 
 
 def test_prepare_manim_code_injects_template_into_formula_calls():
@@ -150,3 +154,20 @@ def test_build_manim_script_sets_portrait_pixel_and_logical_canvas():
     assert "config.pixel_height = 1920" in script
     assert "config.frame_width = 4.500000" in script
     assert "config.frame_height = 8.0" in script
+
+
+async def test_validate_code_stops_at_first_runtime_error():
+    scene = SceneInput(
+        scene_index=0,
+        narration="",
+        description="验证运行时错误立即停止",
+        code='raise RuntimeError("root failure")\nraise ValueError("cascade noise")',
+        audio=None,
+    )
+
+    is_valid, errors = await ManimRenderEngine().validate_code([scene])
+
+    assert is_valid is False
+    assert "RuntimeError: root failure" in errors
+    assert "cascade noise" not in errors
+    assert "DRY_RUN_COLLECTED_ERRORS" not in errors

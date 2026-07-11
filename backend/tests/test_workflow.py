@@ -25,7 +25,12 @@ async def test_render_failure_is_recorded_before_returning_to_code_review():
     wf._wait_signal = AsyncMock(side_effect=[
         {"success": False, "error": "Manim syntax error", "task_id": "task-7"},
         {"verdict": "approved"},
-        {"success": True},
+        {
+            "success": True,
+            "asset_id": "asset-2",
+            "code_version_id": "code-2",
+            "code_version_number": 2,
+        },
         {"verdict": "approved"},
     ])
 
@@ -53,7 +58,11 @@ async def test_render_failure_is_recorded_before_returning_to_code_review():
             },
         ),
         call("project-1", "video_generating"),
-        call("project-1", "video_review"),
+        call(
+            "project-1",
+            "video_review",
+            {"video_asset_id": "asset-2", "code_version_id": "code-2", "code_version_number": 2},
+        ),
     ]
 
 
@@ -62,7 +71,12 @@ async def test_video_rejection_can_return_to_code_review():
     wf = VideoProductionWorkflow()
     wf._update_status = AsyncMock()
     wf._wait_signal = AsyncMock(side_effect=[
-        {"success": True},
+        {
+            "success": True,
+            "asset_id": "asset-1",
+            "code_version_id": "code-1",
+            "code_version_number": 1,
+        },
         {
             "verdict": "rejected",
             "target_stage": "code",
@@ -80,7 +94,11 @@ async def test_video_rejection_can_return_to_code_review():
     assert result == "retry_video"
     assert wf._update_status.call_args_list == [
         call("project-1", "video_generating"),
-        call("project-1", "video_review"),
+        call(
+            "project-1",
+            "video_review",
+            {"video_asset_id": "asset-1", "code_version_id": "code-1", "code_version_number": 1},
+        ),
         call(
             "project-1",
             "code_review",
@@ -98,7 +116,12 @@ async def test_video_rejection_can_return_to_narrative_review():
     wf = VideoProductionWorkflow()
     wf._update_status = AsyncMock()
     wf._wait_signal = AsyncMock(side_effect=[
-        {"success": True},
+        {
+            "success": True,
+            "asset_id": "asset-1",
+            "code_version_id": "code-1",
+            "code_version_number": 1,
+        },
         {
             "verdict": "rejected",
             "target_stage": "narrative",

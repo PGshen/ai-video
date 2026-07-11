@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.models.code_version import CodeVersion
-from app.workflows.activities import update_project_status
+from app.workflows.activities import submit_video_generation_task, update_project_status
 from app.workflows.activities import reset_stuck_stage
 
 
@@ -42,6 +42,27 @@ async def test_code_review_status_event_keeps_exact_version_reference():
         "content_version_id": str(version_id),
         "content_version_number": 4,
     }
+
+
+@pytest.mark.asyncio
+async def test_submit_video_task_freezes_current_code_version():
+    project_id = uuid4()
+    code_version_id = uuid4()
+    project = SimpleNamespace(
+        id=project_id,
+        current_code_version_id=code_version_id,
+        render_engine="manim",
+    )
+    db = MagicMock()
+    db.get.return_value = project
+
+    with patch("app.workflows.activities.get_sync_session", return_value=db):
+        await submit_video_generation_task(str(project_id))
+
+    task = db.add.call_args.args[0]
+    assert task.project_id == project_id
+    assert task.task_type == "render_video"
+    assert task.code_version_id == code_version_id
 
 
 @pytest.mark.asyncio

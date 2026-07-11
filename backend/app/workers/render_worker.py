@@ -25,13 +25,24 @@ class RenderWorker(BaseWorker):
             if project is None:
                 raise ValueError(f"Project {task.project_id} not found")
 
-            code_version = db.get(CodeVersion, project.current_code_version_id)
+            if task.code_version_id is None:
+                raise ValueError(
+                    f"Render task {task.id} has no frozen code version"
+                )
+            code_version = db.get(CodeVersion, task.code_version_id)
             if code_version is None:
-                raise ValueError("No code version found for project")
+                raise ValueError(
+                    f"Code version {task.code_version_id} for render task {task.id} not found"
+                )
+            if code_version.project_id != project.id:
+                raise ValueError(
+                    f"Code version {code_version.id} does not belong to project {project.id}"
+                )
 
             scenes_data = list(code_version.scenes or [])
             project_id = str(project.id)
             code_version_id = str(code_version.id)
+            code_version_number = code_version.version_number
             render_engine_name = project.render_engine
             resolution = resolution_for_aspect_ratio(project.aspect_ratio)
         finally:
@@ -143,4 +154,9 @@ class RenderWorker(BaseWorker):
             db.close()
 
         logger.info("[RenderWorker] Done. asset_id=%s", asset_id_str)
-        return {"asset_id": asset_id_str, "video_file_key": video_key}
+        return {
+            "asset_id": asset_id_str,
+            "video_file_key": video_key,
+            "code_version_id": code_version_id,
+            "code_version_number": code_version_number,
+        }

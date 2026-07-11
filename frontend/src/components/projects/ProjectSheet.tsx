@@ -173,11 +173,11 @@ export function ProjectSheet({ project, onClose }: Props) {
     : selectedNode?.type === "code"
       ? selectedCodeVersion?.promptSnapshot ?? null
       : codeVersion?.promptSnapshot ?? narrative?.promptSnapshot ?? null;
-  // For historical video node view: use the asset ID stored in the event payload if available,
-  // otherwise fall back to current asset (covers published projects with a single asset).
+  // Historical video must be resolved from its immutable event payload. Falling
+  // back to currentVideoAsset would silently show a later render for old nodes.
   const selectedVideoAssetId =
     selectedNode?.type === "video"
-      ? (selectedNode.videoAssetId ?? projectDetail?.currentVideoAsset?.id ?? null)
+      ? (selectedNode.videoAssetId ?? null)
       : null;
   const { data: selectedVideoUrlData } = useVideoUrl(
     displayProject?.id ?? "",
@@ -481,6 +481,7 @@ export function ProjectSheet({ project, onClose }: Props) {
               narrativeVersion={selectedNarrativeVersion ?? null}
               codeVersion={selectedCodeVersion ?? null}
               videoUrl={selectedVideoUrlData?.url ?? null}
+              hasVideoAsset={!!selectedVideoAssetId}
               onClose={() => setSelectedNode(null)}
             />
           ) : (
@@ -1416,10 +1417,11 @@ interface HistoricalViewProps {
   narrativeVersion: NarrativeVersion | null;
   codeVersion: CodeVersion | null;
   videoUrl: string | null;
+  hasVideoAsset: boolean;
   onClose: () => void;
 }
 
-function HistoricalView({ node, narrativeVersion, codeVersion, videoUrl, onClose }: HistoricalViewProps) {
+function HistoricalView({ node, narrativeVersion, codeVersion, videoUrl, hasVideoAsset, onClose }: HistoricalViewProps) {
   const version = node.type === "narrative" ? narrativeVersion : node.type === "code" ? codeVersion : null;
   const typeLabel = node.type === "narrative" ? "叙事脚本" : node.type === "code" ? "渲染代码" : "视频";
 
@@ -1437,7 +1439,11 @@ function HistoricalView({ node, narrativeVersion, codeVersion, videoUrl, onClose
 
       {node.type === "video" ? (
         <div className="flex-1 min-h-0 p-5">
-          {videoUrl ? (
+          {!hasVideoAsset ? (
+            <div className="flex items-center justify-center h-40 text-center text-muted-foreground text-sm">
+              该历史视频记录未保存视频资产关联，无法安全播放。
+            </div>
+          ) : videoUrl ? (
             <video src={videoUrl} controls className="w-full h-full max-h-[60vh] rounded-lg bg-black" />
           ) : (
             <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">

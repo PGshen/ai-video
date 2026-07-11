@@ -54,8 +54,13 @@ async def submit_video_generation_task(project_id: str) -> None:
         project = db.get(VideoProject, uuid.UUID(project_id))
         if project is None:
             return
+        if project.current_code_version_id is None:
+            raise ValueError("Cannot render video without a current code version")
         task = WorkerTask(
             project_id=project.id,
+            # Freeze the reviewed version when the task is queued.  The project
+            # pointer is mutable and must not decide a queued task's input.
+            code_version_id=project.current_code_version_id,
             task_type="render_video",
             engine=project.render_engine,
             status="pending",

@@ -26,6 +26,7 @@ class VideoProductionWorkflow:
 
     def __init__(self):
         self._signals: dict[str, list] = {}
+        self._current_video_payload: dict | None = None
 
     @workflow.signal
     async def narrative_generated(self, payload: dict) -> None:
@@ -118,7 +119,9 @@ class VideoProductionWorkflow:
                         await self._update_status(project_id, "abandoned")
                         return
 
-        await self._update_status(project_id, "published")
+        await self._update_status(
+            project_id, "published", payload=self._current_video_payload,
+        )
 
     async def _generate_and_review_narrative(self, project_id: str) -> str:
         await self._update_status(project_id, "narrative_generating")
@@ -236,7 +239,16 @@ class VideoProductionWorkflow:
                 submit_video_generation_task, args=[project_id], **_ACTIVITY_OPTS
             )
 
-        await self._update_status(project_id, "video_review")
+        # Persist the immutable render output on the history event.  Do not
+        # resolve it through project.current_video_asset_id: that pointer can
+        # change after a later render.
+        video_review_payload = {
+            "video_asset_id": result["asset_id"],
+            "code_version_id": result["code_version_id"],
+            "code_version_number": result["code_version_number"],
+        }
+        self._current_video_payload = video_review_payload
+        await self._update_status(project_id, "video_review", video_review_payload)
         review = await self._wait_signal("video_review")
         verdict = review["verdict"]
         if verdict == "approved":

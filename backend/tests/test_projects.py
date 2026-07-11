@@ -15,6 +15,8 @@ def make_project(**kwargs):
     p.status = kwargs.get("status", "draft")
     p.render_engine = kwargs.get("render_engine", "manim")
     p.tts_voice = kwargs.get("tts_voice", "zizi")
+    p.tts_engine = kwargs.get("tts_engine", "doubao_2.0")
+    p.tts_speed = kwargs.get("tts_speed", 1.0)
     p.aspect_ratio = kwargs.get("aspect_ratio", "landscape")
     p.temporal_workflow_id = kwargs.get("temporal_workflow_id", None)
     p.retry_count = 0
@@ -105,6 +107,8 @@ def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temp
             status="draft",
             render_engine="manim",
             tts_voice="zizi",
+            tts_engine="doubao_2.0",
+            tts_speed=1.0,
             aspect_ratio="landscape",
             retry_count=0,
             created_at=now,
@@ -117,6 +121,8 @@ def test_create_project_starts_workflow(client, auth_headers, mock_db, mock_temp
                 "topic_id": str(topic.id),
                 "render_engine": "manim",
                 "tts_voice": "zizi",
+                "tts_engine": "doubao_2.0",
+                "tts_speed": 1.1,
                 "aspect_ratio": "landscape",
             },
         )
@@ -147,6 +153,8 @@ def test_create_project_stores_narrative_context(client, auth_headers, mock_db, 
             status="draft",
             render_engine="manim",
             tts_voice="zizi",
+            tts_engine="doubao_2.0",
+            tts_speed=1.0,
             aspect_ratio="landscape",
             retry_count=0,
             created_at=now,

@@ -47,6 +47,8 @@ def _project_to_response(project, topic) -> ProjectResponse:
         status=project.status,
         render_engine=project.render_engine,
         tts_voice=project.tts_voice,
+        tts_engine=project.tts_engine,
+        tts_speed=project.tts_speed,
         aspect_ratio=project.aspect_ratio,
         retry_count=project.retry_count,
         created_at=project.created_at,
@@ -108,6 +110,8 @@ async def list_projects(
             status=p.status,
             render_engine=p.render_engine,
             tts_voice=p.tts_voice,
+            tts_engine=p.tts_engine,
+            tts_speed=p.tts_speed,
             aspect_ratio=p.aspect_ratio,
             retry_count=p.retry_count,
             created_at=p.created_at,
@@ -187,6 +191,8 @@ async def create_project(
         status="draft",
         render_engine=body.render_engine,
         tts_voice=body.tts_voice,
+        tts_engine=body.tts_engine,
+        tts_speed=body.tts_speed,
         aspect_ratio=body.aspect_ratio,
         temporal_workflow_id=workflow_id,
         narrative_context=body.narrative_context,
@@ -486,9 +492,11 @@ async def regenerate_scene_tts(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    tts_engine = get_tts_engine()
+    tts_engine = get_tts_engine(project.tts_engine)
     tts_voice = project.tts_voice
-    result = await tts_engine.synthesize(TTSRequest(text=narration, voice=tts_voice))
+    result = await tts_engine.synthesize(
+        TTSRequest(text=narration, voice=tts_voice, speed=project.tts_speed)
+    )
 
     if not result.success:
         raise HTTPException(status_code=502, detail=f"TTS failed: {result.error_message}")

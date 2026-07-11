@@ -197,6 +197,8 @@ CREATE TABLE IF NOT EXISTS public.video_projects (
 	status VARCHAR(30) NOT NULL, 
 	render_engine VARCHAR(20) NOT NULL, 
 	tts_voice VARCHAR(50) NOT NULL, 
+	tts_engine VARCHAR(30) NOT NULL DEFAULT 'doubao_2.0',
+	tts_speed DOUBLE PRECISION NOT NULL DEFAULT 1.0,
 	aspect_ratio VARCHAR(20) NOT NULL, 
 	current_code_version_id UUID, 
 	current_video_asset_id UUID, 

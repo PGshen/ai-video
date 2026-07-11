@@ -24,12 +24,27 @@ const RENDER_ENGINE_LABELS: Record<string, string> = {
 };
 
 const TTS_VOICE_LABELS: Record<string, string> = {
+  sisi: "思思",
   xiaoxinjiejie: "春日部小姐姐",
   xiaozhupeiqi: "小猪佩奇",
   zizi: "清澈梓梓",
   yunzhou: "云舟",
   xiaohe: "小禾",
 };
+
+type TtsEngine = "doubao_1.0" | "doubao_2.0";
+
+const TTS_ENGINE_LABELS = {
+  "doubao_1.0": "豆包 1.0",
+  "doubao_2.0": "豆包 2.0",
+} as const satisfies Record<TtsEngine, string>;
+
+const TTS_VOICES_BY_ENGINE: Record<TtsEngine, string[]> = {
+  "doubao_1.0": ["sisi"],
+  "doubao_2.0": ["xiaoxinjiejie", "xiaozhupeiqi", "zizi", "yunzhou", "xiaohe"],
+};
+
+const TTS_SPEEDS = [0.9, 1.0, 1.1, 1.2] as const;
 
 const ASPECT_RATIO_LABELS: Record<string, string> = {
   landscape: "横屏 16:9",
@@ -90,6 +105,8 @@ function StyleSelect({
 export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSnippets = [] }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
   const [ttsVoice, setTtsVoice] = useState("zizi");
+  const [ttsEngine, setTtsEngine] = useState<TtsEngine>("doubao_2.0");
+  const [ttsSpeed, setTtsSpeed] = useState<(typeof TTS_SPEEDS)[number]>(1.0);
   const [aspectRatio, setAspectRatio] = useState("landscape");
   const [styleConfig, setStyleConfig] = useState<Record<string, string>>({});
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -129,12 +146,17 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
     setStyleConfig(template ? { ...template.styleConfig } : {});
   }
 
+  function setTtsEngineAndVoice(engine: TtsEngine) {
+    setTtsEngine(engine);
+    setTtsVoice(TTS_VOICES_BY_ENGINE[engine][0]);
+  }
+
   const handleSubmit = () => {
     const narrativeContext = contextSnippets
       .filter((_, i) => selectedSnippets.has(i))
       .map((text) => ({ text }));
     createProject.mutate(
-      { topicId: topic.id, renderEngine, ttsVoice, aspectRatio, narrativeContext, styleConfig },
+      { topicId: topic.id, renderEngine, ttsVoice, ttsEngine, ttsSpeed, aspectRatio, narrativeContext, styleConfig },
       {
         onSuccess: (_project) => {
           onCreated?.();
@@ -183,14 +205,41 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs font-medium">TTS 声音</Label>
+                <Label className="text-xs font-medium">TTS 引擎</Label>
+                <Select value={ttsEngine} onValueChange={(v) => setTtsEngineAndVoice(v as TtsEngine)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{TTS_ENGINE_LABELS[ttsEngine]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="doubao_1.0">{TTS_ENGINE_LABELS["doubao_1.0"]}</SelectItem>
+                    <SelectItem value="doubao_2.0">{TTS_ENGINE_LABELS["doubao_2.0"]}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">TTS 音色</Label>
                 <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue>{TTS_VOICE_LABELS[ttsVoice]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(TTS_VOICE_LABELS).map(([value, label]) => (
+                    {TTS_VOICES_BY_ENGINE[ttsEngine].map((value) => (
+                      [value, TTS_VOICE_LABELS[value]] as const
+                    )).map(([value, label]) => (
                       <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">TTS 语速</Label>
+                <Select value={String(ttsSpeed)} onValueChange={(v) => setTtsSpeed(Number(v) as (typeof TTS_SPEEDS)[number])}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{ttsSpeed.toFixed(1) + " 倍速"}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TTS_SPEEDS.map((speed) => (
+                      <SelectItem key={speed} value={String(speed)}>{speed.toFixed(1)} 倍速</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

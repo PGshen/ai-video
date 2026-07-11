@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     DOUBAO_CACHED_INPUT_COST_PER_MILLION: float = 0
     DOUBAO_OUTPUT_COST_PER_MILLION: float = 0
     VOLCENGINE_TTS_API_KEY: str = ""
+    VOLCENGINE_TTS_1_RESOURCE_ID: str = "seed-tts-1.0"
     VOLCENGINE_TTS_RESOURCE_ID: str = "seed-tts-2.0"
     TTS_ENGINE: str = "volcengine"
     MINIO_BUCKET: str = "video-workflow"

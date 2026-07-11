@@ -255,5 +255,19 @@ async def test_health_check_success(engine):
 
 
 def test_voice_alias_resolved(engine):
-    from app.engines.tts.voice_map import VOICE_ALIAS_MAP
-    assert len(VOICE_ALIAS_MAP) > 0
+    from app.engines.tts.voice_map import resolve_speaker
+
+    assert resolve_speaker("zizi", "doubao_2.0") == "zh_female_qingchezizi_uranus_bigtts"
+    assert resolve_speaker("sisi", "doubao_1.0") == "zh_female_shuangkuaisisi_moon_bigtts"
+    with pytest.raises(ValueError, match="not available"):
+        resolve_speaker("sisi", "doubao_2.0")
+
+
+def test_tts_factory_selects_the_resource_id_for_each_doubao_version():
+    from app.engines.tts.factory import get_tts_engine
+
+    engine_1 = get_tts_engine("doubao_1.0")
+    engine_2 = get_tts_engine("doubao_2.0")
+    assert engine_1._resource_id == "seed-tts-1.0"
+    assert engine_1._engine == "doubao_1.0"
+    assert engine_2._engine == "doubao_2.0"

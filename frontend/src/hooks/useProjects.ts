@@ -80,6 +80,8 @@ export function useCreateProject() {
       topicId: string;
       renderEngine: string;
       ttsVoice: string;
+      ttsEngine: "doubao_1.0" | "doubao_2.0";
+      ttsSpeed: 0.9 | 1.0 | 1.1 | 1.2;
       aspectRatio: string;
       narrativeContext: { text: string }[];
       styleConfig?: Record<string, string>;
@@ -88,6 +90,8 @@ export function useCreateProject() {
         topic_id: data.topicId,
         render_engine: data.renderEngine,
         tts_voice: data.ttsVoice,
+        tts_engine: data.ttsEngine,
+        tts_speed: data.ttsSpeed,
         aspect_ratio: data.aspectRatio,
         narrative_context: data.narrativeContext,
         style_config: data.styleConfig ?? {},

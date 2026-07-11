@@ -46,7 +46,7 @@ async def test_synthesize_raw_response(engine):
 
     from app.engines.tts.voice_map import resolve_speaker
 
-    speaker = resolve_speaker("zizi")
+    speaker = resolve_speaker("zizi", "doubao_2.0")
     headers = {
         "X-Api-Key": engine._api_key,
         "X-Api-Resource-Id": engine._resource_id,

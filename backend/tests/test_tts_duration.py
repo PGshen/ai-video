@@ -51,7 +51,7 @@ async def test_synthesize_returns_duration_from_mp3():
             pass
 
     with patch("httpx.AsyncClient", return_value=FakeClient()):
-        result = await engine.synthesize(TTSRequest(text="测试", voice="male_calm"))
+        result = await engine.synthesize(TTSRequest(text="测试", voice="zizi"))
 
     assert result.success is True
     assert len(result.audio_bytes) > 0

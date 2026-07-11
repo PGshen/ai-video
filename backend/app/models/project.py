@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, SmallInteger, DateTime
+from sqlalchemy import String, SmallInteger, DateTime, Float
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
@@ -21,6 +21,12 @@ class VideoProject(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")
     render_engine: Mapped[str] = mapped_column(String(20), nullable=False)
     tts_voice: Mapped[str] = mapped_column(String(50), nullable=False)
+    tts_engine: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="doubao_2.0", server_default="doubao_2.0"
+    )
+    tts_speed: Mapped[float] = mapped_column(
+        Float, nullable=False, default=1.0, server_default="1.0"
+    )
     aspect_ratio: Mapped[str] = mapped_column(String(20), nullable=False)
     current_code_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True)

@@ -22,9 +22,11 @@ async def _synthesize_scenes_tts(
     project_id: str,
     narrative_version_id: str,
     tts_voice: str,
+    tts_engine_name: str,
+    tts_speed: float,
 ) -> list[dict]:
     """并发合成所有镜头 TTS（最多 3 路并发），返回带 audio_key/duration_seconds/tts_status 的 scenes。"""
-    tts_engine = get_tts_engine()
+    tts_engine = get_tts_engine(tts_engine_name)
     sem = asyncio.Semaphore(3)
 
     async def _process_scene(i: int, scene: dict) -> dict:
@@ -33,7 +35,9 @@ async def _synthesize_scenes_tts(
             return {**scene, "tts_status": "skipped", "audio_key": None, "duration_seconds": None}
         async with sem:
             try:
-                result = await tts_engine.synthesize(TTSRequest(text=narration, voice=tts_voice))
+                result = await tts_engine.synthesize(
+                    TTSRequest(text=narration, voice=tts_voice, speed=tts_speed)
+                )
             except Exception as e:
                 logger.error("[NarrativeWorker] TTS exception scene %d: %s", i, e)
                 return {**scene, "tts_status": "failed", "audio_key": None, "duration_seconds": None}
@@ -133,6 +137,8 @@ class NarrativeWorker(BaseWorker):
             narrative_version_id = str(nv.id)
             project_id = str(project.id)
             tts_voice = project.tts_voice
+            tts_engine_name = project.tts_engine
+            tts_speed = project.tts_speed
             db.commit()
         finally:
             db.close()
@@ -143,6 +149,8 @@ class NarrativeWorker(BaseWorker):
             project_id=project_id,
             narrative_version_id=narrative_version_id,
             tts_voice=tts_voice,
+            tts_engine_name=tts_engine_name,
+            tts_speed=tts_speed,
         )
         ready_count = sum(1 for s in scenes_with_tts if s.get("tts_status") == "ready")
         logger.info("[NarrativeWorker] TTS done: %d/%d ready", ready_count, len(scenes_with_tts))

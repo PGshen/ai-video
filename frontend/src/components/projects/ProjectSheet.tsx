@@ -1144,8 +1144,12 @@ function MetaSection({
           <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
             <span className="text-muted-foreground">渲染引擎</span>
             <span className="font-medium">{project.renderEngine}</span>
-            <span className="text-muted-foreground">TTS 声音</span>
+            <span className="text-muted-foreground">TTS 引擎</span>
+            <span className="font-medium">{project.ttsEngine === "doubao_1.0" ? "豆包 1.0" : "豆包 2.0"}</span>
+            <span className="text-muted-foreground">TTS 音色</span>
             <span className="font-medium">{project.ttsVoice}</span>
+            <span className="text-muted-foreground">TTS 语速</span>
+            <span className="font-medium">{project.ttsSpeed.toFixed(1)} 倍速</span>
             <span className="text-muted-foreground">画幅比例</span>
             <span className="font-medium">{project.aspectRatio === "landscape" ? "横屏 16:9" : "竖屏 9:16"}</span>
             <span className="text-muted-foreground">重试次数</span>

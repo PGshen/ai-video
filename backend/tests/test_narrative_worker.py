@@ -51,6 +51,8 @@ async def test_narrative_worker_execute_writes_narrative_version():
     mock_project = MagicMock()
     mock_project.id = project_id
     mock_project.tts_voice = "zh_female_1"
+    mock_project.tts_engine = "doubao_2.0"
+    mock_project.tts_speed = 1.1
     mock_project.current_narrative_version_id = None
 
     nv_id = uuid.uuid4()
@@ -113,6 +115,8 @@ async def test_narrative_worker_execute_writes_narrative_version():
     mock_db1.add.assert_called_once()
     mock_db1.commit.assert_called_once()
     mock_db2.commit.assert_called_once()
+    synthesized_request = mock_tts_engine.synthesize.await_args.args[0]
+    assert synthesized_request.speed == 1.1
 
 
 @pytest.mark.asyncio
@@ -151,6 +155,8 @@ async def test_narrative_worker_passes_context_to_provider():
     mock_project = MagicMock()
     mock_project.id = project_id
     mock_project.tts_voice = "zizi"
+    mock_project.tts_engine = "doubao_2.0"
+    mock_project.tts_speed = 1.0
     mock_project.current_narrative_version_id = None
 
     nv_id = uuid.uuid4()
@@ -175,3 +181,5 @@ async def test_narrative_worker_passes_context_to_provider():
         await worker._execute(task)
 
     assert captured_kwargs.get("narrative_context") == [{"text": "参考片段"}]
+    assert mock_tts.await_args.kwargs["tts_engine_name"] == "doubao_2.0"
+    assert mock_tts.await_args.kwargs["tts_speed"] == 1.0

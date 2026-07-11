@@ -282,6 +282,8 @@ export interface VideoProject {
   status: ProjectStatus;
   renderEngine: "manim" | "remotion";
   ttsVoice: string;
+  ttsEngine: "doubao_1.0" | "doubao_2.0";
+  ttsSpeed: 0.9 | 1.0 | 1.1 | 1.2;
   aspectRatio: "landscape" | "portrait";
   currentCodeVersion: CodeVersion | null;
   currentVideoAsset: VideoAsset | null;

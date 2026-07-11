@@ -1768,7 +1768,7 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>TTS 声音</Label>
+            <Label>TTS 音色</Label>
             <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>

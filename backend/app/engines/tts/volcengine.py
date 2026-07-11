@@ -42,11 +42,13 @@ class VolcengineTTSEngine:
         self,
         api_key: str,
         resource_id: str = "seed-tts-2.0",
+        engine: str = "doubao_2.0",
         max_retries: int = 2,
         retry_base_delay_seconds: float = 1.0,
     ):
         self._api_key = api_key
         self._resource_id = resource_id
+        self._engine = engine
         self._max_retries = max(0, max_retries)
         self._retry_base_delay_seconds = max(0.0, retry_base_delay_seconds)
 
@@ -81,7 +83,7 @@ class VolcengineTTSEngine:
         import json as _json
         from app.engines.tts.voice_map import resolve_speaker
 
-        speaker = resolve_speaker(request.voice)
+        speaker = resolve_speaker(request.voice, self._engine)
         headers = {
             "X-Api-Key": self._api_key,
             "X-Api-Resource-Id": self._resource_id,
@@ -95,11 +97,15 @@ class VolcengineTTSEngine:
                 "audio_params": {
                     "format": "mp3",
                     "sample_rate": 24000,
-                    "speech_rate": 20,
-                    "enable_subtitle": True,
+                    # 火山引擎以 -50 至 100 的相对值表示语速；项目倍速 1.0 对应 0。
+                    "speech_rate": round((request.speed - 1.0) * 100),
                 },
             }
         }
+        if self._engine == "doubao_1.0":
+            body["req_params"]["audio_params"]["enable_timestamp"] = True
+        else:
+            body["req_params"]["audio_params"]["enable_subtitle"] = True
 
         audio_chunks: list[bytes] = []
         word_timestamps: list[WordTimestamp] = []
@@ -222,5 +228,6 @@ class VolcengineTTSEngine:
         )
 
     async def health_check(self) -> bool:
-        result = await self.synthesize(TTSRequest(text="测试", voice="male_calm"))
+        voice = "sisi" if self._engine == "doubao_1.0" else "zizi"
+        result = await self.synthesize(TTSRequest(text="测试", voice=voice))
         return result.success

@@ -36,6 +36,12 @@ import {
   interpolate, interpolateColors, spring,
 } from 'remotion';"""
 
+_SCENE_START_RE = re.compile(r"^const _Scene(\d+) = \(\) => \{$")
+_SCENE_END_RE = re.compile(r"^\};$")
+_TSC_ERROR_RE = re.compile(
+    r"VideoScene\.tsx\((?P<line>\d+),(?P<col>\d+)\): error (?P<code>TS\d+): (?P<message>.+)"
+)
+
 
 def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tuple[int, int] = (1280, 720)) -> str:
     """Generate a complete VideoScene.tsx from a list of SceneInput."""
@@ -101,6 +107,79 @@ def _build_remotion_tsx(scenes: list[SceneInput], fps: int = 30, resolution: tup
     return "\n".join(lines)
 
 
+def _scene_index_by_line(tsx: str) -> dict[int, int]:
+    """Map each 1-indexed line number of the assembled tsx to its owning scene.
+
+    Every scene's code lives inside its own ``const _SceneN = () => { ... };``
+    block (see ``_build_remotion_tsx``), so a tsc diagnostic's line number can
+    be attributed back to a single scene index for the repair prompt.
+    """
+    mapping: dict[int, int] = {}
+    current: int | None = None
+    for lineno, line in enumerate(tsx.splitlines(), start=1):
+        start_match = _SCENE_START_RE.match(line)
+        if start_match:
+            current = int(start_match.group(1))
+        if current is not None:
+            mapping[lineno] = current
+            if _SCENE_END_RE.match(line):
+                current = None
+    return mapping
+
+
+async def _tsc_check(tsx: str, template_dir: Path) -> list[str]:
+    """Type-check the assembled VideoScene.tsx with the real TypeScript compiler.
+
+    Remotion's bundler (esbuild) only strips types during render and never
+    reports errors like an undefined variable — those surface as an opaque
+    browser-side ``ReferenceError`` mid-render instead, after minutes of
+    rendering have already been spent. Running ``tsc --noEmit`` against the
+    assembled file up front catches undefined names, syntax errors and type
+    errors before a render is ever attempted.
+    """
+    line_to_scene = _scene_index_by_line(tsx)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_dir = Path(tmpdir) / "src"
+        src_dir.mkdir()
+        shutil.copy2(template_dir / "tsconfig.json", Path(tmpdir) / "tsconfig.json")
+        shutil.copy2(template_dir / "src" / "index.tsx", src_dir / "index.tsx")
+        shutil.copy2(template_dir / "src" / "Root.tsx", src_dir / "Root.tsx")
+        shutil.copy2(template_dir / "src" / "index.css", src_dir / "index.css")
+        (src_dir / "VideoScene.tsx").write_text(tsx, encoding="utf-8")
+
+        node_modules_link = Path(tmpdir) / "node_modules"
+        os.symlink(str(template_dir / "node_modules"), str(node_modules_link))
+
+        tsc_bin = str(template_dir / "node_modules" / ".bin" / "tsc")
+        proc = await asyncio.create_subprocess_exec(
+            tsc_bin, "--noEmit", "--pretty", "false",
+            cwd=tmpdir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await proc.communicate()
+        output = stdout.decode(errors="replace")
+
+    if proc.returncode == 0:
+        return []
+
+    errors: list[str] = []
+    for match in _TSC_ERROR_RE.finditer(output):
+        line = int(match.group("line"))
+        scene_idx = line_to_scene.get(line)
+        prefix = f"scene {scene_idx}: " if scene_idx is not None else ""
+        errors.append(f"{prefix}{match.group('code')}: {match.group('message')}")
+
+    if not errors:
+        # tsc failed but nothing matched the diagnostic pattern (e.g. a
+        # config/toolchain problem) — surface the raw output rather than
+        # silently reporting an empty error list for a nonzero exit.
+        errors.append(output.strip() or f"tsc exited with code {proc.returncode}")
+
+    return errors
+
+
 def _find_output_video(tmpdir: str, expected_path: str) -> str | None:
     if os.path.exists(expected_path):
         return expected_path
@@ -115,6 +194,12 @@ class RemotionRenderEngine:
     engine_name = "remotion"
 
     async def validate_code(self, scenes: list[SceneInput]) -> tuple[bool, str]:
+        template_dir = _resolve_template_dir()
+        tsx = _build_remotion_tsx(scenes)
+        errors = await _tsc_check(tsx, template_dir)
+        if errors:
+            logger.info("[RemotionValidate] tsc errors: %d\n%s", len(errors), "\n".join(errors))
+            return False, "\n".join(errors)
         return True, ""
 
     async def render(self, request: RenderRequest, work_dir: str | None = None) -> RenderResult:

@@ -1,8 +1,10 @@
+from pathlib import Path
+
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.engines.render.base import RenderRequest, SceneAudio, SceneInput
-from app.engines.render.remotion import _build_remotion_tsx
+from app.engines.render.remotion import _build_remotion_tsx, _scene_index_by_line, _tsc_check
 
 
 def _make_scene(index: int, code: str, duration: float = 5.0, audio_path: str | None = None) -> SceneInput:
@@ -159,6 +161,99 @@ async def test_remotion_render_engine_success():
     assert "Rendering..." in result.render_log
     copied_sources = [str(call.args[0]) for call in copy_mock.call_args_list]
     assert any(source.endswith("/src/index.css") for source in copied_sources)
+
+
+def test_scene_index_by_line_attributes_lines_to_owning_scene():
+    scenes = [
+        _make_scene(0, "const a = 1;\nreturn <div/>", duration=2.0, audio_path="/tmp/s0.mp3"),
+        _make_scene(1, "const b = 2;\nreturn <div/>", duration=2.0, audio_path="/tmp/s1.mp3"),
+    ]
+    tsx = _build_remotion_tsx(scenes, fps=30)
+    lines = tsx.splitlines()
+    mapping = _scene_index_by_line(tsx)
+
+    scene0_body_line = next(i for i, l in enumerate(lines, start=1) if "const a = 1;" in l)
+    scene1_body_line = next(i for i, l in enumerate(lines, start=1) if "const b = 2;" in l)
+    assert mapping[scene0_body_line] == 0
+    assert mapping[scene1_body_line] == 1
+
+    # Lines outside any _SceneN block (imports, exports, JSX composition) are unmapped.
+    import_line = next(i for i, l in enumerate(lines, start=1) if l.startswith("import React"))
+    assert import_line not in mapping
+
+
+@pytest.mark.asyncio
+async def test_tsc_check_attributes_error_to_owning_scene():
+    scenes = [
+        _make_scene(0, "return <div/>", duration=2.0, audio_path="/tmp/s0.mp3"),
+        _make_scene(1, "const opacity = retreat;\nreturn <div/>", duration=2.0, audio_path="/tmp/s1.mp3"),
+    ]
+    tsx = _build_remotion_tsx(scenes, fps=30)
+    lines = tsx.splitlines()
+    error_line = next(i for i, l in enumerate(lines, start=1) if "const opacity = retreat;" in l)
+
+    fake_proc = MagicMock()
+    fake_proc.returncode = 2
+    fake_proc.communicate = AsyncMock(
+        return_value=(
+            f"src/VideoScene.tsx({error_line},19): error TS2304: Cannot find name 'retreat'.\n".encode(),
+            b"",
+        )
+    )
+
+    with patch("asyncio.create_subprocess_exec", return_value=fake_proc), \
+         patch("shutil.copy2"), patch("os.symlink"):
+        errors = await _tsc_check(tsx, Path("/fake/template"))
+
+    assert len(errors) == 1
+    assert "scene 1:" in errors[0]
+    assert "TS2304" in errors[0]
+    assert "retreat" in errors[0]
+
+
+@pytest.mark.asyncio
+async def test_tsc_check_returns_no_errors_on_success():
+    fake_proc = MagicMock()
+    fake_proc.returncode = 0
+    fake_proc.communicate = AsyncMock(return_value=(b"", b""))
+
+    with patch("asyncio.create_subprocess_exec", return_value=fake_proc), \
+         patch("shutil.copy2"), patch("os.symlink"):
+        errors = await _tsc_check("export const x = 1;", Path("/fake/template"))
+
+    assert errors == []
+
+
+@pytest.mark.asyncio
+async def test_remotion_validate_code_reports_tsc_failures():
+    from app.engines.render.remotion import RemotionRenderEngine
+
+    scene = SceneInput(
+        scene_index=0,
+        narration="hello",
+        description="intro",
+        code="const opacity = retreat;\nreturn <div/>;",
+        audio=None,
+    )
+
+    with patch("app.engines.render.remotion._tsc_check", new=AsyncMock(return_value=["scene 0: TS2304: Cannot find name 'retreat'."])):
+        is_valid, errors = await RemotionRenderEngine().validate_code([scene])
+
+    assert is_valid is False
+    assert "retreat" in errors
+
+
+@pytest.mark.asyncio
+async def test_remotion_validate_code_passes_when_tsc_clean():
+    from app.engines.render.remotion import RemotionRenderEngine
+
+    scene = SceneInput(scene_index=0, narration="hello", description="intro", code="return <div/>;", audio=None)
+
+    with patch("app.engines.render.remotion._tsc_check", new=AsyncMock(return_value=[])):
+        is_valid, errors = await RemotionRenderEngine().validate_code([scene])
+
+    assert is_valid is True
+    assert errors == ""
 
 
 @pytest.mark.asyncio

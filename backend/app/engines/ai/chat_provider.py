@@ -141,19 +141,61 @@ class ChatAIProvider:
 结构辅助：网格深底 #4A3880、网格亮底 #D4C5F0
 配色原则：红色专用于偏差/错误，绿色专用于正确/结论，不可混用。""",
         "narrative_style": """\
-【叙事风格】
+【叙事蓝图】
+一、叙事风格
 整体娓娓道来，从一个反直觉的问题或现象切入，逐步建立知识体系，结尾给出有价值的启示。
-旁白负责讲解，每句话清晰有力，不空洞，不重复画面文字。""",
-        "pacing": """\
-【叙事节奏】
+旁白负责讲解，每句话清晰有力，不空洞，不重复画面文字。
+二、叙事节奏
 目标视频时长 2-3 分钟，需要 15-20 个镜头，每个镜头旁白约 30-50 字、时长 7-10 秒。
-estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得少于 5 秒。""",
-        "scene_structure": """\
-【镜头结构】
+estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得少于 5 秒。
+三、镜头结构
 镜头 0-1：抛出问题/反直觉现象，吸引注意
 镜头 2-5：建立基础知识框架，引入关键概念
 镜头 6-14：逐步深入，以动态图示和实例展开论证
 镜头 15+：总结升华，给出启示或应用价值""",
+        "exemplar": """\
+{
+  "scenes": [
+    {
+      "scene_index": 0,
+      "narration": "如果现场只有你一个人，责任几乎全部落在你身上。",
+      "description": "用人物和责任计量环解释唯一旁观者承担全部责任。",
+      "estimated_duration_seconds": 8.0,
+      "beats": [
+        {
+          "beat_index": 0,
+          "cue_text": "如果现场只有你一个人，",
+          "visual_action": "画面中央从轮廓到填充逐步绘制出唯一的旁观者，脚下一圈淡色涟漪缓缓扩散一次，四周保持空旷。",
+          "emphasis": "唯一旁观者",
+          "transition": "reveal",
+          "fallback_weight": 1.0
+        },
+        {
+          "beat_index": 1,
+          "cue_text": "责任几乎全部落在你身上。",
+          "visual_action": "人物脚下升起责任计量环，数值从0%连续增长到100%约2秒，到达时环体加粗、人物提亮成为唯一高亮主体。",
+          "emphasis": "100%责任",
+          "transition": "continue",
+          "fallback_weight": 1.0
+        }
+      ]
+    }
+  ],
+  "fact_checks": [
+    {
+      "claim_text": "需要核查的具体论断",
+      "scene_index": 0,
+      "source_url": null,
+      "source_description": "建议核查来源或说明",
+      "confidence": "medium",
+      "is_hypothesis": false,
+      "assumptions": null,
+      "controversy": null,
+      "reviewer_verdict": null,
+      "reviewer_note": null
+    }
+  ]
+}""",
         "animation_style": """\
 【视觉精致度规范】
 构图与层次：每个镜头须有明确的视觉层次——背景装饰层 → 主体图形层 → 文字标注层。
@@ -210,38 +252,45 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         aspect_ratio: str = "landscape",
     ) -> str:
         defaults = self._DEFAULT_STYLE_COMPONENTS
-        narrative_style = style_components.get("narrative_style", defaults.get("narrative_style", ""))
-        pacing = style_components.get("pacing", defaults.get("pacing", ""))
-        scene_structure = style_components.get("scene_structure", defaults.get("scene_structure", ""))
-        color_scheme = style_components.get("color_scheme", defaults.get("color_scheme", ""))
+        narrative_style = style_components.get("narrative_style") or defaults["narrative_style"]
+        # 旧版快照兼容：pacing / scene_structure 已并入叙事蓝图（narrative_style），
+        # 仅当历史快照携带这两个类别时原样拼接，不再注入系统默认
+        pacing = style_components.get("pacing", "")
+        scene_structure = style_components.get("scene_structure", "")
+        color_scheme = style_components.get("color_scheme") or defaults["color_scheme"]
+        exemplar = style_components.get("exemplar") or defaults["exemplar"]
         engine_hint = self._narrative_engine_hints.get(render_engine, self._NARRATIVE_ENGINE_HINT_FALLBACK)
 
         parts = [
             "你是知识视频叙事脚本生成器。请严格输出 JSON object，不要输出 Markdown。",
             "",
-            'JSON 格式示例：\n{{\n  "scenes": [\n    {{\n      "scene_index": 0,\n      "narration": "如果现场只有你一个人，责任几乎全部落在你身上。",\n      "description": "用人物和责任计量环解释唯一旁观者承担全部责任。",\n      "estimated_duration_seconds": 8.0,\n      "beats": [\n        {{\n          "beat_index": 0,\n          "cue_text": "如果现场只有你一个人，",\n          "visual_action": "中央出现唯一旁观者，周围保持空旷。",\n          "emphasis": "唯一旁观者",\n          "transition": "reveal",\n          "fallback_weight": 1.0\n        }},\n        {{\n          "beat_index": 1,\n          "cue_text": "责任几乎全部落在你身上。",\n          "visual_action": "责任计量环增长至100%，人物成为唯一高亮主体。",\n          "emphasis": "100%责任",\n          "transition": "continue",\n          "fallback_weight": 1.0\n        }}\n      ]\n    }}\n  ],\n  "fact_checks": [\n    {{\n      "claim_text": "需要核查的具体论断",\n      "scene_index": 0,\n      "source_url": null,\n      "source_description": "建议核查来源或说明",\n      "confidence": "medium",\n      "is_hypothesis": false,\n      "assumptions": null,\n      "controversy": null,\n      "reviewer_verdict": null,\n      "reviewer_note": null\n    }}\n  ]\n}}',
+            "【输出格式与风格范例】",
+            "以下范例既定义输出的 JSON 结构，也示范本风格的旁白语感与信息密度。"
+            "输出结构必须与范例完全一致；旁白的语感、句式与每镜信息密度请贴近范例，"
+            "但内容必须来自当前选题，禁止照搬范例文字。"
+            "范例可能只节选一部完整成片中的少数镜头（scene_index 不连续即为节选）；"
+            "实际输出必须完整覆盖叙事蓝图要求的全部镜头，且 scene_index 从 0 连续递增：",
+            exemplar,
             "",
         ]
         if narrative_style:
-            parts.append("【叙事风格】")
             parts.append(narrative_style)
         if pacing:
-            parts.append("【叙事节奏】")
             parts.append(pacing)
         if scene_structure:
-            parts.append("【镜头结构】")
             parts.append(scene_structure)
         if color_scheme:
-            parts.append("【视觉系统】")
             parts.append(color_scheme)
             parts.append("颜色名与 Hex 对照（description 中用颜色名即可，代码生成阶段再转 Hex）")
         parts += [
             "",
             "【语义节拍契约】",
             "- 每个 scene 除 narration、description 外必须输出非空 beats 数组",
-            "- 普通镜头输出 2-4 个 beats，纯标题或结尾镜头可输出 1-2 个",
+            "- beats 数量遵循叙事蓝图组件的节拍规则；组件未规定时，普通镜头输出 2-4 个，纯标题或结尾镜头 1-2 个",
             "- cue_text 必须逐字取自 narration，并按顺序完整覆盖 narration；不得概括、改写或遗漏",
+            "- 长句在逗号处继续拆分为多个 beat；一个 beat 覆盖的旁白朗读时长明显超过其动画动作所需时间时，必须增加 beat 而不是留白",
             "- visual_action 只描述这一句旁白发生时画面产生的知识性变化",
+            "- visual_action 优先描述有时间过程的动画（逐个出现、描边生长、数值增长、移动变形、连线延伸），旁白进行中每 2-3 秒画面应有可感知的新变化，禁止一次性淡入后长时间静置",
             "- 每个 beat 必须推进信息、关系或状态，禁止用“保持画面”凑数量",
             "- beat_index 在每个 scene 内必须从 0 连续递增",
             "- transition 只能是 continue、transform、reveal、replace、exit 之一",
@@ -256,12 +305,12 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         parts += [
             "",
             "要求：",
-            "- 第一个镜头需要按照【视觉系统】要求设置背景颜色",
-            "- scenes 是镜头数组，scene_index 从 0 连续递增；镜头数量遵循 pacing 组件",
+            "- 第一个镜头需要按照视觉系统组件要求设置背景颜色",
+            "- scenes 是镜头数组，scene_index 从 0 连续递增",
             "- 每个镜头包含 narration、description、beats、estimated_duration_seconds",
             "- 不再使用的镜头元素需要及时退场或消失，避免画面残留，这个很容易被忽略",
             "- fact_checks 覆盖脚本中的关键事实论断和可能争议点",
-            "- 镜头数量和视频总时长需要满足 pacing 组件要求，不可偷懒。如pacing组件未要求镜头数量，则至少 16 个镜头，时长2-3分钟",
+            "- 镜头数量、每镜旁白字数和视频总时长必须满足叙事蓝图组件的要求，不可偷懒；仅当组件完全未规定时，才默认至少 16 个镜头、时长 2-3 分钟",
             "- 只能输出合法 JSON object",
         ]
         return "\n".join(parts)
@@ -730,11 +779,10 @@ JSON 格式示例：
 - 即使用户只是在询问，也要返回当前版本的完整 name、description、 prompt_text和replay。
 - 只能输出合法 JSON object。"""
         category_labels = {
-            "narrative_style": "叙事风格",
-            "pacing": "叙事节奏",
-            "scene_structure": "镜头结构",
+            "narrative_style": "叙事蓝图（叙事风格+节奏+镜头结构）",
             "color_scheme": "视觉系统",
             "animation_style": "动画系统",
+            "exemplar": "金样本（输出 JSON 结构与旁白语感范例）",
         }
         messages = [{"role": "system", "content": system_prompt}]
         for item in conversation_history[-20:]:

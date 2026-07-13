@@ -49,11 +49,10 @@ interface ChatEntry extends StyleAssistantMessage {
 }
 
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  narrative_style: "定义表达口吻、讲述视角与语言质感",
-  pacing: "控制视频时长、信息密度与讲述速度",
-  scene_structure: "规划开场、展开、论证与收束方式",
+  narrative_style: "叙事风格、节奏与镜头结构的一体化剧本蓝图",
   color_scheme: "约束色板、字体、构图与视觉层级",
   animation_style: "定义动效节奏、转场与元素运动规则",
+  exemplar: "输出 JSON 结构与旁白语感的镜头级范例",
 };
 
 function categoryLabel(category: string) {

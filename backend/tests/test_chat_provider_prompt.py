@@ -178,3 +178,52 @@ def test_remotion_code_prompt_warm_colors():
 def test_remotion_code_prompt_canvas_size():
     prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["remotion"]
     assert "1280" in prompt or "720" in prompt or "canvas" in prompt.lower() or "画布" in prompt
+
+
+def test_narrative_prompt_uses_style_exemplar_as_format_example():
+    provider = make_provider()
+    prompt = provider._build_narrative_system_prompt(
+        "manim",
+        {
+            "narrative_style": "【叙事蓝图】测试蓝图",
+            "exemplar": '{"scenes": [{"narration": "范例旁白语感"}]}',
+        },
+    )
+    assert "范例旁白语感" in prompt
+    assert "【输出格式与风格范例】" in prompt
+    # 内置通用示例被顶替
+    assert "责任几乎全部落在你身上" not in prompt
+    assert "【叙事蓝图】测试蓝图" in prompt
+
+
+def test_narrative_prompt_falls_back_to_builtin_exemplar():
+    provider = make_provider()
+    prompt = provider._build_narrative_system_prompt("manim", {})
+    assert "责任几乎全部落在你身上" in prompt
+    assert "scene_index" in prompt
+
+
+def test_narrative_prompt_appends_legacy_pacing_and_structure():
+    """旧版快照仍携带 pacing / scene_structure，原样拼接且不注入系统默认。"""
+    provider = make_provider()
+    prompt = provider._build_narrative_system_prompt(
+        "manim",
+        {
+            "narrative_style": "【叙事风格】旧版叙事",
+            "pacing": "【叙事节奏】旧版节奏",
+            "scene_structure": "【镜头结构】旧版结构",
+            "color_scheme": "【视觉系统】旧版配色",
+        },
+    )
+    assert "旧版节奏" in prompt
+    assert "旧版结构" in prompt
+    assert "旧版配色" in prompt
+
+
+def test_narrative_prompt_new_style_has_no_default_pacing_leak():
+    """新结构下未提供 pacing / scene_structure 时，不得注入旧系统默认文本。"""
+    provider = make_provider()
+    prompt = provider._build_narrative_system_prompt(
+        "manim", {"narrative_style": "【叙事蓝图】完整蓝图"}
+    )
+    assert "15-20 个镜头" not in prompt

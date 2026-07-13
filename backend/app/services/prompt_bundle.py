@@ -9,11 +9,17 @@ from app.engines.ai.chat_provider import ChatAIProvider
 from app.models.prompt_component import PromptComponent
 
 
-BASE_PROMPT_VERSION = "semantic-beats-v1"
+BASE_PROMPT_VERSION = "blueprint-exemplar-v1"
 STYLE_CATEGORIES = (
     "narrative_style",
-    "pacing",
-    "scene_structure",
+    "color_scheme",
+    "animation_style",
+    "exemplar",
+)
+# 旧版快照包含 pacing / scene_structure（已并入叙事蓝图），解析时原样透传；
+# 新旧快照都必须至少包含以下类别。
+REQUIRED_SNAPSHOT_CATEGORIES = (
+    "narrative_style",
     "color_scheme",
     "animation_style",
 )
@@ -79,9 +85,11 @@ def style_components_from_snapshot(snapshot: dict[str, Any]) -> dict[str, str]:
         raise ValueError("Prompt snapshot components are missing")
 
     resolved: dict[str, str] = {}
-    for category in STYLE_CATEGORIES:
-        metadata = components.get(category)
+    for category, metadata in components.items():
         if not isinstance(metadata, dict) or not isinstance(metadata.get("prompt_text"), str):
-            raise ValueError(f"Prompt snapshot is missing category {category}")
+            raise ValueError(f"Prompt snapshot has invalid category {category}")
         resolved[category] = metadata["prompt_text"]
+    for category in REQUIRED_SNAPSHOT_CATEGORIES:
+        if category not in resolved:
+            raise ValueError(f"Prompt snapshot is missing category {category}")
     return resolved

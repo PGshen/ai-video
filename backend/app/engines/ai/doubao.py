@@ -18,8 +18,7 @@ class DoubaoClient:
     """
 
     engine_name = "doubao"
-    # Ark documents JSON Object mode ({"type": "json_object"}), not strict JSON Schema.
-    supports_json_schema = False
+    supports_json_schema = True
 
     def __init__(
         self,

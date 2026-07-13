@@ -17,13 +17,9 @@ from app.schemas.style_template import (
 
 router = APIRouter(prefix="/api/style-templates", tags=["style-templates"])
 
-STYLE_CATEGORIES = {
-    "narrative_style",
-    "pacing",
-    "scene_structure",
-    "color_scheme",
-    "animation_style",
-}
+from app.services.prompt_bundle import STYLE_CATEGORIES as _STYLE_CATEGORIES
+
+STYLE_CATEGORIES = set(_STYLE_CATEGORIES)
 
 
 def _to_response(template: StyleTemplate) -> StyleTemplateResponse:

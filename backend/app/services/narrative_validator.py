@@ -73,8 +73,6 @@ def validate_and_normalize_scenes(
         if not beats_are_valid:
             errors.append(f"Scene {expected_scene_index} beats must be a non-empty array")
             continue
-        if len(beats) > 4:
-            errors.append(f"Scene {expected_scene_index} must contain at most 4 beats")
 
         normalized_beats: list[dict[str, Any]] = []
         all_cues_are_valid = True

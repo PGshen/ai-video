@@ -154,6 +154,30 @@ code_prompt: |
     值当位置参数传入（如误把间距写成 Group(a, b, 0.5)）；间距、缓冲量等数值一律通过
     .arrange(buff=0.5) 或 .shift(...) 等关键字/链式方法设置，不要传给 Group/VGroup 构造函数本身
 
+  【VGroup 双重定位（高频布局错乱根源）】
+  - VGroup 内部子元素只用相对布局（.arrange() / 相对 .shift() / .next_to(兄弟元素)），
+    整体位置由 VGroup 最后统一 .move_to() / .shift() 决定
+  - 严禁子元素先用绝对坐标 .move_to(RIGHT*3+UP*2) 定位、随后又对整个 VGroup 再 .move_to()——
+    两次定位叠加会使子元素飞出预期位置，是元素重叠/错位的高频来源
+  - 自检：VGroup 构造式内出现绝对坐标 move_to 且组装后又整体 move_to 的，必须改写
+
+  【动画表现力词汇表（优先于原始 FadeIn/直线位移）】
+  visual_action 中的表现意图必须翻译成对应的 Manim 模式，禁止一律降级为 FadeIn + 直线 shift：
+  - 数值增长/计数跳动 → ValueTracker + DecimalNumber + add_updater，
+    例：tr = ValueTracker(0); num = DecimalNumber(0, num_decimal_places=0);
+        num.add_updater(lambda m: m.set_value(tr.get_value()));
+        self.play(tr.animate.set_value(37), run_time=2.0)；结束后必须 num.clear_updaters()
+  - 强调/脉冲/颤动 → Indicate(obj) / Circumscribe(obj) / Flash(obj) / Wiggle(obj)，
+    不要手写 scale(1.04) 微缩放冒充强调
+  - 标题/关键句文字 → Write(text) 逐笔书写；短标注才用 FadeIn
+  - 曲线运动 → .animate.shift(...) 配 path_arc 参数、或 MoveAlongPath(obj, arc)，
+    位移超过 2 单位的对象运动至少一半应带弧线，不要全部直线平移
+  - 一拍内的"主动作→跟随→强调"微编排 → Succession(...) 或
+    AnimationGroup(..., lag_ratio=0.6) 在同一 self.play 内衔接，比三个孤立短 play 更连贯
+  - 元素替换 → ReplacementTransform / TransformMatchingShapes 优先于 FadeOut + FadeIn
+  - 节奏质感 → run_time 较长的过程动画显式指定 rate_func（入场 smooth、
+    强调 there_and_back、下落 rush_into），避免所有动作都是默认速率曲线
+
   【退场检查清单（每个镜头必须执行）】
   每个镜头代码开头，隐式维护画布存量列表，对每个存活元素判断：
   - 本镜头继续引用或保留 → 不退场，直接使用

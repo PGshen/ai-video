@@ -87,6 +87,11 @@ class ChatAIProvider:
     _NARRATIVE_ENGINE_HINT_FALLBACK = (
         "description 字段将用于后续渲染代码生成，必须精确描述每个元素的进场、变形、退场及跨镜头衔接关系。"
     )
+    _JSON_ESCAPE_RULE = (
+        "- 字符串值中如需引用或强调用词，一律使用「」『』中文书名号/引号，"
+        "禁止使用英文直引号 \" 包裹文字；确需输出英文双引号或反斜杠时必须按 JSON 规则转义（\\\" 、\\\\），"
+        "确保每个字符串值本身是合法转义的 JSON 字符串"
+    )
 
     @staticmethod
     def _build_aspect_ratio_prompt(aspect_ratio: str, render_engine: str) -> str:
@@ -311,6 +316,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "- 不再使用的镜头元素需要及时退场或消失，避免画面残留，这个很容易被忽略",
             "- fact_checks 覆盖脚本中的关键事实论断和可能争议点",
             "- 镜头数量、每镜旁白字数和视频总时长必须满足叙事蓝图组件的要求，不可偷懒；仅当组件完全未规定时，才默认至少 16 个镜头、时长 2-3 分钟",
+            self._JSON_ESCAPE_RULE,
             "- 只能输出合法 JSON object",
         ]
         return "\n".join(parts)
@@ -383,6 +389,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "- 严格按照每个镜头的 description 实现动画逻辑",
             "- 充分利用跨镜头变量复用",
             "- 每个 code 片段不写外层结构（详见各引擎规范）",
+            self._JSON_ESCAPE_RULE,
             "- 只能输出合法 JSON object",
         ]
         return "\n".join(parts)
@@ -604,6 +611,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
 
 注意项：
 1. 修复代码时尤其注意变量作用域，保证变量先声明再使用，避免跨镜头变量冲突。
+2. {self._JSON_ESCAPE_RULE.lstrip("- ")}
 
 JSON 格式：
 {{
@@ -676,7 +684,7 @@ JSON 格式：
         return CodeRepairResult(repairs=normalized)
 
     async def brainstorm_topics(self, topic_direction: str, count: int) -> BrainstormResult:
-        system_prompt = """\
+        system_prompt = f"""\
 你是知识视频选题策划助手。请严格输出 JSON object，不要输出 Markdown。
 
 JSON 格式示例：
@@ -695,6 +703,7 @@ JSON 格式示例：
 - title 适合自媒体知识视频标题，避免空泛。
 - description 说明吸引力（重要）、可论证点或可视化潜力。
 - tags 使用 2 到 5 个中文短标签。
+{self._JSON_ESCAPE_RULE}
 - 只能输出合法 JSON object。"""
         user_prompt = f"请围绕「{topic_direction}」生成 {count} 个候选选题 JSON。"
         content = await self._complete(
@@ -770,7 +779,7 @@ JSON 格式示例：
         conversation_history: list[dict],
         new_message: str,
     ) -> StyleAssistantResult:
-        system_prompt = """\
+        system_prompt = f"""\
 你是一位知识视频生产系统的风格提示词设计助手。你的任务是通过对话，把用户的想法整理成清晰、可执行、可复用的风格组件提示词。
 
 规则：
@@ -781,6 +790,7 @@ JSON 格式示例：
 - name 简洁易辨识；description 用一句话说明适用场景。
 - reply 用 1-3 句中文说明本轮做了什么，并可提出一个有价值的后续问题。
 - 即使用户只是在询问，也要返回当前版本的完整 name、description、 prompt_text和replay。
+{self._JSON_ESCAPE_RULE}
 - 只能输出合法 JSON object。"""
         category_labels = {
             "narrative_style": "叙事蓝图（叙事风格+节奏+镜头结构）",

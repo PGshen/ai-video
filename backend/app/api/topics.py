@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from app.schemas.topic import (
 )
 
 router = APIRouter(prefix="/api/topics", tags=["topics"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=TopicListResponse)
@@ -77,6 +79,7 @@ async def brainstorm_topics(
     try:
         result = await provider.brainstorm_topics(body.topic_direction, body.count)
     except Exception as exc:
+        logger.exception("brainstorm_topics failed")
         raise HTTPException(status_code=503, detail="AI service temporarily unavailable") from exc
     return BrainstormResponse(candidates=result.candidates[: body.count])
 
@@ -190,6 +193,7 @@ async def research_topic(
                 full_response.append(chunk)
                 yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
         except Exception:
+            logger.exception("research_topic streaming failed")
             yield "data: [ERROR] 服务暂时不可用，请稍后重试\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -203,6 +207,7 @@ async def research_topic(
             topic.research_data = new_history
             await db.commit()
         except Exception:
+            logger.exception("failed to persist research_topic conversation history")
             yield "data: [ERROR] 对话内容保存失败\n\n"
         finally:
             yield "data: [DONE]\n\n"

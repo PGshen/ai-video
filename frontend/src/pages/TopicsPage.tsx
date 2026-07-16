@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderKanban, Plus, Search, Sparkles, Trash2 } from "lucide-react";
+import { FolderKanban, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import {
 } from "@/lib/format";
 import type { Topic } from "@/types";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
 
 function ScoreBadge({ score }: { score: number | null }) {
   if (score === null) return <span className="text-muted-foreground text-sm">-</span>;
@@ -55,7 +55,7 @@ export default function TopicsPage() {
     return () => window.clearTimeout(timer);
   }, [titleFilter]);
 
-  const { data, isLoading } = useTopics(
+  const { data, isLoading, isFetching, refetch } = useTopics(
     statusFilter === "all" ? undefined : statusFilter,
     debouncedTitleFilter || undefined,
     page,
@@ -88,6 +88,16 @@ export default function TopicsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">选题池</h1>
         <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="刷新列表"
+            title="刷新列表"
+            disabled={isFetching}
+            onClick={() => refetch()}
+          >
+            <RefreshCw className={isFetching ? "animate-spin" : undefined} />
+          </Button>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input

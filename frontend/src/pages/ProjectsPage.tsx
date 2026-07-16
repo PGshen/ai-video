@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RotateCcw, Search, Trash2, X } from "lucide-react";
+import { RefreshCw, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,7 +16,7 @@ import {
 } from "@/lib/format";
 import type { VideoProject } from "@/types";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
 
 const RESETTABLE_STATUSES = new Set([
   "narrative_generating",
@@ -45,7 +45,7 @@ export default function ProjectsPage() {
     return () => window.clearTimeout(timer);
   }, [titleFilter]);
 
-  const { data, isLoading } = useProjects({
+  const { data, isLoading, isFetching, refetch } = useProjects({
     status: statusFilter === "all" ? undefined : statusFilter,
     topicId,
     topicTitle: debouncedTitleFilter || undefined,
@@ -123,6 +123,16 @@ export default function ProjectsPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="刷新列表"
+            title="刷新列表"
+            disabled={isFetching}
+            onClick={() => refetch()}
+          >
+            <RefreshCw className={isFetching ? "animate-spin" : undefined} />
+          </Button>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input

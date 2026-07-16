@@ -4,6 +4,12 @@
 """
 import asyncio
 import logging
+
+# 必须在其它模块 import 之前配置根 logger：manim（被 RenderWorker 间接 import）
+# 会在根 logger 尚无 handler 时给它挂上 RichHandler，而 RichHandler 在 Temporal
+# workflow sandbox 内触发 rich 的循环 import 并使 workflow activation 崩溃。
+logging.basicConfig(level=logging.INFO)
+
 from temporalio.client import Client
 from temporalio.worker import Worker as TemporalWorker
 from app.workers.narrative_worker import NarrativeWorker
@@ -19,7 +25,6 @@ from app.workflows.activities import (
 )
 from app.config import settings
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

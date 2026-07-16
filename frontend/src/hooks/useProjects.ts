@@ -39,10 +39,6 @@ export function useProjects(filters: ProjectFilters = {}) {
       const query = params.toString();
       return api.get<ProjectListResponse>(`/api/projects${query ? `?${query}` : ""}`);
     },
-    refetchInterval: (query) => {
-      const items = query.state.data?.items ?? [];
-      return items.some((p) => TRANSITIONAL_STATUSES.has(p.status)) ? 3000 : false;
-    },
   });
 }
 

@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     TEMPORAL_ADDRESS: str = "localhost:7233"
     TEMPORAL_TASK_QUEUE: str = "video-production"
     AUTH_SECRET_KEY: str = "dev-auth-secret-change-in-prod"
-    AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: int = 2880
     AUTH_COOKIE_NAME: str = "ai_video_session"
     AUTH_COOKIE_SECURE: bool = False
     AUTH_BOOTSTRAP_ADMIN_USERNAME: str = ""

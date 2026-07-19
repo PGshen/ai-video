@@ -42,9 +42,9 @@ export function FactCheckCard({
 
   return (
     <div className="border rounded-lg p-4 space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug flex-1">{item.claimText}</p>
-        <div className="flex gap-1 shrink-0">
+      <div className="space-y-2">
+        <p className="text-sm font-medium leading-snug">{item.claimText}</p>
+        <div className="flex items-center gap-1">
           <Badge variant="outline" className="text-xs">镜头 {item.sceneIndex}</Badge>
           <Badge className={`text-xs ${CONFIDENCE_COLOR[item.confidence] ?? ""}`}>
             {item.confidence}

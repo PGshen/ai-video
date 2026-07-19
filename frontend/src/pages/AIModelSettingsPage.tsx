@@ -11,6 +11,7 @@ import {
   Save,
   Trash2,
   XCircle,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,6 +44,7 @@ import {
   useDeleteAIModelProvider,
   useDeleteAIProviderModel,
   useSetAIBusinessModelConfig,
+  useTestAIProviderModel,
   useUpdateAIModelProvider,
   useUpdateAIProviderModel,
 } from "@/hooks/useAIModelSettings";
@@ -50,7 +52,12 @@ import type {
   AIModelProviderInput,
   AIProviderModelInput,
 } from "@/hooks/useAIModelSettings";
-import type { AIModelProvider, AIProviderModel, AIProviderType } from "@/types";
+import type {
+  AIModelProvider,
+  AIModelTestResponse,
+  AIProviderModel,
+  AIProviderType,
+} from "@/types";
 
 const providerLabels: Record<AIProviderType, string> = {
   deepseek: "DeepSeek",
@@ -126,6 +133,16 @@ function toModelForm(model: AIProviderModel): AIProviderModelInput {
     outputCostPerMillion: model.outputCostPerMillion,
     isActive: model.isActive,
   };
+}
+
+function showTestResult(result: AIModelTestResponse) {
+  if (result.ok) {
+    toast.success(
+      `模型可用${result.latencyMs != null ? ` · ${result.latencyMs}ms` : ""}`
+    );
+  } else {
+    toast.error(result.message || "模型不可用");
+  }
 }
 
 function ProviderDialog({
@@ -317,6 +334,7 @@ function ModelDialog({
 }) {
   const createModel = useCreateAIProviderModel();
   const updateModel = useUpdateAIProviderModel();
+  const testModel = useTestAIProviderModel();
   const [form, setForm] = useState<AIProviderModelInput>(emptyModelForm);
   const isEditing = Boolean(model);
   const pending = createModel.isPending || updateModel.isPending;
@@ -357,6 +375,20 @@ function ModelDialog({
     } else {
       createModel.mutate(payload, options);
     }
+  };
+
+  const runTest = () => {
+    if (!form.providerId || !form.model.trim()) {
+      toast.error("请先选择供应商并填写模型 ID");
+      return;
+    }
+    testModel.mutate(
+      { providerId: form.providerId, model: form.model.trim() },
+      {
+        onSuccess: showTestResult,
+        onError: (error: Error) => toast.error(error.message || "测试请求失败"),
+      }
+    );
   };
 
   return (
@@ -472,6 +504,16 @@ function ModelDialog({
             </div>
           </div>
           <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="sm:mr-auto"
+              onClick={runTest}
+              disabled={testModel.isPending}
+            >
+              {testModel.isPending ? <Loader2 className="animate-spin" /> : <Zap />}
+              测试连通
+            </Button>
             <Button type="button" variant="outline" onClick={onClose}>
               取消
             </Button>
@@ -492,6 +534,8 @@ export default function AIModelSettingsPage() {
   const deleteModel = useDeleteAIProviderModel();
   const setBusinessConfig = useSetAIBusinessModelConfig();
   const deleteBusinessConfig = useDeleteAIBusinessModelConfig();
+  const testModel = useTestAIProviderModel();
+  const [testingModelId, setTestingModelId] = useState<string | null>(null);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<AIModelProvider | null>(null);
@@ -518,6 +562,18 @@ export default function AIModelSettingsPage() {
       onSuccess: () => toast.success("供应商已删除"),
       onError: (error) => toast.error(error.message || "删除失败"),
     });
+  };
+
+  const runModelTest = (model: AIProviderModel) => {
+    setTestingModelId(model.id);
+    testModel.mutate(
+      { providerId: model.providerId, model: model.model },
+      {
+        onSuccess: showTestResult,
+        onError: (error) => toast.error(error.message || "测试请求失败"),
+        onSettled: () => setTestingModelId(null),
+      }
+    );
   };
 
   const removeModel = (model: AIProviderModel) => {
@@ -732,6 +788,20 @@ export default function AIModelSettingsPage() {
                           {Number(model.outputCostPerMillion).toFixed(4)}
                         </TableCell>
                         <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => runModelTest(model)}
+                            disabled={testModel.isPending}
+                            aria-label={`测试 ${model.name} 连通性`}
+                            title="发送 Hi 测试连通性"
+                          >
+                            {testingModelId === model.id ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <Zap />
+                            )}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"

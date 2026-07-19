@@ -242,10 +242,17 @@ class VideoProductionWorkflow:
         # Persist the immutable render output on the history event.  Do not
         # resolve it through project.current_video_asset_id: that pointer can
         # change after a later render.
+        # Histories recorded before code version freezing carry
+        # render_completed payloads without the code_version_* keys; tolerate
+        # their absence so those runs can still replay.
         video_review_payload = {
-            "video_asset_id": result["asset_id"],
-            "code_version_id": result["code_version_id"],
-            "code_version_number": result["code_version_number"],
+            key: value
+            for key, value in {
+                "video_asset_id": result.get("asset_id"),
+                "code_version_id": result.get("code_version_id"),
+                "code_version_number": result.get("code_version_number"),
+            }.items()
+            if value is not None
         }
         self._current_video_payload = video_review_payload
         await self._update_status(project_id, "video_review", video_review_payload)

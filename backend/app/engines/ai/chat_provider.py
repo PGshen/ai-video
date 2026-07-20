@@ -260,6 +260,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         narrative_style = style_components.get("narrative_style") or defaults["narrative_style"]
         color_scheme = style_components.get("color_scheme") or defaults["color_scheme"]
         exemplar = style_components.get("exemplar") or defaults["exemplar"]
+        animation_style = style_components.get("animation_style") or defaults["animation_style"]
         engine_hint = self._narrative_engine_hints.get(render_engine, self._NARRATIVE_ENGINE_HINT_FALLBACK)
 
         parts = [
@@ -279,6 +280,15 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         if color_scheme:
             parts.append(color_scheme)
             parts.append("颜色名与 Hex 对照（description 中用颜色名即可，代码生成阶段再转 Hex）")
+        if animation_style:
+            parts.append(
+                "【视觉/动画风格约束（转化为画面语言，不得照抄其中的引擎术语）】\n"
+                "以下是本项目的视觉精致度与动画风格要求，请将其中的布局骨架、留白密度、"
+                "图标克制、转场语义等设计意图体现在 description 与 visual_action 的画面描述中；"
+                "禁止在 description/visual_action 中出现其中提到的具体类名或方法名"
+                "（如 VGroup、arrange、Transform、FadeOut 等）——这些留给代码生成阶段处理。"
+            )
+            parts.append(animation_style)
         parts += [
             "",
             "【语义节拍契约】",
@@ -305,6 +315,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "- 第一个镜头需要按照视觉系统组件要求设置背景颜色",
             "- scenes 是镜头数组，scene_index 从 0 连续递增",
             "- 每个镜头包含 narration、description、beats、estimated_duration_seconds",
+            "- narration旁白中的公式使用自然语言表述，因为TTS读公式可能读不对",
             "- 不再使用的镜头元素需要及时退场或消失，避免画面残留，这个很容易被忽略",
             "- fact_checks 覆盖脚本中的关键事实论断和可能争议点",
             "- 镜头数量、每镜旁白字数和视频总时长必须满足叙事蓝图组件的要求，不可偷懒；仅当组件完全未规定时，才默认至少 16 个镜头、时长 2-3 分钟",
@@ -582,26 +593,16 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         error_message: str,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
-        context_truncated: bool = False,
     ) -> CodeRepairResult:
         engine_hint = self._engine_code_prompts.get(render_engine, self._ENGINE_CODE_PROMPT_FALLBACK)
         defaults = self._DEFAULT_STYLE_COMPONENTS
         color_scheme = (style_components or {}).get("color_scheme", defaults.get("color_scheme", ""))
         animation_style = (style_components or {}).get("animation_style", defaults.get("animation_style", ""))
         aspect_prompt = self._build_aspect_ratio_prompt(aspect_ratio, render_engine)
-        scope_note = (
-            "错误信息已精确标注出错镜头（形如 \"scene N: ...\"）。为节省篇幅，你收到的镜头列表"
-            "只包含出错镜头及其之前的全部镜头（按执行顺序），不包含更靠后的镜头——因为更靠后的镜头"
-            "在出错时尚未执行，不可能是根因，也不会被这次错误影响。\n"
-            "你仍然可以修改列表中的任意镜头（包括早于出错镜头的镜头，如果根因在那里），"
-            "但不要虚构或修复列表之外不存在的镜头。"
-            if context_truncated
-            else "你会收到一次整体渲染失败的完整错误信息，以及按执行顺序排列的全部镜头。"
-        )
         system_prompt = f"""\
 你是知识视频渲染代码修复专家。请严格输出 JSON object，不要输出 Markdown。
 
-{scope_note}
+你会收到一次整体渲染失败的完整错误信息，以及按执行顺序排列的全部镜头。
 
 你的任务：
 1. 结合错误信息审查收到的镜头，定位直接错误、上游根因和可能由同类写法引发后续失败的镜头。

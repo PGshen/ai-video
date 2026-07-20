@@ -428,7 +428,6 @@ class AIProvider(Protocol):
         error_message: str,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
-        context_truncated: bool = False,
     ) -> CodeRepairResult: ...
 
     async def brainstorm_topics(

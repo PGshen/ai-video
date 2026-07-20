@@ -104,7 +104,7 @@ function StyleSelect({
 
 export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSnippets = [] }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
-  const [ttsVoice, setTtsVoice] = useState("zizi");
+  const [ttsVoice, setTtsVoice] = useState("xiaoxinjiejie");
   const [ttsEngine, setTtsEngine] = useState<TtsEngine>("doubao_2.0");
   const [ttsSpeed, setTtsSpeed] = useState<(typeof TTS_SPEEDS)[number]>(1.0);
   const [aspectRatio, setAspectRatio] = useState("landscape");

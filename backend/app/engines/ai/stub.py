@@ -44,6 +44,7 @@ class StubProvider:
         error_message: str,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
+        context_truncated: bool = False,
     ) -> CodeRepairResult:
         await asyncio.sleep(0)
         return CodeRepairResult(repairs=[])

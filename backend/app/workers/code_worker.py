@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from sqlalchemy import func, select
 from app.db import get_sync_session
@@ -12,8 +13,21 @@ from app.workers.base import BaseWorker
 from app.services.narrative_validator import validate_scenes_for_codegen
 
 _MAX_VALIDATION_ROUNDS = 2
+_ERROR_SCENE_RE = re.compile(r"scene (\d+):")
 
 logger = logging.getLogger(__name__)
+
+
+def _error_scene_indices(errors: str) -> set[int] | None:
+    """Extract scene indices the render engine attributed errors to.
+
+    Returns None when *no* error line carries a "scene N:" attribution
+    (e.g. a timeout or an error outside any scene method) — the caller
+    should fall back to sending every scene as repair context, since we
+    can't safely narrow it down.
+    """
+    matches = _ERROR_SCENE_RE.findall(errors)
+    return {int(m) for m in matches} if matches else None
 
 
 class CodeWorker(BaseWorker):
@@ -107,13 +121,42 @@ class CodeWorker(BaseWorker):
                     round_num + 1,
                     _MAX_VALIDATION_ROUNDS,
                 )
+                error_scenes = _error_scene_indices(errors)
+                if error_scenes is not None:
+                    # Errors are attributed to specific scenes: a scene can
+                    # only be a root cause of something that runs *after* it,
+                    # so it's safe (and much cheaper) to hand the repair model
+                    # just the erroring scene(s) and everything before them,
+                    # rather than every scene in the project.
+                    context_upto = max(error_scenes)
+                    repair_scenes = [
+                        s for s in merged_scenes if s.get("scene_index", 0) <= context_upto
+                    ]
+                    context_truncated = len(repair_scenes) < len(merged_scenes)
+                    logger.info(
+                        "[CodeWorker] scoped repair to scenes 0..%d (%d/%d scenes) — attributed: %s",
+                        context_upto,
+                        len(repair_scenes),
+                        len(merged_scenes),
+                        sorted(error_scenes),
+                    )
+                else:
+                    # Errors we can't attribute to a scene (timeout, error
+                    # outside any _scene_N method, engines without scene
+                    # attribution) — degrade to the old behavior of sending
+                    # every scene so the model has full context.
+                    repair_scenes = merged_scenes
+                    context_truncated = False
+                    logger.info("[CodeWorker] could not attribute errors to scenes, repairing with full context")
+
                 repair_provider = get_ai_provider("code_repair")
                 repair_result = await repair_provider.repair_code(
-                    scenes=merged_scenes,
+                    scenes=repair_scenes,
                     render_engine=render_engine,
                     error_message=errors,
                     style_components=style_components,
                     aspect_ratio=aspect_ratio,
+                    context_truncated=context_truncated,
                 )
                 for r in repair_result.repairs:
                     idx = r["scene_index"]

@@ -1,5 +1,6 @@
 import asyncio
 import ast
+import builtins
 import contextlib
 import inspect
 import logging
@@ -11,6 +12,7 @@ from pathlib import Path
 import manim
 import pyflakes.checker
 import pyflakes.messages as pyflakes_messages
+from manim.utils import rate_functions as _manim_rate_functions
 
 from app.config import settings
 from app.engines.render.base import RenderEngine, RenderRequest, RenderResult, RenderResultWithBytes, SceneInput
@@ -32,6 +34,8 @@ _TEX_CONSTRUCTORS = {
     "Tex",
     "Title",
 }
+_SCENE_METHOD_RE = re.compile(r"^    def _scene_(\d+)\(self\):\s*$")
+_TRACEBACK_SCENE_RE = re.compile(r"\bin _scene_(\d+)\b")
 
 
 class _TexStringNormalizer(ast.NodeTransformer):
@@ -73,6 +77,37 @@ class _ManimImportStripper(ast.NodeTransformer):
         if node.module and node.module.partition(".")[0] == "manim":
             self.changed = True
             return None
+        return node
+
+
+class _RateFuncRewriter(ast.NodeTransformer):
+    """Qualify bare rate-function names that Manim doesn't export top-level.
+
+    Generated code routinely writes ``rate_func=ease_out_bounce``, but most
+    easing functions live only in ``manim.utils.rate_functions`` (the
+    ``rate_functions`` module itself *is* exported). Rewriting the bare name
+    to ``rate_functions.<name>`` turns a guaranteed NameError into working
+    code, deterministically.
+    """
+
+    def __init__(self) -> None:
+        self.changed = False
+
+    def visit_Name(self, node: ast.Name) -> ast.AST:
+        if (
+            isinstance(node.ctx, ast.Load)
+            and not hasattr(manim, node.id)
+            and callable(getattr(_manim_rate_functions, node.id, None))
+        ):
+            self.changed = True
+            return ast.copy_location(
+                ast.Attribute(
+                    value=ast.Name(id="rate_functions", ctx=ast.Load()),
+                    attr=node.id,
+                    ctx=ast.Load(),
+                ),
+                node,
+            )
         return node
 
 
@@ -124,21 +159,110 @@ _PYFLAKES_STAR_NOISE = (
 )
 
 
+def _scene_line_ranges(script: str) -> list[tuple[int, int, int]]:
+    """Map each ``def _scene_N(self):`` method to its (start, end, scene_index) line span.
+
+    Lines are 1-indexed to match ``ast``/pyflakes/traceback line numbers.
+    """
+    lines = script.splitlines()
+    starts = [
+        (lineno, int(m.group(1)))
+        for lineno, m in (
+            (i, _SCENE_METHOD_RE.match(line)) for i, line in enumerate(lines, start=1)
+        )
+        if m
+    ]
+    ranges = []
+    for i, (start_line, scene_idx) in enumerate(starts):
+        end_line = starts[i + 1][0] - 1 if i + 1 < len(starts) else len(lines)
+        ranges.append((start_line, end_line, scene_idx))
+    return ranges
+
+
+def _scene_index_for_line(ranges: list[tuple[int, int, int]], lineno: int) -> int | None:
+    for start, end, scene_idx in ranges:
+        if start <= lineno <= end:
+            return scene_idx
+    return None
+
+
+def _label_with_scene(message: str, lineno: int | None, ranges: list[tuple[int, int, int]]) -> str:
+    scene_idx = _scene_index_for_line(ranges, lineno) if lineno is not None else None
+    return f"scene {scene_idx}: {message}" if scene_idx is not None else message
+
+
 def _static_check(script: str) -> list[str]:
     """Return actionable pyflakes diagnostics for the assembled Manim script.
 
     Star-import noise is filtered out because ``from manim import *`` makes it
-    impossible for pyflakes to resolve Manim names statically.
+    impossible for pyflakes to resolve Manim names statically. Each message is
+    labeled with its originating scene (see ``_scene_line_ranges``) so repair
+    prompts can be scoped to the scenes that actually need fixing.
     """
+    ranges = _scene_line_ranges(script)
     try:
         tree = ast.parse(script)
     except SyntaxError as exc:
-        return [f"SyntaxError: {exc}"]
+        # Line ranges are regex-derived, so scene attribution works even
+        # when the script doesn't parse.
+        return [_label_with_scene(f"SyntaxError: {exc}", exc.lineno, ranges)]
     w = pyflakes.checker.Checker(tree, "<manim_generated>")
     return [
-        str(msg) for msg in w.messages
+        _label_with_scene(str(msg), getattr(msg, "lineno", None), ranges)
+        for msg in w.messages
         if not isinstance(msg, _PYFLAKES_STAR_NOISE)
     ]
+
+
+def _undefined_name_check(script: str) -> list[str]:
+    """Report every bare name that cannot resolve at runtime — all scenes at once.
+
+    pyflakes cannot do this (the star import blinds it to undefined names),
+    and the dry run stops at the first NameError, burning one repair round per
+    name. Whitelist per scene method: its own bindings, nested-scope bindings,
+    module-level names of the assembled script, ``self``, the manim namespace,
+    and builtins. Cross-scene references were already rewritten to ``self.``
+    attributes by ``_promote_cross_scene_names``, so anything left bare and
+    unbound is a genuine hallucination.
+    """
+    try:
+        tree = ast.parse(script)
+    except SyntaxError:
+        return []  # _static_check already reported it with scene attribution
+
+    module_names: set[str] = set()
+    main_scene: ast.ClassDef | None = None
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                module_names.add((alias.asname or alias.name).partition(".")[0])
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    module_names.add(target.id)
+        elif isinstance(node, ast.ClassDef) and node.name == "MainScene":
+            main_scene = node
+    if main_scene is None:
+        return []
+
+    errors: list[str] = []
+    for method in main_scene.body:
+        if not isinstance(method, ast.FunctionDef):
+            continue
+        match = re.fullmatch(r"_scene_(\d+)", method.name)
+        if match is None:
+            continue
+        collector = _SceneNameCollector()
+        collector.generic_visit(ast.Module(body=method.body, type_ignores=[]))
+        allowed = collector.bound | collector.nested_bound | module_names | {"self"}
+        for name in sorted(collector.loaded - allowed):
+            if hasattr(manim, name) or hasattr(builtins, name):
+                continue
+            errors.append(
+                f"scene {match.group(1)}: undefined name '{name}' —— "
+                "该名称在本镜头与更早镜头都未定义，也不在 manim 命名空间中"
+            )
+    return errors
 
 
 def _signature_check(script: str) -> list[str]:
@@ -157,6 +281,7 @@ def _signature_check(script: str) -> list[str]:
     except SyntaxError:
         return []
 
+    ranges = _scene_line_ranges(script)
     errors: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -187,7 +312,7 @@ def _signature_check(script: str) -> list[str]:
                 **{kw.arg: None for kw in node.keywords},
             )
         except TypeError as exc:
-            errors.append(f"line {node.lineno}: {name}(...) {exc}")
+            errors.append(_label_with_scene(f"line {node.lineno}: {name}(...) {exc}", node.lineno, ranges))
 
     return errors
 
@@ -206,6 +331,186 @@ def _is_tex_constructor(node: ast.expr) -> bool:
     if isinstance(node, ast.Attribute):
         return node.attr in _TEX_CONSTRUCTORS
     return False
+
+
+class _SceneNameCollector(ast.NodeVisitor):
+    """Collect method-scope bindings and loads for one scene's code.
+
+    Names bound inside nested scopes (def/lambda parameters, comprehension
+    targets, nested function locals) are tracked separately: promoting one of
+    those to a ``self.`` attribute would change its meaning or produce invalid
+    syntax, so they disqualify a name from promotion entirely.
+    """
+
+    _NESTED_SCOPES = (
+        ast.FunctionDef,
+        ast.AsyncFunctionDef,
+        ast.Lambda,
+        ast.ListComp,
+        ast.SetComp,
+        ast.DictComp,
+        ast.GeneratorExp,
+        ast.ClassDef,
+    )
+
+    def __init__(self) -> None:
+        self.bound: set[str] = set()
+        self.loaded: set[str] = set()
+        self.nested_bound: set[str] = set()
+        self._depth = 0
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Load):
+            self.loaded.add(node.id)
+        else:
+            (self.nested_bound if self._depth else self.bound).add(node.id)
+
+    def _visit_nested(self, node: ast.AST) -> None:
+        arguments = getattr(node, "args", None)
+        if isinstance(arguments, ast.arguments):
+            for arg in (
+                *arguments.posonlyargs,
+                *arguments.args,
+                *arguments.kwonlyargs,
+                *filter(None, (arguments.vararg, arguments.kwarg)),
+            ):
+                self.nested_bound.add(arg.arg)
+        self._depth += 1
+        self.generic_visit(node)
+        self._depth -= 1
+
+    def generic_visit(self, node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, self._NESTED_SCOPES):
+                name = getattr(child, "name", None)
+                if name is not None:
+                    (self.nested_bound if self._depth else self.bound).add(name)
+                self._visit_nested(child)
+            else:
+                self.generic_visit(child)
+        if isinstance(node, ast.Name):
+            self.visit_Name(node)
+
+
+class _CrossSceneNameRewriter(ast.NodeTransformer):
+    """Rewrite promoted names to ``self.<name>`` attribute access."""
+
+    def __init__(self, promoted: set[str]) -> None:
+        self.promoted = promoted
+        self.changed = False
+
+    def visit_Name(self, node: ast.Name) -> ast.AST:
+        if node.id not in self.promoted:
+            return node
+        self.changed = True
+        return ast.copy_location(
+            ast.Attribute(
+                value=ast.Name(id="self", ctx=ast.Load()),
+                attr=node.id,
+                ctx=node.ctx,
+            ),
+            node,
+        )
+
+
+class _ImportHoister(ast.NodeTransformer):
+    """Remove scene-level import statements, keeping them for module-level reuse."""
+
+    def __init__(self) -> None:
+        self.hoisted: list[str] = []
+
+    def visit_Import(self, node: ast.Import) -> ast.AST | None:
+        self.hoisted.append(ast.unparse(node))
+        return None
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> ast.AST | None:
+        self.hoisted.append(ast.unparse(node))
+        return None
+
+
+def _hoist_scene_imports(codes: list[str]) -> tuple[list[str], list[str]]:
+    """Move scene-level imports (math/random/numpy/…) to the module header.
+
+    ``import X`` inside a method is legal Python, but keeping generated
+    imports at module level makes them shared, deduplicated, and immune to
+    style-rule churn in repair rounds. Manim imports were already stripped by
+    ``_prepare_manim_code``; whatever remains is hoisted verbatim.
+    """
+    header: list[str] = []
+    out: list[str] = []
+    for code in codes:
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            out.append(code)
+            continue
+        hoister = _ImportHoister()
+        tree = hoister.visit(tree)
+        if not hoister.hoisted:
+            out.append(code)
+            continue
+        for statement in hoister.hoisted:
+            if statement not in header:
+                header.append(statement)
+        ast.fix_missing_locations(tree)
+        out.append(ast.unparse(tree) if tree.body else "pass")
+    return out, header
+
+
+def _promote_cross_scene_names(codes: list[str]) -> list[str]:
+    """Auto-promote locals that later scenes reference into ``self.`` attributes.
+
+    Each scene runs in its own ``_scene_N`` method, so a plain local from
+    scene i is invisible to scene j — but generated code routinely references
+    earlier scenes' objects by bare name (especially in transition FadeOut
+    lists). Instead of failing at dry-run one NameError at a time, detect the
+    pattern statically: a name loaded in some scene without a local binding,
+    that an *earlier* scene did bind, is rewritten to ``self.<name>`` at every
+    occurrence in every scene. Names that shadow Manim/builtin names or are
+    bound in nested scopes are left untouched; purely scene-private locals are
+    unaffected.
+    """
+    trees: list[ast.Module] = []
+    for code in codes:
+        try:
+            trees.append(ast.parse(code))
+        except SyntaxError:
+            return codes  # let dry-run report the real error with context
+
+    collectors: list[_SceneNameCollector] = []
+    for tree in trees:
+        collector = _SceneNameCollector()
+        collector.generic_visit(tree)
+        collectors.append(collector)
+
+    unsafe = set().union(*(c.nested_bound for c in collectors)) if collectors else set()
+    promoted: set[str] = set()
+    bound_earlier: set[str] = set()
+    for collector in collectors:
+        for name in collector.loaded - collector.bound:
+            if (
+                name in bound_earlier
+                and name not in unsafe
+                and not hasattr(manim, name)
+                and not hasattr(builtins, name)
+            ):
+                promoted.add(name)
+        bound_earlier |= collector.bound
+
+    if not promoted:
+        return codes
+
+    logger.info("[ManimScript] promoted cross-scene names: %s", sorted(promoted))
+    out: list[str] = []
+    for code, tree in zip(codes, trees):
+        rewriter = _CrossSceneNameRewriter(promoted)
+        new_tree = rewriter.visit(tree)
+        if rewriter.changed:
+            ast.fix_missing_locations(new_tree)
+            out.append(ast.unparse(new_tree))
+        else:
+            out.append(code)
+    return out
 
 
 def _prepare_manim_code(code: str) -> tuple[str, bool]:
@@ -227,7 +532,10 @@ def _prepare_manim_code(code: str) -> tuple[str, bool]:
     injector = _TexTemplateInjector()
     tree = injector.visit(tree)
 
-    if not stripper.changed and not injector.source_changed:
+    rate_func_rewriter = _RateFuncRewriter()
+    tree = rate_func_rewriter.visit(tree)
+
+    if not stripper.changed and not injector.source_changed and not rate_func_rewriter.changed:
         return code, False
 
     ast.fix_missing_locations(tree)
@@ -281,6 +589,15 @@ class ManimRenderEngine:
             logger.info("[ManimValidate] static errors: %d\n%s", len(static_errors), "\n".join(static_errors))
             return False, "\n".join(static_errors)
 
+        undefined_errors = _undefined_name_check(script)
+        if undefined_errors:
+            logger.info(
+                "[ManimValidate] undefined names: %d\n%s",
+                len(undefined_errors),
+                "\n".join(undefined_errors),
+            )
+            return False, "\n".join(undefined_errors)
+
         signature_errors = _signature_check(script)
         if signature_errors:
             logger.info(
@@ -329,7 +646,14 @@ class ManimRenderEngine:
                     and not _PROGRESS_BAR_RE.search(line)
                 )
                 logger.info("[ManimValidate] dry_run failed:\n%s", filtered_log[-2000:])
-                return False, filtered_log[-2000:]
+                tail = filtered_log[-2000:]
+                # The traceback's innermost `_scene_N` frame (Manim internals
+                # called from it don't carry that name) tells us which scene's
+                # code actually triggered the exception.
+                scene_matches = _TRACEBACK_SCENE_RE.findall(log)
+                if scene_matches:
+                    tail = f"scene {scene_matches[-1]}: {tail}"
+                return False, tail
 
             logger.info("[ManimValidate] dry_run passed")
             return True, ""
@@ -438,10 +762,15 @@ def _build_manim_script(
         prepared_scenes.append((scene, prepared_code))
         needs_chinese_tex_template = needs_chinese_tex_template or changed
 
-    lines = [
-        "from manim import *",
-        "",
+    codes, hoisted_imports = _hoist_scene_imports([code for _, code in prepared_scenes])
+    codes = _promote_cross_scene_names(codes)
+    prepared_scenes = [
+        (scene, code) for (scene, _), code in zip(prepared_scenes, codes)
     ]
+
+    lines = ["from manim import *"]
+    lines.extend(hoisted_imports)
+    lines.append("")
     if resolution is not None:
         width, height = resolution
         frame_width = 8.0 * width / height
@@ -458,9 +787,28 @@ def _build_manim_script(
     lines.extend([
         "",
         "class MainScene(Scene):",
+        "    def clear_except(self, *keep):",
+        '        """Fade out every on-screen mobject not passed in keep."""',
+        "        _keep_ids = {id(m) for m in keep}",
+        "        _doomed = [m for m in self.mobjects if id(m) not in _keep_ids]",
+        "        if _doomed:",
+        "            self.play(*[FadeOut(m) for m in _doomed], run_time=0.4)",
+        "",
         "    def construct(self):",
     ])
+    for i in range(len(prepared_scenes)):
+        lines.append(f"        self._scene_{i}()")
+    lines.append("")
+
+    # Each scene gets its own method scope (rather than being pasted flat
+    # into construct()) so a local variable declared in one scene cannot be
+    # silently referenced from another: cross-scene sharing must go through
+    # an explicit `self.xxx` attribute. This also gives error messages a
+    # precise scene attribution — pyflakes/AST line ranges via
+    # `_scene_line_ranges`, and runtime tracebacks via the `_scene_N` frame
+    # name itself (see `_TRACEBACK_SCENE_RE`).
     for i, (scene, prepared_code) in enumerate(prepared_scenes):
+        lines.append(f"    def _scene_{i}(self):")
         lines.append(f"        # Scene {i}: {scene.description}")
         if include_audio:
             audio_path = scene.audio.audio_path if scene.audio else f"scene_{i}_audio.mp3"

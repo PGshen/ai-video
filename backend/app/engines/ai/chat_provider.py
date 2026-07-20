@@ -590,19 +590,29 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         error_message: str,
         style_components: dict[str, str] | None = None,
         aspect_ratio: str = "landscape",
+        context_truncated: bool = False,
     ) -> CodeRepairResult:
         engine_hint = self._engine_code_prompts.get(render_engine, self._ENGINE_CODE_PROMPT_FALLBACK)
         defaults = self._DEFAULT_STYLE_COMPONENTS
         color_scheme = (style_components or {}).get("color_scheme", defaults.get("color_scheme", ""))
         animation_style = (style_components or {}).get("animation_style", defaults.get("animation_style", ""))
         aspect_prompt = self._build_aspect_ratio_prompt(aspect_ratio, render_engine)
+        scope_note = (
+            "错误信息已精确标注出错镜头（形如 \"scene N: ...\"）。为节省篇幅，你收到的镜头列表"
+            "只包含出错镜头及其之前的全部镜头（按执行顺序），不包含更靠后的镜头——因为更靠后的镜头"
+            "在出错时尚未执行，不可能是根因，也不会被这次错误影响。\n"
+            "你仍然可以修改列表中的任意镜头（包括早于出错镜头的镜头，如果根因在那里），"
+            "但不要虚构或修复列表之外不存在的镜头。"
+            if context_truncated
+            else "你会收到一次整体渲染失败的完整错误信息，以及按执行顺序排列的全部镜头。"
+        )
         system_prompt = f"""\
 你是知识视频渲染代码修复专家。请严格输出 JSON object，不要输出 Markdown。
 
-你会收到一次整体渲染失败的完整错误信息，以及按执行顺序排列的全部镜头。
+{scope_note}
 
 你的任务：
-1. 结合错误信息审查全部镜头，定位直接错误、上游根因和可能由同类写法引发后续失败的镜头。
+1. 结合错误信息审查收到的镜头，定位直接错误、上游根因和可能由同类写法引发后续失败的镜头。
 2. 尽可能在这一次响应中修复全部可能有错误的镜头。
 3. 保持旁白、画面意图、镜头顺序和跨镜头变量关系；只修改需要修复的代码。
 4. repairs 仅列出需要修改的镜头；每个 scene_index 必须来自输入且不得重复。

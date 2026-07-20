@@ -72,7 +72,8 @@ code_prompt: |
         <scene 1 的 code>
         ...
 
-  禁止在 code 里写 import 语句、def construct、或结构定义。
+  禁止在 code 里写 def construct、类定义或其他结构定义；禁止 import manim（环境已 from manim import *，且 np 可直接使用）。
+  确需 math / random / itertools 等标准库时可直接写 import 语句，系统会自动把它提升到模块级，不算违规。
 
   【语义节拍时间翻译】
   - 按 beats 顺序维护镜头内的相对时间游标；前一 beat 的最终画面是后一 beat 的起始状态
@@ -98,13 +99,20 @@ code_prompt: |
   - 每个镜头 code 的所有 self.play(run_time=...) 与 self.wait(...) 之和需与该镜头 estimated_duration_seconds 匹配（误差 ±1s 可接受）
   - 关键图形和结论必须至少保留到对应旁白讲完；禁止旁白尚未结束就清空画面
   - 渲染器会自动补齐镜头剩余时长。如果本镜头没有必要的退场或转场，代码末尾保持最终画面即可，不要添加 FadeOut 清场
+  - rate_func 只能用 manim 顶层导出的名字（linear、smooth、there_and_back、rush_into、rush_from 等），ease 系列必须写完整形式 rate_functions.xxx（如 rate_functions.ease_in_out_sine），禁止裸写 ease_ 开头的名字
 
-  【变量生命周期规则】
-  - scene 0 声明的变量在 scene 1、2... 中仍在作用域内，可直接引用
+  【变量生命周期与跨镜头引用】
+  - 前面镜头创建的元素，后续镜头直接用原变量名引用即可（系统会自动把跨镜头引用的变量提升为共享属性，如同所有镜头写在同一个函数里）
+  - 需要长期保留、多次变形的重要元素（标题、坐标轴、核心图形）推荐显式写成 self.xxx（如 self.title = Text(...)），可读性和错误定位更好；镜头内的临时变量不要加 self.
+  - 禁止在不同镜头对同一逻辑元素重复创建同名变量——后一个会覆盖前一个，退场时会拿错对象；复用元素用 Transform / ReplacementTransform / .animate
   - 元素默认可跨镜头保留；镜头边界不等于清场点，不要为了结束当前镜头而机械 FadeOut
-  - 仅当元素完成叙事作用、即将被新内容替代或会遮挡后续重点时，才在合适的转场时机用 FadeOut 退场
-  - 若下一镜头复用某元素（变形/移动/替换），用 Transform / ReplacementTransform / .animate，不要重新声明同名变量
-  - 禁止在不同镜头中对同一逻辑元素重复声明同名变量
+  - 仅当元素完成叙事作用、即将被新内容替代或会遮挡后续重点时，才在合适的转场时机退场
+
+  【清场规则（重要）】
+  - 系统已在 Scene 上提供 self.clear_except(*keep)：淡出画面上除 keep 之外的全部对象；self.clear_except() 不带参数则清空整个画面
+  - 需要"整体清场"或"只保留少数元素进入下一镜头"时，必须用 self.clear_except(要保留的对象...)，禁止手工枚举上一镜头的对象列表逐个 FadeOut——枚举容易漏对象、容易引用错名字
+  - 定向让单个元素退场仍用 self.play(FadeOut(该元素))
+  - clear_except 的 keep 参数必须传"当初整体添加进画面的那个对象"（如整个 VGroup），不要传它内部的子元素
 
   【画布安全区（重要）】
   - Manim 默认画布：14.2 × 8 单位（宽×高），坐标原点在中心
@@ -197,3 +205,4 @@ code_prompt: |
    - 写代码前必须确认：所有使用的类名均来自 from manim import * 的命名空间，不要凭直觉命名。方法参数亦是如此，不可使用不存在的参数！！！
    - 变量务必先声明再使用！！！
    - 不需要的元素需要及时退场
+   - 整体清场 / 只保留少数元素时用 self.clear_except(...)，不要枚举对象列表逐个 FadeOut

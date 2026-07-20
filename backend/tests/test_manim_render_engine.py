@@ -5,6 +5,8 @@ from app.engines.render.manim import (
     ManimRenderEngine,
     _build_manim_script,
     _prepare_manim_code,
+    _scene_line_ranges,
+    _static_check,
 )
 
 
@@ -154,6 +156,194 @@ def test_build_manim_script_sets_portrait_pixel_and_logical_canvas():
     assert "config.pixel_height = 1920" in script
     assert "config.frame_width = 4.500000" in script
     assert "config.frame_height = 8.0" in script
+
+
+def test_build_manim_script_isolates_scenes_into_own_methods():
+    scenes = [
+        SceneInput(scene_index=0, narration="", description="镜头0", code='local_var = 1', audio=None),
+        SceneInput(scene_index=1, narration="", description="镜头1", code='self.play(Wait())', audio=None),
+    ]
+
+    script = _build_manim_script(scenes)
+
+    assert "    def _scene_0(self):" in script
+    assert "    def _scene_1(self):" in script
+    assert "        self._scene_0()" in script
+    assert "        self._scene_1()" in script
+
+    ranges = _scene_line_ranges(script)
+    assert [scene_idx for _, _, scene_idx in ranges] == [0, 1]
+
+
+def test_build_manim_script_promotes_cross_scene_locals():
+    scenes = [
+        SceneInput(scene_index=0, narration="", description="镜头0", code="happy = Circle()\nself.add(happy)", audio=None),
+        SceneInput(scene_index=1, narration="", description="镜头1", code="self.play(FadeOut(happy))", audio=None),
+    ]
+
+    script = _build_manim_script(scenes)
+
+    assert "self.happy = Circle()" in script
+    assert "FadeOut(self.happy)" in script
+
+
+def test_promotion_leaves_scene_private_locals_untouched():
+    scenes = [
+        SceneInput(scene_index=0, narration="", description="镜头0", code="tmp = Dot()\nself.add(tmp)", audio=None),
+        SceneInput(scene_index=1, narration="", description="镜头1", code="other = Square()\nself.add(other)", audio=None),
+    ]
+
+    script = _build_manim_script(scenes)
+
+    assert "tmp = Dot()" in script
+    assert "self.tmp" not in script
+
+
+def test_promotion_skips_names_shadowing_manim_or_builtins():
+    scenes = [
+        SceneInput(scene_index=0, narration="", description="镜头0", code="UP = 1\nlen = 2", audio=None),
+        SceneInput(scene_index=1, narration="", description="镜头1", code="self.play(Dot().animate.shift(UP))\nn = len([1])", audio=None),
+    ]
+
+    script = _build_manim_script(scenes)
+
+    assert "self.UP" not in script
+    assert "self.len" not in script
+
+
+def test_build_manim_script_injects_clear_except_helper():
+    scenes = [
+        SceneInput(scene_index=0, narration="", description="镜头0", code="pass", audio=None),
+    ]
+
+    script = _build_manim_script(scenes)
+
+    assert "def clear_except(self, *keep):" in script
+
+
+def test_prepare_manim_code_qualifies_bare_rate_function_names():
+    code = "self.play(FadeIn(Dot()), rate_func=ease_out_bounce)"
+
+    prepared, _ = _prepare_manim_code(code)
+
+    assert "rate_func=rate_functions.ease_out_bounce" in prepared
+
+
+def test_prepare_manim_code_keeps_top_level_rate_functions():
+    code = "self.play(FadeIn(Dot()), rate_func=smooth)"
+
+    prepared, _ = _prepare_manim_code(code)
+
+    assert "rate_func=smooth" in code
+    assert "rate_functions.smooth" not in prepared
+
+
+def test_build_manim_script_hoists_scene_level_imports():
+    scenes = [
+        SceneInput(
+            scene_index=0,
+            narration="",
+            description="镜头0",
+            code="import random\nx = random.random()\nself.wait(x)",
+            audio=None,
+        ),
+        SceneInput(
+            scene_index=1,
+            narration="",
+            description="镜头1",
+            code="import random\nimport math\nself.wait(math.floor(random.random()))",
+            audio=None,
+        ),
+    ]
+
+    script = _build_manim_script(scenes)
+
+    module_part = script.split("class MainScene", 1)[0]
+    assert "import random" in module_part
+    assert "import math" in module_part
+    assert "        import random" not in script
+    assert "        import math" not in script
+
+
+def test_static_check_labels_syntax_error_with_scene():
+    scenes = [
+        SceneInput(scene_index=0, narration="", description="镜头0", code="self.wait(1)", audio=None),
+        SceneInput(scene_index=1, narration="", description="镜头1", code="x = [1, 2\nself.wait(1)", audio=None),
+    ]
+
+    script = _build_manim_script(scenes)
+    errors = _static_check(script)
+
+    assert len(errors) == 1
+    assert errors[0].startswith("scene 1: SyntaxError")
+
+
+async def test_validate_code_reports_all_undefined_names_at_once():
+    scenes = [
+        SceneInput(
+            scene_index=0,
+            narration="",
+            description="镜头0",
+            code="self.play(FadeIn(Dot()), rate_func=easey_bouncey)",
+            audio=None,
+        ),
+        SceneInput(
+            scene_index=1,
+            narration="",
+            description="镜头1",
+            code="self.play(FadeOut(frac23_num))",
+            audio=None,
+        ),
+    ]
+
+    is_valid, errors = await ManimRenderEngine().validate_code(scenes)
+
+    assert is_valid is False
+    assert "scene 0: undefined name 'easey_bouncey'" in errors
+    assert "scene 1: undefined name 'frac23_num'" in errors
+
+
+async def test_validate_code_passes_with_cross_scene_local_reference():
+    scenes = [
+        SceneInput(
+            scene_index=0,
+            narration="",
+            description="定义局部变量",
+            code="happy = Circle()\nself.add(happy)",
+            audio=None,
+        ),
+        SceneInput(
+            scene_index=1,
+            narration="",
+            description="跨镜头引用局部变量并整体清场",
+            code="self.play(FadeOut(happy))\nself.clear_except()",
+            audio=None,
+        ),
+    ]
+
+    is_valid, errors = await ManimRenderEngine().validate_code(scenes)
+
+    assert errors == ""
+    assert is_valid is True
+
+
+async def test_validate_code_attributes_runtime_error_to_originating_scene():
+    scenes = [
+        SceneInput(scene_index=0, narration="", description="正常镜头", code="pass", audio=None),
+        SceneInput(
+            scene_index=1,
+            narration="",
+            description="引用未声明的跨镜头对象",
+            code='self.play(Circumscribe(self.nonexistent))',
+            audio=None,
+        ),
+    ]
+
+    is_valid, errors = await ManimRenderEngine().validate_code(scenes)
+
+    assert is_valid is False
+    assert errors.startswith("scene 1:")
+    assert "in _scene_1" in errors
 
 
 async def test_validate_code_stops_at_first_runtime_error():

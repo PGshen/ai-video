@@ -258,10 +258,6 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
     ) -> str:
         defaults = self._DEFAULT_STYLE_COMPONENTS
         narrative_style = style_components.get("narrative_style") or defaults["narrative_style"]
-        # 旧版快照兼容：pacing / scene_structure 已并入叙事蓝图（narrative_style），
-        # 仅当历史快照携带这两个类别时原样拼接，不再注入系统默认
-        pacing = style_components.get("pacing", "")
-        scene_structure = style_components.get("scene_structure", "")
         color_scheme = style_components.get("color_scheme") or defaults["color_scheme"]
         exemplar = style_components.get("exemplar") or defaults["exemplar"]
         engine_hint = self._narrative_engine_hints.get(render_engine, self._NARRATIVE_ENGINE_HINT_FALLBACK)
@@ -280,10 +276,6 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
         ]
         if narrative_style:
             parts.append(narrative_style)
-        if pacing:
-            parts.append(pacing)
-        if scene_structure:
-            parts.append(scene_structure)
         if color_scheme:
             parts.append(color_scheme)
             parts.append("颜色名与 Hex 对照（description 中用颜色名即可，代码生成阶段再转 Hex）")

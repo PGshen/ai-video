@@ -203,25 +203,8 @@ def test_narrative_prompt_falls_back_to_builtin_exemplar():
     assert "scene_index" in prompt
 
 
-def test_narrative_prompt_appends_legacy_pacing_and_structure():
-    """旧版快照仍携带 pacing / scene_structure，原样拼接且不注入系统默认。"""
-    provider = make_provider()
-    prompt = provider._build_narrative_system_prompt(
-        "manim",
-        {
-            "narrative_style": "【叙事风格】旧版叙事",
-            "pacing": "【叙事节奏】旧版节奏",
-            "scene_structure": "【镜头结构】旧版结构",
-            "color_scheme": "【视觉系统】旧版配色",
-        },
-    )
-    assert "旧版节奏" in prompt
-    assert "旧版结构" in prompt
-    assert "旧版配色" in prompt
-
-
 def test_narrative_prompt_new_style_has_no_default_pacing_leak():
-    """新结构下未提供 pacing / scene_structure 时，不得注入旧系统默认文本。"""
+    """未提供额外类别时，不得注入旧系统默认文本。"""
     provider = make_provider()
     prompt = provider._build_narrative_system_prompt(
         "manim", {"narrative_style": "【叙事蓝图】完整蓝图"}

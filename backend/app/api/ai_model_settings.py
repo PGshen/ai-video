@@ -1,3 +1,4 @@
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -7,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_active_user
 from app.db import get_async_session
+from app.engines.ai.deepseek import DeepSeekClient
+from app.engines.ai.doubao import DoubaoClient
 from app.engines.ai.factory import BUSINESS_OPTIONS
+from app.engines.ai.gemini import GeminiClient
+from app.engines.ai.openrouter import OpenRouterClient
 from app.models.ai_model_config import (
     AIBusinessModelConfig,
     AIModelProvider,
@@ -21,6 +26,8 @@ from app.schemas.ai_model_config import (
     AIModelProviderResponse,
     AIModelProviderUpdate,
     AIModelSettingsResponse,
+    AIModelTestRequest,
+    AIModelTestResponse,
     AIProviderModelCreate,
     AIProviderModelResponse,
     AIProviderModelUpdate,
@@ -179,6 +186,66 @@ async def create_model(
     await db.commit()
     await db.refresh(model)
     return _model_response(model)
+
+
+# 连通性测试不走完整业务链路（不记录 AI 调用），超时上限收紧避免长时间挂起
+_TEST_TIMEOUT_SECONDS = 30.0
+_TEST_MAX_TOKENS = 512
+
+
+def _build_test_client(provider: AIModelProvider, model: str):
+    kwargs = dict(
+        api_key=provider.api_key,
+        model=model,
+        base_url=provider.base_url,
+        timeout_seconds=min(provider.timeout_seconds, _TEST_TIMEOUT_SECONDS),
+    )
+    provider_type = provider.provider_type.lower()
+    if provider_type == "deepseek":
+        return DeepSeekClient(**kwargs)
+    if provider_type == "openrouter":
+        return OpenRouterClient(
+            **kwargs,
+            site_url=provider.site_url or "",
+            site_name=provider.site_name or "",
+        )
+    if provider_type == "gemini":
+        return GeminiClient(**kwargs)
+    if provider_type == "doubao":
+        return DoubaoClient(**kwargs)
+    raise HTTPException(status_code=400, detail=f"不支持的供应商类型：{provider.provider_type}")
+
+
+@router.post("/models/test", response_model=AIModelTestResponse)
+async def test_model(
+    body: AIModelTestRequest,
+    db: AsyncSession = Depends(get_async_session),
+    _=Depends(require_active_user),
+):
+    provider = await db.get(AIModelProvider, body.provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="AI model provider not found")
+    if not provider.api_key:
+        return AIModelTestResponse(ok=False, message="该供应商未设置 API Key")
+
+    client = _build_test_client(provider, body.model.strip())
+    started = time.monotonic()
+    try:
+        reply = await client.create_chat_completion(
+            messages=[{"role": "user", "content": "Hi"}],
+            max_tokens=_TEST_MAX_TOKENS,
+        )
+    except Exception as exc:
+        return AIModelTestResponse(
+            ok=False,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            message=str(exc)[:500] or exc.__class__.__name__,
+        )
+    return AIModelTestResponse(
+        ok=True,
+        latency_ms=int((time.monotonic() - started) * 1000),
+        reply=str(reply)[:200],
+    )
 
 
 @router.put("/models/{model_id}", response_model=AIProviderModelResponse)

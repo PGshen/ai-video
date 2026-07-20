@@ -93,7 +93,7 @@ def test_style_assistant_rejects_empty_message(client, auth_headers):
         "/api/prompt-components/assist",
         headers=auth_headers,
         json={
-            "category": "pacing",
+            "category": "narrative_style",
             "message": "",
         },
     )

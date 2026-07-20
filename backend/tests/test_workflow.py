@@ -67,6 +67,32 @@ async def test_render_failure_is_recorded_before_returning_to_code_review():
 
 
 @pytest.mark.asyncio
+async def test_legacy_render_signal_without_code_version_does_not_crash():
+    # Workflow runs started before code version freezing recorded
+    # render_completed signals without code_version_id/number; replaying
+    # those histories must not raise KeyError.
+    wf = VideoProductionWorkflow()
+    wf._update_status = AsyncMock()
+    wf._wait_signal = AsyncMock(side_effect=[
+        {"success": True, "asset_id": "asset-legacy"},
+        {"verdict": "approved"},
+    ])
+
+    with patch(
+        "app.workflows.video_production.workflow.execute_activity",
+        new=AsyncMock(),
+    ):
+        result = await wf._generate_and_review_video("project-1")
+
+    assert result == "approved"
+    assert wf._update_status.call_args_list[-1] == call(
+        "project-1",
+        "video_review",
+        {"video_asset_id": "asset-legacy"},
+    )
+
+
+@pytest.mark.asyncio
 async def test_video_rejection_can_return_to_code_review():
     wf = VideoProductionWorkflow()
     wf._update_status = AsyncMock()

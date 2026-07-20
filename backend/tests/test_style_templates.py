@@ -75,7 +75,7 @@ def test_create_style_template_rejects_category_mismatch(
 
 def test_update_style_template(client, auth_headers, mock_db):
     template = make_template()
-    component = make_component(category="pacing")
+    component = make_component(category="narrative_style")
     mock_db.get.side_effect = [template, component]
 
     response = client.put(
@@ -84,14 +84,14 @@ def test_update_style_template(client, auth_headers, mock_db):
         json={
             "name": "节奏紧凑科普",
             "description": "",
-            "style_config": {"pacing": str(component.id)},
+            "style_config": {"narrative_style": str(component.id)},
         },
     )
 
     assert response.status_code == 200
     assert template.name == "节奏紧凑科普"
     assert template.description is None
-    assert template.style_config == {"pacing": str(component.id)}
+    assert template.style_config == {"narrative_style": str(component.id)}
 
 
 def test_delete_style_template(client, auth_headers, mock_db):

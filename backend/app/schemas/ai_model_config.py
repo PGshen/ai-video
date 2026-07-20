@@ -106,6 +106,22 @@ class AIProviderModelResponse(AIProviderModelBase):
     updated_at: datetime
 
 
+class AIModelTestRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    provider_id: UUID
+    model: str = Field(..., min_length=1, max_length=150)
+
+
+class AIModelTestResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    ok: bool
+    latency_ms: int | None = None
+    reply: str | None = None
+    message: str | None = None
+
+
 class AIBusinessModelConfigUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 

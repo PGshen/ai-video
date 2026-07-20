@@ -101,9 +101,7 @@ class StubProvider:
     ) -> StyleAssistantResult:
         del conversation_history
         labels = {
-            "narrative_style": "叙事风格",
-            "pacing": "叙事节奏",
-            "scene_structure": "镜头结构",
+            "narrative_style": "叙事蓝图",
             "color_scheme": "视觉系统",
             "animation_style": "动画系统",
         }

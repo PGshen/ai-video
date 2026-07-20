@@ -5,6 +5,7 @@ import type {
   AIBusinessModelConfig,
   AIModelProvider,
   AIModelSettingsResponse,
+  AIModelTestResponse,
   AIProviderModel,
   AIProviderType,
 } from "@/types";
@@ -100,6 +101,13 @@ export function useDeleteAIProviderModel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-model-settings"] });
     },
+  });
+}
+
+export function useTestAIProviderModel() {
+  return useMutation({
+    mutationFn: (data: { providerId: string; model: string }) =>
+      api.post<AIModelTestResponse>("/api/ai-model-settings/models/test", data),
   });
 }
 

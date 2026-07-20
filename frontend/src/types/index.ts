@@ -152,6 +152,13 @@ export interface AIModelSettingsResponse {
   businessOptions: AIBusinessOption[];
 }
 
+export interface AIModelTestResponse {
+  ok: boolean;
+  latencyMs: number | null;
+  reply: string | null;
+  message: string | null;
+}
+
 // ═══ AI 调用记录 ═══
 export type AICallStatus =
   | "pending"

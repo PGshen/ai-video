@@ -16,8 +16,6 @@ STYLE_CATEGORIES = (
     "animation_style",
     "exemplar",
 )
-# 旧版快照包含 pacing / scene_structure（已并入叙事蓝图），解析时原样透传；
-# 新旧快照都必须至少包含以下类别。
 REQUIRED_SNAPSHOT_CATEGORIES = (
     "narrative_style",
     "color_scheme",

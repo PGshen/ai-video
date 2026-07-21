@@ -20,6 +20,7 @@ import {
   useResetProject,
 } from "@/hooks/useProjects";
 import { useNarrative } from "@/hooks/useNarrative";
+import { useTTSSettings } from "@/hooks/useTTSSettings";
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, formatDateTime } from "@/lib/format";
 import type {
   VideoProject, ProjectEvent, NarrativeVersion, CodeVersion, CodeRepair,
@@ -1130,6 +1131,11 @@ function MetaSection({
   collapsed: boolean;
   onToggle: () => void;
 }) {
+  const { data: ttsSettings } = useTTSSettings();
+  const engine = ttsSettings?.engines.find((item) => item.code === project.ttsEngine);
+  const voice = ttsSettings?.voices.find(
+    (item) => item.engineId === engine?.id && item.name === project.ttsVoice
+  );
   return (
     <section className="shrink-0 space-y-3 pb-4">
       <button
@@ -1146,9 +1152,9 @@ function MetaSection({
             <span className="text-muted-foreground">渲染引擎</span>
             <span className="font-medium">{project.renderEngine}</span>
             <span className="text-muted-foreground">TTS 引擎</span>
-            <span className="font-medium">{project.ttsEngine === "doubao_1.0" ? "豆包 1.0" : "豆包 2.0"}</span>
+            <span className="font-medium">{engine?.name ?? project.ttsEngine}</span>
             <span className="text-muted-foreground">TTS 音色</span>
-            <span className="font-medium">{project.ttsVoice}</span>
+            <span className="font-medium">{voice?.name ?? project.ttsVoice}</span>
             <span className="text-muted-foreground">TTS 语速</span>
             <span className="font-medium">{project.ttsSpeed.toFixed(1)} 倍速</span>
             <span className="text-muted-foreground">画幅比例</span>

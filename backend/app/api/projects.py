@@ -20,8 +20,9 @@ from app.models.project_event import ProjectEvent
 from app.models.video_asset import VideoAsset
 from app.models.worker_task import WorkerTask
 from app.models.performance_record import PerformanceRecord
+from app.models.tts_config import TTSEngineConfig, TTSVoice
 from app.storage import get_presigned_url, upload_bytes
-from app.engines.tts.factory import get_tts_engine
+from app.engines.tts.factory import build_tts_engine
 from app.engines.tts.base import TTSRequest
 from app.engines.ai.factory import get_ai_provider
 from app.schemas.project import (
@@ -36,6 +37,34 @@ from app.services.narrative_validator import validate_and_normalize_scenes
 from app.services.prompt_bundle import style_components_from_snapshot
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+async def _load_tts_engine(db: AsyncSession, engine_code: str, voice_code: str):
+    engine = (await db.execute(
+        select(TTSEngineConfig).where(
+            TTSEngineConfig.code == engine_code,
+            TTSEngineConfig.is_active.is_(True),
+        )
+    )).scalar_one_or_none()
+    if engine is None:
+        raise HTTPException(status_code=422, detail="TTS 引擎不存在或已停用")
+    voices = (await db.execute(
+        select(TTSVoice).where(
+            TTSVoice.engine_id == engine.id,
+            TTSVoice.is_active.is_(True),
+        )
+    )).scalars().all()
+    voice_map = {voice.name: voice.speaker_id for voice in voices}
+    if voice_code not in voice_map:
+        raise HTTPException(status_code=422, detail="所选音色不属于该引擎或已停用")
+    return build_tts_engine(
+        code=engine.code,
+        api_key=engine.api_key or settings.VOLCENGINE_TTS_API_KEY,
+        resource_id=engine.resource_id,
+        endpoint=engine.endpoint,
+        timeout_seconds=engine.timeout_seconds,
+        voices=voice_map,
+    )
 
 
 def _project_to_response(project, topic) -> ProjectResponse:
@@ -172,6 +201,8 @@ async def create_project(
     topic = await db.get(Topic, body.topic_id)
     if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
+
+    await _load_tts_engine(db, body.tts_engine, body.tts_voice)
 
     if body.style_config:
         for category, component_id in body.style_config.items():
@@ -492,7 +523,7 @@ async def regenerate_scene_tts(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    tts_engine = get_tts_engine(project.tts_engine)
+    tts_engine = await _load_tts_engine(db, project.tts_engine, project.tts_voice)
     tts_voice = project.tts_voice
     result = await tts_engine.synthesize(
         TTSRequest(text=narration, voice=tts_voice, speed=project.tts_speed)

@@ -45,12 +45,18 @@ class VolcengineTTSEngine:
         engine: str = "doubao_2.0",
         max_retries: int = 2,
         retry_base_delay_seconds: float = 1.0,
+        endpoint: str = _TTS_URL,
+        timeout_seconds: float = 60.0,
+        voices: dict[str, str] | None = None,
     ):
         self._api_key = api_key
         self._resource_id = resource_id
         self._engine = engine
         self._max_retries = max(0, max_retries)
         self._retry_base_delay_seconds = max(0.0, retry_base_delay_seconds)
+        self._endpoint = endpoint
+        self._timeout_seconds = timeout_seconds
+        self._voices = voices
 
     async def synthesize(self, request: TTSRequest) -> TTSResult:
         total_attempts = self._max_retries + 1
@@ -83,7 +89,15 @@ class VolcengineTTSEngine:
         import json as _json
         from app.engines.tts.voice_map import resolve_speaker
 
-        speaker = resolve_speaker(request.voice, self._engine)
+        if self._voices is None:
+            speaker = resolve_speaker(request.voice, self._engine)
+        else:
+            try:
+                speaker = self._voices[request.voice]
+            except KeyError as exc:
+                raise ValueError(
+                    f"Voice {request.voice!r} is not available for {self._engine}"
+                ) from exc
         headers = {
             "X-Api-Key": self._api_key,
             "X-Api-Resource-Id": self._resource_id,
@@ -102,7 +116,7 @@ class VolcengineTTSEngine:
                 },
             }
         }
-        if self._engine == "doubao_1.0":
+        if self._resource_id == "seed-tts-1.0":
             body["req_params"]["audio_params"]["enable_timestamp"] = True
         else:
             body["req_params"]["audio_params"]["enable_subtitle"] = True
@@ -110,8 +124,8 @@ class VolcengineTTSEngine:
         audio_chunks: list[bytes] = []
         word_timestamps: list[WordTimestamp] = []
         timestamp_keys: set[tuple[str, float, float]] = set()
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream("POST", _TTS_URL, json=body, headers=headers) as resp:
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            async with client.stream("POST", self._endpoint, json=body, headers=headers) as resp:
                 if not 200 <= resp.status_code < 300:
                     retryable = (
                         resp.status_code in _RETRYABLE_HTTP_STATUS_CODES
@@ -228,6 +242,9 @@ class VolcengineTTSEngine:
         )
 
     async def health_check(self) -> bool:
-        voice = "sisi" if self._engine == "doubao_1.0" else "zizi"
+        if self._voices:
+            voice = next(iter(self._voices))
+        else:
+            voice = "sisi" if self._engine == "doubao_1.0" else "zizi"
         result = await self.synthesize(TTSRequest(text="测试", voice=voice))
         return result.success

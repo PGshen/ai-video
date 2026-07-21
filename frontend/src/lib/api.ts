@@ -1,5 +1,19 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
+async function throwResponseError(response: Response): Promise<never> {
+  if (response.status === 401) {
+    window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+  }
+  const errorBody = await response.json().catch(() => null);
+  const detail =
+    errorBody && typeof errorBody.detail === "string"
+      ? errorBody.detail
+      : `API error: ${response.status} ${response.statusText}`;
+  const error = new Error(detail) as Error & { status: number };
+  error.status = response.status;
+  throw error;
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -15,21 +29,22 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
-    }
-    const errorBody = await response.json().catch(() => null);
-    const detail =
-      errorBody && typeof errorBody.detail === "string"
-        ? errorBody.detail
-        : `API error: ${response.status} ${response.statusText}`;
-    const err = new Error(detail) as Error & { status: number };
-    err.status = response.status;
-    throw err;
+    return throwResponseError(response);
   }
 
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+async function postBlob(path: string, body: unknown): Promise<Blob> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) return throwResponseError(response);
+  return response.blob();
 }
 
 export const api = {
@@ -38,6 +53,7 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   delete: (path: string) => request<void>("DELETE", path),
+  postBlob,
 };
 
 export function fetchNarrative(projectId: string) {

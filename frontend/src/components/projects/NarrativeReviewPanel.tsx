@@ -3,6 +3,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Loader2, RefreshCw } from "lucide-react";
 import { FactCheckCard } from "@/components/review/FactCheckCard";
 import { useSubmitReview } from "@/hooks/useProjects";
 import { useRegenerateTts } from "@/hooks/useNarrative";
@@ -26,6 +27,12 @@ interface SceneState {
 interface Props {
   projectId: string;
   narrative: NarrativeVersion;
+}
+
+interface BatchRetryProgress {
+  current: number;
+  total: number;
+  sceneIndex: number;
 }
 
 const normalizeAnnotations = (
@@ -96,6 +103,8 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
   // 记录哪些镜头的旁白被用户修改但尚未重新 TTS
   const [dirtyTts, setDirtyTts] = useState<Set<number>>(new Set());
   const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null);
+  const [batchRetryProgress, setBatchRetryProgress] = useState<BatchRetryProgress | null>(null);
+  const [batchRetryResult, setBatchRetryResult] = useState<string>("");
   const [regenError, setRegenError] = useState<Map<number, string>>(new Map());
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
@@ -136,9 +145,9 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
     });
   };
 
-  const handleRegenerateTts = async (idx: number) => {
+  const handleRegenerateTts = async (idx: number): Promise<boolean> => {
     const state = sceneStates.get(idx);
-    if (!state) return;
+    if (!state) return false;
     setRegeneratingIdx(idx);
     try {
       const res = await regenerateTts.mutateAsync({
@@ -169,15 +178,52 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         next.delete(idx);
         return next;
       });
+      return true;
     } catch (err) {
       setRegenError((prev) => {
         const next = new Map(prev);
         next.set(idx, err instanceof Error ? err.message : "生成失败，请重试");
         return next;
       });
+      return false;
     } finally {
       setRegeneratingIdx(null);
     }
+  };
+
+  const failedTtsIndices = useMemo(
+    () =>
+      Array.from(sceneStates.entries())
+        .filter(([, state]) => state.ttsStatus === "failed")
+        .map(([sceneIndex]) => sceneIndex)
+        .sort((left, right) => left - right),
+    [sceneStates]
+  );
+
+  const handleBatchRetryFailedTts = async () => {
+    const indices = [...failedTtsIndices];
+    if (indices.length === 0 || batchRetryProgress) return;
+
+    setBatchRetryResult("");
+    let succeeded = 0;
+    for (let position = 0; position < indices.length; position += 1) {
+      const sceneIndex = indices[position];
+      setBatchRetryProgress({
+        current: position + 1,
+        total: indices.length,
+        sceneIndex,
+      });
+      // 必须等待当前镜头完成后再处理下一个，避免并发请求 TTS。
+      if (await handleRegenerateTts(sceneIndex)) succeeded += 1;
+    }
+
+    const failed = indices.length - succeeded;
+    setBatchRetryProgress(null);
+    setBatchRetryResult(
+      failed === 0
+        ? `已按顺序完成 ${succeeded} 个失败镜头的音频重试。`
+        : `批量重试完成：${succeeded} 个成功，${failed} 个仍然失败。`
+    );
   };
 
   const buildEditedScenes = () =>
@@ -188,9 +234,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
       beats: s.beats,
     }));
 
-  const hasFailedTts = Array.from(sceneStates.values()).some(
-    (s) => s.ttsStatus === "failed"
-  );
+  const hasFailedTts = failedTtsIndices.length > 0;
   const hasFailedAlignment = Array.from(sceneStates.values()).some(
     (scene) =>
       scene.alignmentCoverage == null ||
@@ -315,7 +359,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                         size="sm"
                         variant="outline"
                         onClick={() => handleRegenerateTts(scene.sceneIndex)}
-                        disabled={isRegenerating}
+                        disabled={isRegenerating || batchRetryProgress !== null}
                       >
                         {isRegenerating ? "生成中…" : "重新生成音频"}
                       </Button>
@@ -441,8 +485,33 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
           </p>
         )}
         {hasFailedTts && (
-          <p className="text-sm text-amber-600">
-            有镜头 TTS 生成失败，请重新生成音频后再提交。
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2">
+            <p className="text-sm text-amber-700">
+              有 {failedTtsIndices.length} 个镜头 TTS 生成失败，请重新生成音频后再提交。
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleBatchRetryFailedTts()}
+              disabled={batchRetryProgress !== null}
+            >
+              {batchRetryProgress ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  正在重试镜头 {batchRetryProgress.sceneIndex}（{batchRetryProgress.current}/{batchRetryProgress.total}）
+                </>
+              ) : (
+                <>
+                  <RefreshCw />
+                  批量重试失败音频
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+        {batchRetryResult && (
+          <p className={`text-sm ${hasFailedTts ? "text-amber-600" : "text-emerald-600"}`}>
+            {batchRetryResult}
           </p>
         )}
         {hasFailedAlignment && (
@@ -480,7 +549,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
         <div className="flex gap-2">
           <Button
             onClick={handleApprove}
-            disabled={submitReview.isPending || submitReview.isSuccess || !canSubmit}
+            disabled={submitReview.isPending || submitReview.isSuccess || batchRetryProgress !== null || !canSubmit}
             className="flex-1"
           >
             {submitReview.isPending ? "提交中…" : "确认通过（进入代码生成）"}
@@ -495,7 +564,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
                 setRejectionError("");
               }
             }}
-            disabled={submitReview.isPending || submitReview.isSuccess}
+            disabled={submitReview.isPending || submitReview.isSuccess || batchRetryProgress !== null}
           >
             {submitReview.isPending
               ? "提交中…"
@@ -506,7 +575,7 @@ export function NarrativeReviewPanel({ projectId, narrative }: Props) {
           <Button
             variant="ghost"
             onClick={handleAbandon}
-            disabled={submitReview.isPending || submitReview.isSuccess}
+            disabled={submitReview.isPending || submitReview.isSuccess || batchRetryProgress !== null}
           >
             废弃
           </Button>

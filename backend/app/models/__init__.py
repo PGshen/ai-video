@@ -15,6 +15,7 @@ from app.models.ai_model_config import (
 )
 from app.models.style_template import StyleTemplate
 from app.models.user import User
+from app.models.tts_config import TTSEngineConfig, TTSVoice
 
 __all__ = [
     "NarrativeVersion",
@@ -32,4 +33,6 @@ __all__ = [
     "AIBusinessModelConfig",
     "StyleTemplate",
     "User",
+    "TTSEngineConfig",
+    "TTSVoice",
 ]

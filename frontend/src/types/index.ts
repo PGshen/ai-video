@@ -289,7 +289,7 @@ export interface VideoProject {
   status: ProjectStatus;
   renderEngine: "manim" | "remotion";
   ttsVoice: string;
-  ttsEngine: "doubao_1.0" | "doubao_2.0";
+  ttsEngine: string;
   ttsSpeed: 0.9 | 1.0 | 1.1 | 1.2;
   aspectRatio: "landscape" | "portrait";
   currentCodeVersion: CodeVersion | null;
@@ -465,4 +465,37 @@ export interface RegenerateTtsResponse {
   presignedUrl: string | null;
   beats: NarrativeBeat[];
   alignmentCoverage: number | null;
+}
+
+// ═══ TTS 配置 ═══
+export interface TTSEngineConfig {
+  id: string;
+  name: string;
+  code: string;
+  providerType: "volcengine";
+  endpoint: string;
+  resourceId: string;
+  timeoutSeconds: number;
+  isActive: boolean;
+  apiKeySet: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TTSVoice {
+  id: string;
+  engineId: string;
+  name: string;
+  speakerId: string;
+  language: string;
+  gender: string | null;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TTSSettingsResponse {
+  engines: TTSEngineConfig[];
+  voices: TTSVoice[];
 }

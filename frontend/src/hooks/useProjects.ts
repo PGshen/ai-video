@@ -76,7 +76,7 @@ export function useCreateProject() {
       topicId: string;
       renderEngine: string;
       ttsVoice: string;
-      ttsEngine: "doubao_1.0" | "doubao_2.0";
+      ttsEngine: string;
       ttsSpeed: 0.9 | 1.0 | 1.1 | 1.2;
       aspectRatio: string;
       narrativeContext: { text: string }[];

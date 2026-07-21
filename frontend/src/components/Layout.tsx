@@ -9,6 +9,7 @@ const navItems = [
   { to: "/projects", label: "视频项目" },
   { to: "/style-library", label: "风格库" },
   { to: "/ai-model-settings", label: "模型配置" },
+  { to: "/tts-settings", label: "音色管理" },
   { to: "/ai-calls", label: "AI 记录" },
 ];
 

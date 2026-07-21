@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,33 +15,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useCreateProject } from "@/hooks/useProjects";
 import { usePromptComponents } from "@/hooks/usePromptComponents";
 import { useStyleTemplates } from "@/hooks/useStyleTemplates";
+import { useTTSSettings } from "@/hooks/useTTSSettings";
 import type { Topic } from "@/types";
 import { STYLE_CATEGORIES } from "@/lib/styleCategories";
 
 const RENDER_ENGINE_LABELS: Record<string, string> = {
   manim: "Manim",
   remotion: "Remotion",
-};
-
-const TTS_VOICE_LABELS: Record<string, string> = {
-  sisi: "思思",
-  xiaoxinjiejie: "春日部小姐姐",
-  xiaozhupeiqi: "小猪佩奇",
-  zizi: "清澈梓梓",
-  yunzhou: "云舟",
-  xiaohe: "小禾",
-};
-
-type TtsEngine = "doubao_1.0" | "doubao_2.0";
-
-const TTS_ENGINE_LABELS = {
-  "doubao_1.0": "豆包 1.0",
-  "doubao_2.0": "豆包 2.0",
-} as const satisfies Record<TtsEngine, string>;
-
-const TTS_VOICES_BY_ENGINE: Record<TtsEngine, string[]> = {
-  "doubao_1.0": ["sisi"],
-  "doubao_2.0": ["xiaoxinjiejie", "xiaozhupeiqi", "zizi", "yunzhou", "xiaohe"],
 };
 
 const TTS_SPEEDS = [0.9, 1.0, 1.1, 1.2] as const;
@@ -104,8 +84,8 @@ function StyleSelect({
 
 export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSnippets = [] }: Props) {
   const [renderEngine, setRenderEngine] = useState("manim");
-  const [ttsVoice, setTtsVoice] = useState("xiaoxinjiejie");
-  const [ttsEngine, setTtsEngine] = useState<TtsEngine>("doubao_2.0");
+  const [ttsVoice, setTtsVoice] = useState("春日部小姐姐");
+  const [ttsEngine, setTtsEngine] = useState("doubao_2.0");
   const [ttsSpeed, setTtsSpeed] = useState<(typeof TTS_SPEEDS)[number]>(1.0);
   const [aspectRatio, setAspectRatio] = useState("landscape");
   const [styleConfig, setStyleConfig] = useState<Record<string, string>>({});
@@ -116,7 +96,15 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
   const createProject = useCreateProject();
   const navigate = useNavigate();
   const { data: templateData } = useStyleTemplates();
+  const { data: ttsSettings, isLoading: ttsLoading } = useTTSSettings(true);
   const templates = templateData?.items ?? [];
+  const ttsEngines = useMemo(() => ttsSettings?.engines ?? [], [ttsSettings]);
+  const ttsVoices = (ttsSettings?.voices ?? []).filter((voice) => {
+    const engine = ttsEngines.find((item) => item.id === voice.engineId);
+    return engine?.code === ttsEngine;
+  });
+  const selectedTtsEngine = ttsEngines.find((engine) => engine.code === ttsEngine);
+  const selectedTtsVoice = ttsVoices.find((voice) => voice.name === ttsVoice);
   const selectedTemplate = templates.find((item) => item.id === selectedTemplateId);
 
   function toggleSnippet(i: number) {
@@ -146,12 +134,29 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
     setStyleConfig(template ? { ...template.styleConfig } : {});
   }
 
-  function setTtsEngineAndVoice(engine: TtsEngine) {
+  useEffect(() => {
+    if (!ttsEngines.length) return;
+    setTtsEngine((currentEngine) => {
+      const engine = ttsEngines.find((item) => item.code === currentEngine) ?? ttsEngines[0];
+      const voices = (ttsSettings?.voices ?? []).filter((voice) => voice.engineId === engine.id);
+      setTtsVoice((currentVoice) =>
+        voices.some((voice) => voice.name === currentVoice)
+          ? currentVoice
+          : voices[0]?.name ?? ""
+      );
+      return engine.code;
+    });
+  }, [ttsSettings, ttsEngines]);
+
+  function setTtsEngineAndVoice(engine: string) {
     setTtsEngine(engine);
-    setTtsVoice(TTS_VOICES_BY_ENGINE[engine][0]);
+    const config = ttsEngines.find((item) => item.code === engine);
+    const voices = (ttsSettings?.voices ?? []).filter((voice) => voice.engineId === config?.id);
+    setTtsVoice(voices[0]?.name ?? "");
   }
 
   const handleSubmit = () => {
+    if (!ttsEngine || !ttsVoice) return;
     const narrativeContext = contextSnippets
       .filter((_, i) => selectedSnippets.has(i))
       .map((text) => ({ text }));
@@ -206,28 +211,23 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-medium">TTS 引擎</Label>
-                <Select value={ttsEngine} onValueChange={(v) => setTtsEngineAndVoice(v as TtsEngine)}>
+                <Select value={ttsEngine} onValueChange={(v) => v && setTtsEngineAndVoice(v)} disabled={ttsLoading || !ttsEngines.length}>
                   <SelectTrigger className="w-full">
-                    <SelectValue>{TTS_ENGINE_LABELS[ttsEngine]}</SelectValue>
+                    <SelectValue>{selectedTtsEngine?.name ?? (ttsLoading ? "加载中…" : "暂无可用引擎")}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="doubao_1.0">{TTS_ENGINE_LABELS["doubao_1.0"]}</SelectItem>
-                    <SelectItem value="doubao_2.0">{TTS_ENGINE_LABELS["doubao_2.0"]}</SelectItem>
+                    {ttsEngines.map((engine) => <SelectItem key={engine.id} value={engine.code}>{engine.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-medium">TTS 音色</Label>
-                <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)}>
+                <Select value={ttsVoice} onValueChange={(v) => v && setTtsVoice(v)} disabled={!ttsVoices.length}>
                   <SelectTrigger className="w-full">
-                    <SelectValue>{TTS_VOICE_LABELS[ttsVoice]}</SelectValue>
+                    <SelectValue>{selectedTtsVoice?.name ?? "暂无可用音色"}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {TTS_VOICES_BY_ENGINE[ttsEngine].map((value) => (
-                      [value, TTS_VOICE_LABELS[value]] as const
-                    )).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
+                    {ttsVoices.map((voice) => <SelectItem key={voice.id} value={voice.name}>{voice.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -344,7 +344,7 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
 
         <DialogFooter className="bg-background">
           <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={handleSubmit} disabled={createProject.isPending}>
+          <Button onClick={handleSubmit} disabled={createProject.isPending || !ttsEngine || !ttsVoice}>
             {createProject.isPending ? "创建中..." : "创建项目"}
           </Button>
         </DialogFooter>

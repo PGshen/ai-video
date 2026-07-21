@@ -11,7 +11,7 @@ class ProjectCreate(BaseModel):
     topic_id: UUID
     render_engine: str
     tts_voice: str
-    tts_engine: Literal["doubao_1.0", "doubao_2.0"] = "doubao_2.0"
+    tts_engine: str = "doubao_2.0"
     tts_speed: Literal[0.9, 1.0, 1.1, 1.2] = 1.0
     aspect_ratio: str
     narrative_context: list[dict] = []

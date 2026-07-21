@@ -13,6 +13,7 @@ import AICallRecordsPage from "@/pages/AICallRecordsPage";
 import AIModelSettingsPage from "@/pages/AIModelSettingsPage";
 import LoginPage from "@/pages/LoginPage";
 import UsersPage from "@/pages/UsersPage";
+import TTSSettingsPage from "@/pages/TTSSettingsPage";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +63,7 @@ export default function App() {
               />
               <Route path="/style-library" element={<StyleLibraryPage />} />
               <Route path="/ai-model-settings" element={<AIModelSettingsPage />} />
+              <Route path="/tts-settings" element={<TTSSettingsPage />} />
               <Route path="/ai-calls" element={<AICallRecordsPage />} />
               <Route path="/users" element={<UsersPage />} />
             </Route>

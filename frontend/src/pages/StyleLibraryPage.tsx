@@ -126,6 +126,14 @@ function ComponentCard({
         </span> */}
 
         <div className="flex items-center gap-1" onClick={stopCardClick}>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`编辑「${component.name}」`}
+            onClick={() => onEdit(component)}
+          >
+            <Pencil />
+          </Button>
           {component.isBuiltin ? (
             <Button
               size="sm"
@@ -138,14 +146,6 @@ function ComponentCard({
             </Button>
           ) : (
             <>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`编辑「${component.name}」`}
-                onClick={() => onEdit(component)}
-              >
-                <Pencil />
-              </Button>
               <Button
                 size="icon-sm"
                 variant="ghost"
@@ -203,7 +203,7 @@ function ComponentDetailDialog({
           </pre>
         </div>
 
-        {!component.isBuiltin && (
+        {/* {!component.isBuiltin && ( */}
           <DialogFooter className="bg-background">
             <Button
               onClick={() => {
@@ -215,7 +215,7 @@ function ComponentDetailDialog({
               编辑组件
             </Button>
           </DialogFooter>
-        )}
+        {/* )} */}
       </DialogContent>
     </Dialog>
   );

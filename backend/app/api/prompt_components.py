@@ -109,8 +109,6 @@ async def update_prompt_component(
     pc = await db.get(PromptComponent, component_id)
     if pc is None:
         raise HTTPException(status_code=404, detail="Component not found")
-    if pc.is_builtin:
-        raise HTTPException(status_code=403, detail="Cannot modify built-in components")
     if body.category is not None:
         pc.category = body.category
     if body.name is not None:

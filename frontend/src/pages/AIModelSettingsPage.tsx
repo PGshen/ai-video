@@ -884,7 +884,7 @@ export default function AIModelSettingsPage() {
                                 const itemProvider = providerMap.get(item.providerId);
                                 return (
                                   <option key={item.id} value={item.id}>
-                                    {item.model} · {itemProvider?.name}
+                                    {item.name} · {itemProvider?.name}
                                   </option>
                                 );
                               })}

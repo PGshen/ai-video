@@ -62,6 +62,21 @@ code_prompt: |
     会导致 "got multiple values for keyword argument"；
     如需要环形扇形（内半径 > 0），请直接用
     AnnularSector(inner_radius=, outer_radius=, angle=, start_angle=)。
+  - path_arc 不是所有动画的通用参数：Create/Write/FadeIn/DrawBorderThenFill 等"生成类"动画的基类
+    Animation.__init__ 不接受 path_arc，传入会报 "unexpected keyword argument 'path_arc'"。
+    path_arc 只对"移动类"动画有效：.animate.shift(...) / .animate.move_to(...) 等 _MethodAnimation
+    （如 self.play(obj.animate.shift(RIGHT*3), path_arc=PI/3)），或 MoveAlongPath(obj, 路径对象)；
+    ReplacementTransform/Transform 也不接受 path_arc。想让 Create/FadeIn 的对象带弧线效果，
+    应改为先创建对象再用 .animate.move_to(...)/.shift() 配 path_arc，或用 MoveAlongPath。
+
+  【JSON 输出转义规则(重要,高频导致整体解析失败)】
+  - 返回内容必须是合法 JSON,code 字段中的反斜杠 \ 在 JSON 字符串里必须转义为 \\
+  - MathTex/Tex 里的 LaTeX 命令(如 r'k\,T\,\ln 2'、r'\frac{{1}}{{2}}'、r'\alpha')源码本身用了 \, \ln \frac 等反斜杠转义,
+    写入 JSON 字符串时这些反斜杠必须再转义一层,即 \\, \\ln \\frac,否则会出现
+    "Invalid escape character in string" 导致整个 JSON 解析失败、代码提取全部落空
+  - 自检:凡是 code 字段里出现 MathTex(...)/Tex(...) 且其中含有反斜杠的地方,逐个确认该反斜杠在 JSON
+    层面已经是 \\ 而不是单个 \;字符串内的双引号同理要转义为 \"
+  - 尽量优先用不依赖反斜杠的写法规避风险,如逗号间距用普通空格代替 \,,能用 Text 表达的非公式内容不要塞进 MathTex
 
   【Manim 代码规范】
 

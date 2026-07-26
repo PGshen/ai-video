@@ -438,7 +438,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             )
             if snippets_text:
                 context_note = (
-                    "\n\n以下是创作者标注的参考内容，请在叙事中参考这些观点和表述方式：\n\n"
+                    "\n\n以下是创作者标注的参考内容，请在叙事中参考这些观点或表述方式（不是全盘接收）：\n\n"
                     + snippets_text
                 )
 

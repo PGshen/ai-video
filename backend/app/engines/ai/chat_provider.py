@@ -10,14 +10,18 @@ logger = logging.getLogger(__name__)
 
 from app.engines.ai.base import (
     BrainstormResult, ChatClient, CodeGenerationResult, CodeRepairResult,
-    NarrativeResult, StyleAssistantResult, ai_business,
+    NarrativeResult, StyleAssistantResult, StyleLibraryAssistantResult, ai_business,
 )
 from app.engines.ai.structured_output import (
     BRAINSTORM_SCHEMA,
     CODE_GENERATION_SCHEMA,
     CODE_REPAIR_SCHEMA,
+    EXEMPLAR_PROMPT_SCHEMA,
     NARRATIVE_SCHEMA,
     STYLE_ASSISTANT_SCHEMA,
+    STYLE_EXEMPLAR_ASSISTANT_SCHEMA,
+    STYLE_LIBRARY_ASSISTANT_SCHEMA,
+    STYLE_PROMPT_MAX_LENGTH,
     response_format_for,
 )
 from app.services.narrative_validator import (
@@ -209,6 +213,29 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
 精致细节：标题镜头主标题下方配细分隔线；关键概念节点使用双圆结构。
 多元素错落入场，节点+连线+标注分三步出现。""",
     }
+
+    @classmethod
+    def _build_exemplar_assistant_requirements(cls) -> str:
+        schema = json.dumps(EXEMPLAR_PROMPT_SCHEMA, ensure_ascii=False, indent=2)
+        reference = cls._DEFAULT_STYLE_COMPONENTS["exemplar"]
+        return f"""\
+【金样本强制格式（最高优先级）】
+- 金样本只是用于定义结构、语感和画面描述方式的精简范例，不是完整视频脚本。
+- scenes 只返回 1-2 个代表镜头，每个镜头只返回 1-4 个 beats，fact_checks 最多 1 项。
+- 不要根据叙事蓝图中的目标时长或镜头总数扩写金样本；序列化后不得超过 8000 字符，建议控制在 6000 字符以内。
+- 金样本最终保存的 prompt_text 必须是纯 JSON，结构与叙事生成接口完全一致。
+- 顶层只能包含 scenes 和 fact_checks；禁止使用 video_title、aspect_ratio、duration_sec、core_contrast、shots 等自创字段。
+- scenes[] 每项只能包含 scene_index、narration、description、estimated_duration_seconds、beats。
+- beats[] 每项只能包含 beat_index、cue_text、visual_action、emphasis、transition、fallback_weight。
+- fact_checks[] 每项必须使用标准事实核查字段；没有需要核查的内容时返回空数组，不得省略 fact_checks。
+- scene_index 和 beat_index 从 0 连续递增；cue_text 必须能按顺序完整拼接回 narration。
+- 在本次助手响应中，对应的 prompt_text 必须直接返回 JSON object，不要返回转义后的 JSON 字符串，不要使用 Markdown 代码围栏。
+
+标准 JSON Schema：
+{schema}
+
+系统内置金样本参考（内容可替换，字段名和层级不可改变）：
+{reference}"""
 
     def __init__(
         self,
@@ -782,6 +809,11 @@ JSON 格式示例：
         conversation_history: list[dict],
         new_message: str,
     ) -> StyleAssistantResult:
+        exemplar_requirements = (
+            self._build_exemplar_assistant_requirements()
+            if category == "exemplar"
+            else ""
+        )
         system_prompt = f"""\
 你是一位知识视频生产系统的风格提示词设计助手。你的任务是通过对话，把用户的想法整理成清晰、可执行、可复用的风格组件提示词。
 
@@ -793,6 +825,7 @@ JSON 格式示例：
 - name 简洁易辨识；description 用一句话说明适用场景。
 - reply 用 1-3 句中文说明本轮做了什么，并可提出一个有价值的后续问题。
 - 即使用户只是在询问，也要返回当前版本的完整 name、description、 prompt_text和replay。
+{exemplar_requirements}
 {self._JSON_ESCAPE_RULE}
 - 只能输出合法 JSON object。"""
         category_labels = {
@@ -825,15 +858,25 @@ JSON 格式示例：
             response_format=response_format_for(
                 self.client,
                 name="style_assistant",
-                schema=STYLE_ASSISTANT_SCHEMA,
+                schema=(
+                    STYLE_EXEMPLAR_ASSISTANT_SCHEMA
+                    if category == "exemplar"
+                    else STYLE_ASSISTANT_SCHEMA
+                ),
             ),
             max_tokens=self.json_max_tokens,
         )
         print(f"Style assistant raw response: {content}")
         payload = parse_json_object(content)
         generated_prompt = payload.get("prompt_text", payload.get("promptText"))
+        if category == "exemplar":
+            generated_prompt = normalize_exemplar_prompt(generated_prompt)
         if not isinstance(generated_prompt, str) or not generated_prompt.strip():
             raise ValueError("Style assistant returned an empty prompt")
+        if len(generated_prompt) > STYLE_PROMPT_MAX_LENGTH:
+            raise ValueError(
+                "Style assistant prompt exceeds 8000 characters"
+            )
 
         generated_name = payload.get("name")
         if not isinstance(generated_name, str) or not generated_name.strip():
@@ -854,6 +897,125 @@ JSON 格式示例：
             prompt_text=generated_prompt.strip(),
         )
 
+    async def assist_style_library(
+        self,
+        name: str,
+        description: str,
+        components: dict[str, dict[str, str]],
+        conversation_history: list[dict],
+        new_message: str,
+    ) -> StyleLibraryAssistantResult:
+        category_labels = {
+            "narrative_style": "叙事蓝图（叙事风格、节奏与镜头结构）",
+            "color_scheme": "视觉系统（色板、字体、构图与视觉层级）",
+            "animation_style": "动画系统（动效、转场与运动规则）",
+            "exemplar": "金样本（镜头 JSON 结构与旁白语感范例）",
+        }
+        exemplar_requirements = self._build_exemplar_assistant_requirements()
+        system_prompt = f"""\
+你是一位知识视频生产系统的风格总监。你的任务是通过对话，一次设计并持续打磨一套完整、统一、可执行的风格库。
+
+规则：
+- 每次都返回风格库整体名称、说明，以及叙事蓝图、视觉系统、动画系统、金样本四个完整组件，四项缺一不可。
+- 四个组件必须彼此协调但职责清晰，避免在多个组件中重复同一规则。
+- 叙事蓝图负责叙事风格、节奏与镜头结构；视觉系统负责色板、字体、构图与层级；动画系统负责动效节奏、转场与元素运动；金样本提供可直接参考的镜头 JSON 与旁白范例。
+- 组件提示词写给后续生成模型，使用明确、分层、可检查的约束，避免空泛形容词。
+- 保留现有内容中用户未要求删除的有效规则；若本轮要求只涉及某些组件，其余组件原样完整返回。
+- 每个 prompt_text 都必须是可直接投入工作流的完整文本，不使用 Markdown 代码围栏。
+- name 简洁易辨识；description 用一句话说明用途。reply 用 1-3 句中文说明本轮调整，并指出受影响的组件。
+{exemplar_requirements}
+{self._JSON_ESCAPE_RULE}
+- 只能输出合法 JSON object。"""
+        current_parts = [
+            f"当前风格库名称：{name or '未填写'}",
+            f"当前风格库说明：{description or '未填写'}",
+        ]
+        for category, label in category_labels.items():
+            component = components.get(category) or {}
+            current_parts.append(
+                f"\n【{label}】\n"
+                f"组件名称：{component.get('name') or '未填写'}\n"
+                f"组件说明：{component.get('description') or '未填写'}\n"
+                f"提示词：\n{component.get('prompt_text') or '（尚未创建）'}"
+            )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        for item in conversation_history[-20:]:
+            role = item.get("role")
+            content = item.get("content")
+            if role in {"user", "assistant"} and isinstance(content, str):
+                messages.append({"role": role, "content": content})
+        messages.append(
+            {
+                "role": "user",
+                "content": "\n".join(current_parts)
+                + f"\n\n本轮要求：{new_message}",
+            }
+        )
+        content = await self._complete(
+            "style_assistant",
+            messages=messages,
+            response_format=response_format_for(
+                self.client,
+                name="style_library_assistant",
+                schema=STYLE_LIBRARY_ASSISTANT_SCHEMA,
+            ),
+            max_tokens=self.json_max_tokens,
+        )
+        payload = parse_json_object(content)
+        generated_components = payload.get("components")
+        if not isinstance(generated_components, dict):
+            raise ValueError("Style library assistant returned invalid components")
+
+        normalized_components: dict[str, dict[str, str]] = {}
+        for category in category_labels:
+            generated = generated_components.get(category)
+            if not isinstance(generated, dict):
+                raise ValueError(
+                    f"Style library assistant omitted component: {category}"
+                )
+            current = components.get(category) or {}
+            prompt_text = generated.get("prompt_text", generated.get("promptText"))
+            if category == "exemplar":
+                prompt_text = normalize_exemplar_prompt(prompt_text)
+            if not isinstance(prompt_text, str) or not prompt_text.strip():
+                raise ValueError(
+                    f"Style library assistant returned an empty prompt: {category}"
+                )
+            if len(prompt_text) > STYLE_PROMPT_MAX_LENGTH:
+                raise ValueError(
+                    "Style library assistant prompt exceeds 8000 characters: "
+                    f"{category}"
+                )
+            component_name = generated.get("name")
+            if not isinstance(component_name, str) or not component_name.strip():
+                component_name = current.get("name", "")
+            component_description = generated.get("description")
+            if not isinstance(component_description, str):
+                component_description = current.get("description", "")
+            normalized_components[category] = {
+                "name": component_name.strip(),
+                "description": component_description.strip(),
+                "prompt_text": prompt_text.strip(),
+            }
+
+        generated_name = payload.get("name")
+        if not isinstance(generated_name, str) or not generated_name.strip():
+            generated_name = name
+        generated_description = payload.get("description")
+        if not isinstance(generated_description, str):
+            generated_description = description
+        reply = payload.get("reply")
+        if not isinstance(reply, str) or not reply.strip():
+            reply = "我已统一更新整套风格库，你可以切换左侧四个组件逐项检查。"
+
+        return StyleLibraryAssistantResult(
+            reply=reply.strip(),
+            name=generated_name.strip(),
+            description=generated_description.strip(),
+            components=normalized_components,
+        )
+
 
 def parse_json_object(content: str) -> dict:
     text = content.strip()
@@ -867,3 +1029,102 @@ def parse_json_object(content: str) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("AI JSON response must be an object")
     return payload
+
+
+def _matches_json_type(value: object, expected_type: str) -> bool:
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "null":
+        return value is None
+    return False
+
+
+def _validate_json_schema_shape(
+    value: object, schema: dict, *, path: str
+) -> None:
+    schema_type = schema.get("type")
+    expected_types = schema_type if isinstance(schema_type, list) else [schema_type]
+    if not any(
+        isinstance(expected_type, str)
+        and _matches_json_type(value, expected_type)
+        for expected_type in expected_types
+    ):
+        raise ValueError(f"{path} does not match the required JSON type")
+
+    enum = schema.get("enum")
+    if isinstance(enum, list) and value not in enum:
+        raise ValueError(f"{path} contains an unsupported value")
+
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        missing = [key for key in required if key not in value]
+        if missing:
+            raise ValueError(f"{path} is missing fields: {', '.join(missing)}")
+        if schema.get("additionalProperties") is False:
+            unexpected = [key for key in value if key not in properties]
+            if unexpected:
+                raise ValueError(
+                    f"{path} contains unsupported fields: {', '.join(unexpected)}"
+                )
+        for key, child in value.items():
+            child_schema = properties.get(key)
+            if isinstance(child_schema, dict):
+                _validate_json_schema_shape(
+                    child, child_schema, path=f"{path}.{key}"
+                )
+    elif isinstance(value, list):
+        min_items = schema.get("minItems")
+        if isinstance(min_items, int) and len(value) < min_items:
+            raise ValueError(
+                f"{path} must contain at least {min_items} items"
+            )
+        max_items = schema.get("maxItems")
+        if isinstance(max_items, int) and len(value) > max_items:
+            raise ValueError(
+                f"{path} must contain at most {max_items} items"
+            )
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                _validate_json_schema_shape(
+                    item, item_schema, path=f"{path}[{index}]"
+                )
+    elif isinstance(value, str):
+        max_length = schema.get("maxLength")
+        if isinstance(max_length, int) and len(value) > max_length:
+            raise ValueError(
+                f"{path} must contain at most {max_length} characters"
+            )
+
+
+def normalize_exemplar_prompt(value: object) -> str:
+    if isinstance(value, str):
+        payload = parse_json_object(value)
+    elif isinstance(value, dict):
+        payload = value
+    else:
+        raise ValueError("Style assistant returned an invalid exemplar prompt")
+    _validate_json_schema_shape(payload, EXEMPLAR_PROMPT_SCHEMA, path="exemplar")
+    prompt_text = json.dumps(payload, ensure_ascii=False, indent=2)
+    if len(prompt_text) <= STYLE_PROMPT_MAX_LENGTH:
+        return prompt_text
+
+    compact_prompt_text = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    if len(compact_prompt_text) <= STYLE_PROMPT_MAX_LENGTH:
+        return compact_prompt_text
+    raise ValueError("Style assistant exemplar prompt exceeds 8000 characters")

@@ -7,6 +7,7 @@ import {
   Loader2,
   MessageSquareText,
   Pencil,
+  Plus,
   RotateCcw,
   SendHorizontal,
   Sparkles,
@@ -33,9 +34,17 @@ import {
   useDuplicatePromptComponent,
   useStylePromptAssistant,
 } from "@/hooks/usePromptComponents";
-import type { PromptComponent, StyleAssistantMessage } from "@/types";
+import type {
+  PromptComponent,
+  StyleAssistantMessage,
+  StyleTemplate,
+} from "@/types";
 import { STYLE_CATEGORIES } from "@/lib/styleCategories";
-import { StyleTemplatesPanel } from "@/components/styles/StyleTemplatesPanel";
+import {
+  StyleTemplatesPanel,
+  TemplateDialog,
+} from "@/components/styles/StyleTemplatesPanel";
+import { StyleLibraryDialog } from "@/components/styles/StyleLibraryDialog";
 
 interface ComponentFormData {
   category: string;
@@ -602,7 +611,13 @@ export function StyleLibraryPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PromptComponent | null>(null);
   const [viewing, setViewing] = useState<PromptComponent | null>(null);
-  const { data, isLoading } = usePromptComponents(activeCategory);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateEditing, setTemplateEditing] = useState<StyleTemplate | null>(null);
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
+  const [libraryEditing, setLibraryEditing] = useState<StyleTemplate | null>(null);
+  const { data, isLoading } = usePromptComponents(
+    activeCategory === "templates" ? undefined : activeCategory
+  );
   const items = data?.items ?? [];
 
   const openCreate = () => {
@@ -613,6 +628,14 @@ export function StyleLibraryPage() {
     setEditing(component);
     setDialogOpen(true);
   };
+  const openTemplateCreate = () => {
+    setTemplateEditing(null);
+    setTemplateDialogOpen(true);
+  };
+  const openLibraryCreate = () => {
+    setLibraryEditing(null);
+    setLibraryDialogOpen(true);
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -621,7 +644,18 @@ export function StyleLibraryPage() {
           <h1 className="text-2xl font-bold">风格库</h1>
           <p className="mt-1 text-sm text-muted-foreground">管理视频生成工作流中可复用的提示词组件</p>
         </div>
-        {activeCategory !== "templates" && (
+        {activeCategory === "templates" ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={openTemplateCreate}>
+              <Plus data-icon="inline-start" />
+              组合已有组件
+            </Button>
+            <Button onClick={openLibraryCreate}>
+              <Sparkles data-icon="inline-start" />
+              AI 创建风格库
+            </Button>
+          </div>
+        ) : (
           <Button onClick={openCreate}>
             <Sparkles data-icon="inline-start" />
             AI 创建组件
@@ -656,7 +690,16 @@ export function StyleLibraryPage() {
       </div>
 
       {activeCategory === "templates" ? (
-        <StyleTemplatesPanel />
+        <StyleTemplatesPanel
+          onEditAssociations={(template) => {
+            setTemplateEditing(template);
+            setTemplateDialogOpen(true);
+          }}
+          onEditLibrary={(template) => {
+            setLibraryEditing(template);
+            setLibraryDialogOpen(true);
+          }}
+        />
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">加载中…</p>
       ) : items.length === 0 ? (
@@ -691,6 +734,17 @@ export function StyleLibraryPage() {
         onClose={() => setDialogOpen(false)}
         category={activeCategory}
         editing={editing}
+      />
+      <TemplateDialog
+        open={templateDialogOpen}
+        editing={templateEditing}
+        onClose={() => setTemplateDialogOpen(false)}
+      />
+      <StyleLibraryDialog
+        open={libraryDialogOpen}
+        editing={libraryEditing}
+        availableComponents={items}
+        onClose={() => setLibraryDialogOpen(false)}
       />
     </div>
   );

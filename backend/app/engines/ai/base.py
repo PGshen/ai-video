@@ -369,6 +369,14 @@ class StyleAssistantResult:
     prompt_text: str
 
 
+@dataclass
+class StyleLibraryAssistantResult:
+    reply: str
+    name: str
+    description: str
+    components: dict[str, dict[str, str]]
+
+
 class ChatClient(Protocol):
     @property
     def engine_name(self) -> str: ...
@@ -455,3 +463,12 @@ class AIProvider(Protocol):
         conversation_history: list[dict],
         new_message: str,
     ) -> StyleAssistantResult: ...
+
+    async def assist_style_library(
+        self,
+        name: str,
+        description: str,
+        components: dict[str, dict[str, str]],
+        conversation_history: list[dict],
+        new_message: str,
+    ) -> StyleLibraryAssistantResult: ...

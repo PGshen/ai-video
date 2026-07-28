@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { LayoutTemplate, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  LayoutTemplate,
+  Pencil,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,9 +40,11 @@ import {
   useUpdateStyleTemplate,
 } from "@/hooks/useStyleTemplates";
 import { STYLE_CATEGORIES } from "@/lib/styleCategories";
-import type { StyleTemplate } from "@/types";
+import type { PromptComponent, StyleTemplate } from "@/types";
 
-function TemplateDialog({
+const EMPTY_COMPONENTS: PromptComponent[] = [];
+
+export function TemplateDialog({
   open,
   editing,
   onClose,
@@ -52,7 +59,7 @@ function TemplateDialog({
   const { data: componentData } = usePromptComponents();
   const createTemplate = useCreateStyleTemplate();
   const updateTemplate = useUpdateStyleTemplate();
-  const components = componentData?.items ?? [];
+  const components = componentData?.items ?? EMPTY_COMPONENTS;
 
   useEffect(() => {
     if (!open) return;
@@ -166,22 +173,22 @@ function TemplateDialog({
   );
 }
 
-export function StyleTemplatesPanel() {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<StyleTemplate | null>(null);
+export function StyleTemplatesPanel({
+  onEditAssociations,
+  onEditLibrary,
+}: {
+  onEditAssociations: (template: StyleTemplate) => void;
+  onEditLibrary: (template: StyleTemplate) => void;
+}) {
   const { data, isLoading } = useStyleTemplates();
   const { data: componentData } = usePromptComponents();
   const deleteTemplate = useDeleteStyleTemplate();
   const templates = data?.items ?? [];
+  const components = componentData?.items ?? EMPTY_COMPONENTS;
   const componentNames = useMemo(
-    () => new Map((componentData?.items ?? []).map((item) => [item.id, item.name])),
-    [componentData]
+    () => new Map(components.map((item) => [item.id, item.name])),
+    [components]
   );
-
-  const openCreate = () => {
-    setEditing(null);
-    setDialogOpen(true);
-  };
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">加载中…</p>;
@@ -196,22 +203,11 @@ export function StyleTemplatesPanel() {
           <p className="mt-1 text-xs text-muted-foreground">
             把一组风格组件保存下来，创建项目时一键套用
           </p>
-          <Button className="mt-4" variant="outline" onClick={openCreate}>
-            <Plus data-icon="inline-start" />
-            创建模板
-          </Button>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={openCreate}>
-              <Plus data-icon="inline-start" />
-              创建模板
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {templates.map((template) => (
-              <Card key={template.id} className="gap-3 py-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((template) => (
+            <Card key={template.id} className="gap-3 py-4">
                 <CardHeader>
                   <CardTitle className="text-[15px]">{template.name}</CardTitle>
                   {template.description && (
@@ -238,13 +234,20 @@ export function StyleTemplatesPanel() {
                 </CardContent>
                 <CardFooter className="justify-end border-t px-4 pt-2 pb-2">
                   <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onEditLibrary(template)}
+                    disabled={!componentData}
+                  >
+                    <Sparkles data-icon="inline-start" />
+                    编辑风格库
+                  </Button>
+                  <Button
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={`编辑「${template.name}」`}
-                    onClick={() => {
-                      setEditing(template);
-                      setDialogOpen(true);
-                    }}
+                    aria-label={`调整「${template.name}」的组件关联`}
+                    title="调整组件关联"
+                    onClick={() => onEditAssociations(template)}
                   >
                     <Pencil />
                   </Button>
@@ -263,17 +266,10 @@ export function StyleTemplatesPanel() {
                     <Trash2 />
                   </Button>
                 </CardFooter>
-              </Card>
-            ))}
-          </div>
+            </Card>
+          ))}
         </div>
       )}
-
-      <TemplateDialog
-        open={dialogOpen}
-        editing={editing}
-        onClose={() => setDialogOpen(false)}
-      />
     </>
   );
 }

@@ -100,6 +100,22 @@ export interface StyleAssistantResponse {
   promptText: string;
 }
 
+export interface StyleLibraryComponentDraft {
+  name: string;
+  description: string;
+  promptText: string;
+}
+
+export interface StyleLibraryDraft {
+  name: string;
+  description: string;
+  components: Record<string, StyleLibraryComponentDraft>;
+}
+
+export interface StyleLibraryAssistantResponse extends StyleLibraryDraft {
+  reply: string;
+}
+
 // ═══ AI 模型配置 ═══
 export type AIProviderType = "deepseek" | "openrouter" | "gemini" | "doubao";
 

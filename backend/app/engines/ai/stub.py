@@ -3,7 +3,7 @@ import json
 
 from app.engines.ai.base import (
     BrainstormResult, CodeGenerationResult, CodeRepairResult,
-    NarrativeResult, StyleAssistantResult,
+    NarrativeResult, StyleAssistantResult, StyleLibraryAssistantResult,
 )
 
 
@@ -123,6 +123,44 @@ class StubProvider:
             name=name.strip() or f"自定义{label}",
             description=description.strip() or f"适用于需要统一{label}的知识视频",
             prompt_text=generated_prompt,
+        )
+
+    async def assist_style_library(
+        self,
+        name: str,
+        description: str,
+        components: dict[str, dict[str, str]],
+        conversation_history: list[dict],
+        new_message: str,
+    ) -> StyleLibraryAssistantResult:
+        del conversation_history
+        labels = {
+            "narrative_style": "叙事蓝图",
+            "color_scheme": "视觉系统",
+            "animation_style": "动画系统",
+            "exemplar": "金样本",
+        }
+        generated: dict[str, dict[str, str]] = {}
+        for category, label in labels.items():
+            current = components.get(category) or {}
+            current_prompt = str(current.get("prompt_text") or "").strip()
+            generated[category] = {
+                "name": str(current.get("name") or f"{name or '自定义风格'} · {label}"),
+                "description": str(
+                    current.get("description") or f"{label}的统一生成规则"
+                ),
+                "prompt_text": (
+                    f"{current_prompt}\n\n【本轮统一要求】\n{new_message.strip()}"
+                    if current_prompt
+                    else f"【{label}】\n围绕“{new_message.strip()}”制定明确、统一且可检查的规则。"
+                ),
+            }
+        await asyncio.sleep(0)
+        return StyleLibraryAssistantResult(
+            reply="我已生成整套风格库，并同步更新了四个组件。",
+            name=name.strip() or "自定义知识视频风格",
+            description=description.strip() or "一套协调统一的知识视频生成风格",
+            components=generated,
         )
 
 

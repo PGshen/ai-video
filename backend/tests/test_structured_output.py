@@ -4,11 +4,12 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from app.engines.ai.chat_provider import ChatAIProvider
+from app.engines.ai.chat_provider import ChatAIProvider, normalize_exemplar_prompt
 from app.engines.ai.gemini import GeminiClient
 from app.engines.ai.openrouter import OpenRouterClient
 from app.engines.ai.structured_output import (
     CODE_GENERATION_SCHEMA,
+    EXEMPLAR_PROMPT_SCHEMA,
     NARRATIVE_SCHEMA,
     response_format_for,
 )
@@ -152,3 +153,247 @@ async def test_style_assistant_tolerates_optional_fields_missing_in_json_mode():
     assert result.description == "原说明"
     assert result.prompt_text == "只使用蓝色系和充足留白。"
     assert "更新了左侧提示词" in result.reply
+
+
+@pytest.mark.asyncio
+async def test_style_library_assistant_parses_all_four_components():
+    categories = (
+        "narrative_style",
+        "color_scheme",
+        "animation_style",
+        "exemplar",
+    )
+
+    class LibraryJsonClient:
+        engine_name = "deepseek"
+        model_name = "schema-model"
+        supports_json_schema = True
+
+        async def create_chat_completion(self, **kwargs):
+            response_format = kwargs["response_format"]
+            exemplar_schema = response_format["json_schema"]["schema"][
+                "properties"
+            ]["components"]["properties"]["exemplar"]["properties"]["prompt_text"]
+            assert exemplar_schema == EXEMPLAR_PROMPT_SCHEMA
+            assert exemplar_schema["properties"]["scenes"]["maxItems"] == 2
+            system_prompt = kwargs["messages"][0]["content"]
+            assert "金样本强制格式" in system_prompt
+            assert "video_title" in system_prompt
+            assert "责任几乎全部落在你身上" in system_prompt
+            return json.dumps(
+                {
+                    "reply": "已生成四个组件。",
+                    "name": "冷静科技",
+                    "description": "适合严谨知识解释",
+                    "components": {
+                        category: {
+                            "name": f"科技 · {category}",
+                            "description": f"{category} rules",
+                            "prompt_text": (
+                                {
+                                    "scenes": [
+                                        {
+                                            "scene_index": 0,
+                                            "narration": "测试旁白。",
+                                            "description": "测试画面。",
+                                            "estimated_duration_seconds": 5,
+                                            "beats": [
+                                                {
+                                                    "beat_index": 0,
+                                                    "cue_text": "测试旁白。",
+                                                    "visual_action": "绘制测试画面。",
+                                                    "emphasis": None,
+                                                    "transition": "reveal",
+                                                    "fallback_weight": 1,
+                                                }
+                                            ],
+                                        }
+                                    ],
+                                    "fact_checks": [],
+                                }
+                                if category == "exemplar"
+                                else f"Prompt for {category}"
+                            ),
+                        }
+                        for category in categories
+                    },
+                },
+                ensure_ascii=False,
+            )
+
+    result = await ChatAIProvider(LibraryJsonClient()).assist_style_library(
+        name="",
+        description="",
+        components={},
+        conversation_history=[],
+        new_message="生成冷静科技风格",
+    )
+
+    assert result.name == "冷静科技"
+    assert set(result.components) == set(categories)
+    exemplar = json.loads(result.components["exemplar"]["prompt_text"])
+    assert set(exemplar) == {"scenes", "fact_checks"}
+    assert exemplar["scenes"][0]["scene_index"] == 0
+
+
+@pytest.mark.asyncio
+async def test_single_exemplar_assistant_uses_canonical_narrative_schema():
+    class ExemplarSchemaClient:
+        engine_name = "deepseek"
+        model_name = "schema-model"
+        supports_json_schema = True
+
+        async def create_chat_completion(self, **kwargs):
+            response_format = kwargs["response_format"]
+            assert (
+                response_format["json_schema"]["schema"]["properties"]["prompt_text"]
+                == EXEMPLAR_PROMPT_SCHEMA
+            )
+            system_prompt = kwargs["messages"][0]["content"]
+            assert "顶层只能包含 scenes 和 fact_checks" in system_prompt
+            assert "1-2 个代表镜头" in system_prompt
+            assert "shots" in system_prompt
+            assert "责任几乎全部落在你身上" in system_prompt
+            return json.dumps(
+                {
+                    "reply": "已按标准 Schema 生成金样本。",
+                    "name": "标准金样本",
+                    "description": "标准镜头结构",
+                    "prompt_text": {
+                        "scenes": [
+                            {
+                                "scene_index": 0,
+                                "narration": "测试旁白。",
+                                "description": "测试画面。",
+                                "estimated_duration_seconds": 5,
+                                "beats": [
+                                    {
+                                        "beat_index": 0,
+                                        "cue_text": "测试旁白。",
+                                        "visual_action": "绘制测试画面。",
+                                        "emphasis": None,
+                                        "transition": "reveal",
+                                        "fallback_weight": 1,
+                                    }
+                                ],
+                            }
+                        ],
+                        "fact_checks": [],
+                    },
+                },
+                ensure_ascii=False,
+            )
+
+    result = await ChatAIProvider(ExemplarSchemaClient()).assist_style_prompt(
+        category="exemplar",
+        name="",
+        description="",
+        prompt_text="",
+        conversation_history=[],
+        new_message="生成一个标准金样本",
+    )
+
+    exemplar = json.loads(result.prompt_text)
+    assert set(exemplar) == {"scenes", "fact_checks"}
+    assert set(exemplar["scenes"][0]) == {
+        "scene_index",
+        "narration",
+        "description",
+        "estimated_duration_seconds",
+        "beats",
+    }
+
+
+@pytest.mark.asyncio
+async def test_exemplar_assistant_rejects_invented_shots_schema():
+    class InvalidExemplarClient:
+        engine_name = "deepseek"
+        model_name = "json-only-model"
+        supports_json_schema = False
+
+        async def create_chat_completion(self, **kwargs):
+            return json.dumps(
+                {
+                    "reply": "生成完成。",
+                    "name": "错误金样本",
+                    "description": "错误结构",
+                    "prompt_text": json.dumps(
+                        {
+                            "video_title": "模型自创标题",
+                            "shots": [{"id": 1, "phase": "开场"}],
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
+    with pytest.raises(ValueError, match="exemplar.*missing fields"):
+        await ChatAIProvider(InvalidExemplarClient()).assist_style_prompt(
+            category="exemplar",
+            name="",
+            description="",
+            prompt_text="",
+            conversation_history=[],
+            new_message="生成金样本",
+        )
+
+
+def _minimal_exemplar_scene(scene_index: int) -> dict:
+    return {
+        "scene_index": scene_index,
+        "narration": "测试旁白。",
+        "description": "测试画面。",
+        "estimated_duration_seconds": 5,
+        "beats": [
+            {
+                "beat_index": 0,
+                "cue_text": "测试旁白。",
+                "visual_action": "绘制测试画面。",
+                "emphasis": None,
+                "transition": "reveal",
+                "fallback_weight": 1,
+            }
+        ],
+    }
+
+
+def test_exemplar_assistant_rejects_full_video_instead_of_style_sample():
+    with pytest.raises(ValueError, match="at most 2 items"):
+        normalize_exemplar_prompt(
+            {
+                "scenes": [
+                    _minimal_exemplar_scene(scene_index)
+                    for scene_index in range(3)
+                ],
+                "fact_checks": [],
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_style_assistant_rejects_prompt_over_component_limit():
+    class OversizedPromptClient:
+        engine_name = "deepseek"
+        model_name = "json-only-model"
+        supports_json_schema = False
+
+        async def create_chat_completion(self, **kwargs):
+            return json.dumps(
+                {
+                    "reply": "生成完成。",
+                    "name": "超长视觉系统",
+                    "description": "错误长度",
+                    "prompt_text": "x" * 8001,
+                }
+            )
+
+    with pytest.raises(ValueError, match="exceeds 8000"):
+        await ChatAIProvider(OversizedPromptClient()).assist_style_prompt(
+            category="color_scheme",
+            name="",
+            description="",
+            prompt_text="",
+            conversation_history=[],
+            new_message="生成视觉系统",
+        )

@@ -347,7 +347,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "- fact_checks 覆盖脚本中的关键事实论断和可能争议点",
             "- 镜头数量、每镜旁白字数和视频总时长必须满足叙事蓝图组件的要求，不可偷懒；仅当组件完全未规定时，才默认至少 16 个镜头、时长 2-3 分钟",
             self._JSON_ESCAPE_RULE,
-            "- 只能输出合法 JSON object",
+            "- 只能输出合法 JSON object，数据结构只能使用前面要求的字段，不要自我发挥～！！",
         ]
         return "\n".join(parts)
 
@@ -1019,9 +1019,15 @@ JSON 格式示例：
 
 def parse_json_object(content: str) -> dict:
     text = content.strip()
-    fence_match = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL)
+    fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL)
     if fence_match:
         text = fence_match.group(1).strip()
+    else:
+        # 模型可能在 JSON 前后附带说明文字，取第一个 { 到最后一个 } 之间的内容再解析
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            text = text[start:end + 1]
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:

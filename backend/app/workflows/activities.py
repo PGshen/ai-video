@@ -10,6 +10,7 @@ from app.models.code_version import CodeVersion
 from app.models.topic import Topic
 from app.models.worker_task import WorkerTask
 from app.services.prompt_bundle import build_prompt_snapshot, style_components_from_snapshot
+from app.services.execution_mode import resolve_execution_mode
 
 
 @activity.defn
@@ -130,6 +131,7 @@ async def submit_narrative_task(project_id: str) -> None:
                 "narrative_context": project.narrative_context or [],
                 "style_components": style_components,
                 "prompt_snapshot": prompt_snapshot,
+                "execution_mode": resolve_execution_mode(db, project, "narrative_generation"),
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="narrative_generated",
@@ -182,6 +184,7 @@ async def submit_code_task(project_id: str) -> None:
                 "prompt_snapshot": prompt_snapshot,
                 "rejection_context": rejection_context,
                 "previous_code_scenes": previous_code_scenes,
+                "execution_mode": resolve_execution_mode(db, project, "code_generation"),
             },
             temporal_workflow_id=f"video-production-{project_id}",
             signal_name="code_generated",

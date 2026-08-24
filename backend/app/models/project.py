@@ -28,6 +28,7 @@ class VideoProject(Base):
         Float, nullable=False, default=1.0, server_default="1.0"
     )
     aspect_ratio: Mapped[str] = mapped_column(String(20), nullable=False)
+    execution_mode: Mapped[Optional[str]] = mapped_column(String(20))
     current_code_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True)
     )

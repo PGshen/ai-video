@@ -228,6 +228,7 @@ async def create_project(
         temporal_workflow_id=workflow_id,
         narrative_context=body.narrative_context,
         style_config=body.style_config,
+        execution_mode=body.execution_mode,
     )
     orm_project.id = project_id
     db.add(orm_project)

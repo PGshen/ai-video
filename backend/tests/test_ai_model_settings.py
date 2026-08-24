@@ -212,3 +212,27 @@ def test_get_ai_provider_uses_business_specific_db_model(monkeypatch):
 
     assert ai_provider.engine_name == "deepseek"
     assert ai_provider.model_name == "deepseek-business"
+
+
+from app.schemas.ai_model_config import AIModelProviderCreate
+
+
+def test_anthropic_provider_accepts_empty_base_url():
+    provider = AIModelProviderCreate(
+        name="Anthropic 官方",
+        provider_type="anthropic",
+        base_url="",
+        api_key="sk-test",
+    )
+    assert provider.provider_type == "anthropic"
+    assert provider.base_url == ""
+
+
+def test_anthropic_provider_accepts_gateway_base_url():
+    provider = AIModelProviderCreate(
+        name="中转",
+        provider_type="anthropic",
+        base_url="https://gateway.example.com",
+        api_key="sk-test",
+    )
+    assert provider.base_url == "https://gateway.example.com"

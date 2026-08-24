@@ -16,6 +16,7 @@ class ProjectCreate(BaseModel):
     aspect_ratio: str
     narrative_context: list[dict] = []
     style_config: dict = {}
+    execution_mode: Optional[str] = None
 
 
 class SceneSchema(BaseModel):

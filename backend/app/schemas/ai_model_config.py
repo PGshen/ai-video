@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
-AI_PROVIDER_TYPES = {"deepseek", "openrouter", "gemini", "doubao"}
+AI_PROVIDER_TYPES = {"deepseek", "openrouter", "gemini", "doubao", "anthropic"}
 
 
 class AIBusinessOption(BaseModel):
@@ -19,7 +19,7 @@ class AIModelProviderBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     provider_type: str = Field(..., max_length=30)
-    base_url: str = Field(..., min_length=1, max_length=300)
+    base_url: str = Field(default="", max_length=300)
     timeout_seconds: float = Field(default=600.0, gt=0)
     site_url: str | None = Field(default=None, max_length=300)
     site_name: str | None = Field(default=None, max_length=100)
@@ -43,7 +43,7 @@ class AIModelProviderUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     provider_type: str | None = Field(default=None, max_length=30)
-    base_url: str | None = Field(default=None, min_length=1, max_length=300)
+    base_url: str | None = Field(default=None, max_length=300)
     api_key: str | None = None
     timeout_seconds: float | None = Field(default=None, gt=0)
     site_url: str | None = Field(default=None, max_length=300)

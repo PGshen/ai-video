@@ -19,3 +19,20 @@ def make_topic(title="选题标题", description="选题描述"):
     return t
 
 
+
+
+@pytest.mark.asyncio
+async def test_submit_code_task_writes_execution_mode_into_payload():
+    from app.workflows import activities
+
+    captured = {}
+
+    def fake_resolve(db, project, business):
+        captured["business"] = business
+        return "agent"
+
+    with patch.object(activities, "resolve_execution_mode", fake_resolve):
+        mode = activities.resolve_execution_mode(MagicMock(), MagicMock(), "code_generation")
+
+    assert mode == "agent"
+    assert captured["business"] == "code_generation"

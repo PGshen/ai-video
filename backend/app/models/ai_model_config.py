@@ -74,6 +74,9 @@ class AIBusinessModelConfig(Base):
     )
     business: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
     model_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    execution_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="prompt", server_default="prompt"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

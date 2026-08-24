@@ -101,7 +101,9 @@ def build_validate_server(workdir: str, scenes: list[dict], render_engine: str):
         "validate",
         "校验 scenes/ 目录下当前全部镜头代码。返回通过或详细报错（报错中会标出出问题的镜头编号）。修改代码后必须再次调用本工具确认通过。",
         {},
-        annotations=ToolAnnotations(readOnlyHint=True),
+        # 并非只读：validate 会落盘脚本并真正执行渲染引擎的校验子进程
+        # （manim.py 的 validate_code 会 create_subprocess_exec 跑 python driver）。
+        annotations=ToolAnnotations(readOnlyHint=False),
     )
     async def validate(args):
         is_valid, errors = await validate_workdir(workdir, scenes, render_engine)

@@ -5,6 +5,7 @@ from app.services.strategies.base import (
     CodegenStrategy,
     NarrativeOutcome,
     NarrativeStrategy,
+    with_execution_trace,
 )
 from app.services.strategies.prompt_codegen import PromptCodegenStrategy
 from app.services.strategies.prompt_narrative import PromptNarrativeStrategy
@@ -20,6 +21,7 @@ __all__ = [
     "PromptNarrativeStrategy",
     "get_codegen_strategy",
     "get_narrative_strategy",
+    "with_execution_trace",
 ]
 
 

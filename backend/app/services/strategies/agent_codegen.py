@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import shutil
@@ -114,6 +115,15 @@ class AgentCodegenStrategy:
         previous_code_scenes,
         task_id,
     ) -> CodegenOutcome:
+        if render_engine != "manim":
+            raise ValueError(
+                f"Agent 模式目前只支持 manim 渲染引擎，当前为 {render_engine}"
+            )
+        if previous_code_scenes:
+            logger.warning(
+                "[AgentCodegen] previous_code_scenes 暂未被 Agent 模式使用，已忽略"
+            )
+        agent_env, model = _agent_env_and_model()
         workdir = tempfile.mkdtemp(prefix="agent-codegen-")
         trace: dict[str, Any] = {
             "execution_mode": "agent",
@@ -123,7 +133,7 @@ class AgentCodegenStrategy:
             "num_turns": 0,
             "max_turns": settings.AGENT_MAX_TURNS,
             "sdk_version": _sdk_version(),
-            "model": settings.AGENT_MODEL,
+            "model": model,
         }
         try:
             write_sandbox(
@@ -150,6 +160,8 @@ class AgentCodegenStrategy:
                 trace=trace,
                 task_id=task_id,
                 resume=None,
+                agent_env=agent_env,
+                model=model,
             )
 
             is_valid, errors = await validate_workdir(workdir, scenes, render_engine)
@@ -171,6 +183,8 @@ class AgentCodegenStrategy:
                     trace=trace,
                     task_id=task_id,
                     resume=session_id,
+                    agent_env=agent_env,
+                    model=model,
                 )
                 is_valid, errors = await validate_workdir(
                     workdir, scenes, render_engine
@@ -181,9 +195,9 @@ class AgentCodegenStrategy:
 
             if not is_valid:
                 await record_agent_call(
-                    model=settings.AGENT_MODEL,
+                    model=model,
                     business="code_generation",
-                    input_summary=_input_summary(scenes, style_components),
+                    input_summary=_input_summary(scenes, style_components, model),
                     output="",
                     total_cost_usd=trace["total_cost_usd"],
                     status="failed",
@@ -197,9 +211,9 @@ class AgentCodegenStrategy:
             ]
 
             await record_agent_call(
-                model=settings.AGENT_MODEL,
+                model=model,
                 business="code_generation",
-                input_summary=_input_summary(scenes, style_components),
+                input_summary=_input_summary(scenes, style_components, model),
                 output=trace.get("result_text", ""),
                 total_cost_usd=trace["total_cost_usd"],
                 status="success",
@@ -207,14 +221,15 @@ class AgentCodegenStrategy:
             trace["validated_first_pass"] = not trace["resumed"]
             return CodegenOutcome(
                 scenes=merged_scenes,
-                ai_model=settings.AGENT_MODEL,
+                ai_model=model,
                 trace=trace,
             )
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
 
     async def _run_once(
-        self, *, prompt, server, tool_name, workdir, trace, task_id, resume
+        self, *, prompt, server, tool_name, workdir, trace, task_id, resume,
+        agent_env, model,
     ) -> str | None:
         try:
             return await asyncio.wait_for(
@@ -226,6 +241,8 @@ class AgentCodegenStrategy:
                     trace=trace,
                     task_id=task_id,
                     resume=resume,
+                    agent_env=agent_env,
+                    model=model,
                 ),
                 timeout=settings.AGENT_TIMEOUT_SECONDS,
             )
@@ -235,46 +252,53 @@ class AgentCodegenStrategy:
             ) from exc
 
     async def _stream(
-        self, *, prompt, server, tool_name, workdir, trace, task_id, resume
+        self, *, prompt, server, tool_name, workdir, trace, task_id, resume,
+        agent_env, model,
     ) -> str | None:
-        options = _build_options(server, tool_name, workdir, resume)
+        options = _build_options(
+            server, tool_name, workdir, resume, agent_env=agent_env, model=model
+        )
         session_id = None
-        async for message in self._query()(prompt=prompt, options=options):
-            if is_task_cancelled(task_id):
-                logger.info("[AgentCodegen] 任务已取消，中断 Agent 循环")
-                await record_agent_call(
-                    model=settings.AGENT_MODEL,
-                    business="code_generation",
-                    input_summary={"model": settings.AGENT_MODEL},
-                    output="",
-                    total_cost_usd=trace.get("total_cost_usd"),
-                    status="cancelled",
-                    error_message="task cancelled during agent execution",
-                )
-                raise AgentCancelledError("task cancelled during agent execution")
+        # M-3：每轮重新判定，不沿用上一轮的 subtype
+        trace["result_subtype"] = None
+        stream = self._query()(prompt=prompt, options=options)
+        async with contextlib.aclosing(stream) as messages:
+            async for message in messages:
+                if is_task_cancelled(task_id):
+                    logger.info("[AgentCodegen] 任务已取消，中断 Agent 循环")
+                    await record_agent_call(
+                        model=model,
+                        business="code_generation",
+                        input_summary={"model": model},
+                        output="",
+                        total_cost_usd=trace.get("total_cost_usd"),
+                        status="cancelled",
+                        error_message="task cancelled during agent execution",
+                    )
+                    raise AgentCancelledError("task cancelled during agent execution")
 
-            for block in getattr(message, "content", []) or []:
-                name = getattr(block, "name", None)
-                if name:
-                    trace["tool_calls"].append(name)
+                for block in getattr(message, "content", []) or []:
+                    name = getattr(block, "name", None)
+                    if name:
+                        trace["tool_calls"].append(name)
 
-            if getattr(message, "session_id", None):
-                session_id = message.session_id
+                if getattr(message, "session_id", None):
+                    session_id = message.session_id
 
-            if _is_result_message(message):
-                trace["result_subtype"] = message.subtype
-                trace["result_text"] = getattr(message, "result", "") or ""
-                cost = getattr(message, "total_cost_usd", None)
-                if cost is not None:
-                    # SDK 的 total_cost_usd 是「会话累计值」而非本轮增量
-                    # （见 types.py ConversationResetMessage 文档串：running
-                    # totals reported on subsequent ResultMessage objects），
-                    # resume 续跑仍是同一 session，因此取最新值而不是累加。
-                    trace["total_cost_usd"] = float(cost)
-                turns = getattr(message, "num_turns", None)
-                if turns:
-                    # 与 total_cost_usd 同为会话累计值，取最新上报值。
-                    trace["num_turns"] = int(turns)
+                if _is_result_message(message):
+                    trace["result_subtype"] = message.subtype
+                    trace["result_text"] = getattr(message, "result", "") or ""
+                    cost = getattr(message, "total_cost_usd", None)
+                    if cost is not None:
+                        # SDK 的 total_cost_usd 是「会话累计值」而非本轮增量
+                        # （见 types.py ConversationResetMessage 文档串：running
+                        # totals reported on subsequent ResultMessage objects），
+                        # resume 续跑仍是同一 session，因此取最新值而不是累加。
+                        trace["total_cost_usd"] = float(cost)
+                    turns = getattr(message, "num_turns", None)
+                    if turns:
+                        # 与 total_cost_usd 同为会话累计值，取最新上报值。
+                        trace["num_turns"] = int(turns)
         return session_id
 
 
@@ -302,11 +326,11 @@ def _is_result_message(message: Any) -> bool:
     return hasattr(message, "subtype") and hasattr(message, "total_cost_usd")
 
 
-def _build_options(server, tool_name, workdir, resume):
+def _build_options(server, tool_name, workdir, resume, *, agent_env, model):
     from claude_agent_sdk import ClaudeAgentOptions
 
     kwargs = dict(
-        model=settings.AGENT_MODEL,
+        model=model,
         cwd=workdir,
         setting_sources=[],
         permission_mode="acceptEdits",
@@ -315,30 +339,37 @@ def _build_options(server, tool_name, workdir, resume):
         mcp_servers={"codegen": server},
         allowed_tools=[*AGENT_TOOL_WHITELIST, tool_name],
         tools=list(AGENT_TOOL_WHITELIST),
-        env=_agent_env(),
+        env=agent_env,
     )
     if resume:
         kwargs["resume"] = resume
     return ClaudeAgentOptions(**kwargs)
 
 
-def _agent_env() -> dict[str, str]:
-    """从 provider 配置取 Anthropic 凭证。base_url 为空则走官方端点。"""
+def _agent_env_and_model() -> tuple[dict[str, str], str]:
+    """从 provider 配置取 Anthropic 凭证与模型。
+
+    没有可用的 anthropic provider 时直接失败——SDK 会把 worker 容器的整个
+    os.environ 透给 CLI，静默跑起来会用到宿主残留的 key，或耗满预算后
+    才以含糊的鉴权错误结束。
+    """
     from app.engines.ai.factory import _provider_settings_from_db
 
     config = _provider_settings_from_db("code_generation")
-    env: dict[str, str] = {}
-    if config is not None and config.provider_type == "anthropic":
-        env["ANTHROPIC_API_KEY"] = config.api_key
-        if config.base_url:
-            env["ANTHROPIC_BASE_URL"] = config.base_url
-    return env
+    if config is None or config.provider_type != "anthropic":
+        raise ValueError("Agent 模式需要为 code_generation 配置 anthropic provider")
+
+    env = {"ANTHROPIC_API_KEY": config.api_key}
+    if config.base_url:
+        env["ANTHROPIC_BASE_URL"] = config.base_url
+    # spec：默认模型 settings.AGENT_MODEL，可被 provider 配置里的模型行覆盖
+    return env, config.model or settings.AGENT_MODEL
 
 
-def _input_summary(scenes, style_components) -> dict:
+def _input_summary(scenes, style_components, model: str) -> dict:
     return {
         "scene_count": len(scenes),
         "style_categories": sorted(style_components.keys()),
-        "model": settings.AGENT_MODEL,
+        "model": model,
         "max_turns": settings.AGENT_MAX_TURNS,
     }

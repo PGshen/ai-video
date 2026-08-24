@@ -60,7 +60,8 @@ async def test_agent_claiming_success_but_failing_validation_triggers_resume():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         outcome = await strategy.run(
             scenes=SCENES,
@@ -98,7 +99,8 @@ async def test_resume_is_attempted_at_most_once():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         with pytest.raises(ValueError, match="SyntaxError"):
             await strategy.run(
@@ -141,7 +143,8 @@ async def test_non_success_result_subtype_is_a_failure():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         with pytest.raises(ValueError, match="error_max_turns"):
             await strategy.run(
@@ -185,7 +188,8 @@ async def test_missing_result_message_is_a_failure():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         with pytest.raises(ValueError, match="result subtype"):
             await strategy.run(
@@ -215,7 +219,8 @@ async def test_cancellation_mid_stream_aborts_and_cleans_up():
     ), patch(
         "app.services.strategies.agent_codegen.is_task_cancelled", return_value=True
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         with pytest.raises(AgentCancelledError):
             await strategy.run(
@@ -254,7 +259,8 @@ async def test_trace_records_cost_and_model():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         outcome = await strategy.run(
             scenes=SCENES,
@@ -269,7 +275,7 @@ async def test_trace_records_cost_and_model():
     assert outcome.trace["execution_mode"] == "agent"
     assert outcome.trace["total_cost_usd"] == 0.34
     assert outcome.trace["resumed"] is False
-    assert outcome.ai_model
+    assert outcome.ai_model == "claude-opus-5"
 
 
 @pytest.mark.asyncio
@@ -302,7 +308,8 @@ async def test_options_use_tool_whitelist_and_budget_and_no_setting_sources():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         await strategy.run(
             scenes=SCENES,
@@ -317,6 +324,7 @@ async def test_options_use_tool_whitelist_and_budget_and_no_setting_sources():
     first, second = seen
     assert first.tools == ["Read", "Write", "Edit", "Glob"]
     assert "Bash" not in (first.allowed_tools or [])
+    assert "mcp__codegen__validate" in first.allowed_tools
     assert first.setting_sources == []
     assert first.max_budget_usd
     assert not first.resume
@@ -340,7 +348,8 @@ async def test_cancellation_records_a_cancelled_ai_call():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", recorder
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         with pytest.raises(AgentCancelledError):
             await strategy.run(
@@ -375,7 +384,8 @@ async def test_wall_clock_timeout_aborts_the_run():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ), patch.object(
         settings, "AGENT_TIMEOUT_SECONDS", 0.05
     ):
@@ -419,7 +429,8 @@ async def test_resume_cost_is_not_double_counted():
     ), patch(
         "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
     ), patch(
-        "app.services.strategies.agent_codegen._agent_env", return_value={}
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
     ):
         outcome = await strategy.run(
             scenes=SCENES,
@@ -434,20 +445,118 @@ async def test_resume_cost_is_not_double_counted():
     assert outcome.trace["total_cost_usd"] == 0.9
 
 
-def test_agent_env_inherits_nothing_extra_but_sdk_merges_os_environ():
-    """SDK 自身会做 {**os.environ, **options.env} 合并（subprocess_cli.py:809-813），
-    因此 _agent_env 只需给出 Anthropic 凭证。"""
-    from app.services.strategies.agent_codegen import _agent_env
+def test_agent_env_and_model_uses_provider_config():
+    """SDK 自身做 {**os.environ, **options.env} 合并（subprocess_cli.py:809-813），
+    因此这里只给 Anthropic 凭证；模型优先取 provider 配置里的模型行。"""
+    from app.services.strategies.agent_codegen import _agent_env_and_model
 
     config = MagicMock()
     config.provider_type = "anthropic"
     config.api_key = "sk-test"
     config.base_url = "https://example.invalid"
+    config.model = "claude-sonnet-9"
     with patch(
         "app.engines.ai.factory._provider_settings_from_db", return_value=config
     ):
-        env = _agent_env()
+        env, model = _agent_env_and_model()
     assert env == {
         "ANTHROPIC_API_KEY": "sk-test",
         "ANTHROPIC_BASE_URL": "https://example.invalid",
     }
+    assert model == "claude-sonnet-9"
+
+
+def test_agent_env_and_model_falls_back_to_settings_model():
+    from app.services.strategies.agent_codegen import _agent_env_and_model
+
+    config = MagicMock()
+    config.provider_type = "anthropic"
+    config.api_key = "sk-test"
+    config.base_url = ""
+    config.model = ""
+    with patch(
+        "app.engines.ai.factory._provider_settings_from_db", return_value=config
+    ):
+        env, model = _agent_env_and_model()
+    assert env == {"ANTHROPIC_API_KEY": "sk-test"}
+    assert model == settings.AGENT_MODEL
+
+
+@pytest.mark.parametrize("config", [None, "non_anthropic"])
+def test_agent_mode_requires_anthropic_provider(config):
+    """没有 anthropic provider 时必须立刻失败，绝不能靠宿主残留的 key 静默跑。"""
+    from app.services.strategies.agent_codegen import _agent_env_and_model
+
+    resolved = None
+    if config == "non_anthropic":
+        resolved = MagicMock()
+        resolved.provider_type = "openai"
+    with patch(
+        "app.engines.ai.factory._provider_settings_from_db", return_value=resolved
+    ):
+        with pytest.raises(ValueError, match="anthropic provider"):
+            _agent_env_and_model()
+
+
+@pytest.mark.asyncio
+async def test_non_manim_render_engine_is_rejected_before_any_agent_call():
+    """Agent 模式暂只支持 manim；Remotion 项目必须立刻失败，不烧预算。"""
+    agent_query = make_agent_query(per_call_messages=[[FakeResultMessage()]])
+    strategy = AgentCodegenStrategy(agent_query=agent_query)
+
+    with pytest.raises(ValueError, match="manim"):
+        await strategy.run(
+            scenes=SCENES,
+            render_engine="remotion",
+            style_components={},
+            aspect_ratio="landscape",
+            rejection_context=None,
+            previous_code_scenes=None,
+            task_id="t1",
+        )
+
+    assert agent_query.calls["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_result_subtype_is_reset_between_runs():
+    """首轮 success、resume 轮 error_max_turns —— 不得沿用首轮的 subtype 判成功。"""
+    agent_query = make_agent_query(
+        per_call_messages=[
+            [FakeResultMessage(subtype="success")],
+            [FakeResultMessage(subtype="error_max_turns")],
+        ]
+    )
+    strategy = AgentCodegenStrategy(agent_query=agent_query)
+
+    validate_results = [(False, "scene 0: NameError"), (True, "")]
+
+    async def fake_validate(workdir, scenes, render_engine):
+        return validate_results.pop(0)
+
+    with patch(
+        "app.services.strategies.agent_codegen.validate_workdir", fake_validate
+    ), patch(
+        "app.services.strategies.agent_codegen.read_scene_codes",
+        return_value=["# code"],
+    ), patch(
+        "app.services.strategies.agent_codegen.build_validate_server",
+        return_value=(MagicMock(), "mcp__codegen__validate"),
+    ), patch(
+        "app.services.strategies.agent_codegen.is_task_cancelled", return_value=False
+    ), patch(
+        "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
+    ), patch(
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
+    ):
+        with pytest.raises(ValueError, match="error_max_turns"):
+            await strategy.run(
+                scenes=SCENES,
+                render_engine="manim",
+                style_components={},
+                aspect_ratio="landscape",
+                rejection_context=None,
+                previous_code_scenes=None,
+                task_id="t1",
+            )

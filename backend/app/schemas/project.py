@@ -119,6 +119,7 @@ class ProjectResponse(BaseModel):
     tts_engine: str
     tts_speed: float
     aspect_ratio: str
+    execution_mode: Optional[str] = None
     retry_count: int
     created_at: datetime
     updated_at: datetime

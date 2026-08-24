@@ -70,9 +70,9 @@ async def test_code_worker_execute_creates_code_version():
     mock_engine = AsyncMock()
     mock_engine.validate_code = AsyncMock(return_value=(True, ""))
 
-    with patch("app.workers.code_worker.get_ai_provider", return_value=mock_provider), \
+    with patch("app.services.strategies.prompt_codegen.get_ai_provider", return_value=mock_provider), \
          patch("app.workers.code_worker.get_sync_session", return_value=mock_db), \
-         patch("app.workers.code_worker.get_render_engine", return_value=mock_engine):
+         patch("app.services.strategies.prompt_codegen.get_render_engine", return_value=mock_engine):
         worker = CodeWorker(worker_id="test", temporal_client=AsyncMock())
         result = await worker._execute(task)
 
@@ -146,9 +146,9 @@ async def test_code_worker_repair_sends_full_scene_context():
     def provider_factory(business):
         return mock_repair_provider if business == "code_repair" else mock_provider
 
-    with patch("app.workers.code_worker.get_ai_provider", side_effect=provider_factory), \
+    with patch("app.services.strategies.prompt_codegen.get_ai_provider", side_effect=provider_factory), \
          patch("app.workers.code_worker.get_sync_session", return_value=mock_db), \
-         patch("app.workers.code_worker.get_render_engine", return_value=mock_engine):
+         patch("app.services.strategies.prompt_codegen.get_render_engine", return_value=mock_engine):
         worker = CodeWorker(worker_id="test", temporal_client=AsyncMock())
         result = await worker._execute(task)
 

@@ -2,16 +2,12 @@ import logging
 import uuid
 from sqlalchemy import func, select
 from app.db import get_sync_session
-from app.engines.ai.factory import get_ai_provider
-from app.engines.render.base import SceneInput
-from app.engines.render.factory import get_render_engine
 from app.models.project import VideoProject
 from app.models.narrative_version import NarrativeVersion
 from app.models.code_version import CodeVersion
 from app.workers.base import BaseWorker
 from app.services.narrative_validator import validate_scenes_for_codegen
-
-_MAX_VALIDATION_ROUNDS = 2
+from app.services.strategies import get_codegen_strategy
 
 logger = logging.getLogger(__name__)
 
@@ -57,96 +53,17 @@ class CodeWorker(BaseWorker):
                 len(scenes),
             )
 
-            provider = get_ai_provider("code_generation")
-            logger.info("[CodeWorker] calling AI provider model=%s", provider.model_name)
-            codegen_scenes = [
-                {
-                    "scene_index": scene["scene_index"],
-                    "narration": scene["narration"],
-                    "description": scene["description"],
-                    "duration_seconds": scene.get("duration_seconds"),
-                    "beats": scene["beats"],
-                }
-                for scene in scenes
-            ]
-            result = await provider.generate_code(
-                scenes=codegen_scenes,
+            strategy = get_codegen_strategy(payload.get("execution_mode", "prompt"))
+            outcome = await strategy.run(
+                scenes=scenes,
                 render_engine=render_engine,
                 style_components=style_components,
                 aspect_ratio=aspect_ratio,
                 rejection_context=rejection_context,
                 previous_code_scenes=previous_code_scenes,
+                task_id=task.id,
             )
-            logger.info("[CodeWorker] AI done: codes=%d", len(result.codes))
-
-            # Merge code into scenes (match by position / scene_index order)
-            merged_scenes = []
-            for i, scene in enumerate(scenes):
-                code = result.codes[i] if i < len(result.codes) else ""
-                merged_scenes.append({**scene, "code": code})
-
-            # Validate and auto-repair (manim only; other engines skip gracefully)
-            render_engine_obj = get_render_engine(render_engine)
-            for round_num in range(_MAX_VALIDATION_ROUNDS):
-                scene_inputs = [
-                    SceneInput(
-                        scene_index=i,
-                        narration=s.get("narration", ""),
-                        description=s.get("description", ""),
-                        code=s.get("code", ""),
-                        audio=None,
-                    )
-                    for i, s in enumerate(merged_scenes)
-                ]
-                is_valid, errors = await render_engine_obj.validate_code(scene_inputs)
-                if is_valid:
-                    logger.info("[CodeWorker] validation passed (round %d)", round_num)
-                    break
-                logger.info(
-                    "[CodeWorker] validation round %d/%d failed, repairing...",
-                    round_num + 1,
-                    _MAX_VALIDATION_ROUNDS,
-                )
-                repair_provider = get_ai_provider("code_repair")
-                repair_result = await repair_provider.repair_code(
-                    scenes=merged_scenes,
-                    render_engine=render_engine,
-                    error_message=errors,
-                    style_components=style_components,
-                    aspect_ratio=aspect_ratio,
-                )
-                for r in repair_result.repairs:
-                    idx = r["scene_index"]
-                    merged_scenes[idx] = {**merged_scenes[idx], "code": r["code"]}
-                    logger.info(
-                        "[CodeWorker] repaired scene %d: %s",
-                        idx,
-                        r.get("explanation", "")[:120],
-                    )
-            else:
-                # Final validation after last repair
-                scene_inputs = [
-                    SceneInput(
-                        scene_index=i,
-                        narration=s.get("narration", ""),
-                        description=s.get("description", ""),
-                        code=s.get("code", ""),
-                        audio=None,
-                    )
-                    for i, s in enumerate(merged_scenes)
-                ]
-                is_valid, errors = await render_engine_obj.validate_code(scene_inputs)
-                if is_valid:
-                    logger.info("[CodeWorker] validation passed after final repair")
-                else:
-                    logger.warning(
-                        "[CodeWorker] validation still failing after %d rounds:\n%s",
-                        _MAX_VALIDATION_ROUNDS,
-                        errors[:500],
-                    )
-                    raise ValueError(
-                        f"Code validation failed after {_MAX_VALIDATION_ROUNDS} repair rounds:\n{errors[:2000]}"
-                    )
+            merged_scenes = outcome.scenes
 
             max_version = db.execute(
                 select(func.max(CodeVersion.version_number)).where(
@@ -162,7 +79,7 @@ class CodeWorker(BaseWorker):
                 scenes=merged_scenes,
                 fact_checks=fact_checks,
                 render_engine=render_engine,
-                ai_model=provider.model_name,
+                ai_model=outcome.ai_model,
                 rejection_context=rejection_context,
                 prompt_snapshot=prompt_snapshot,
             )
@@ -181,6 +98,7 @@ class CodeWorker(BaseWorker):
                 "code_version_id": str(code_version.id),
                 "scene_count": len(merged_scenes),
                 "fact_check_count": len(fact_checks),
+                "trace": outcome.trace,
             }
         finally:
             db.close()

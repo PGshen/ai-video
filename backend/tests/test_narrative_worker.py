@@ -103,7 +103,7 @@ async def test_narrative_worker_execute_writes_narrative_version():
         else:
             return mock_db2
 
-    with patch("app.workers.narrative_worker.get_ai_provider", return_value=mock_provider), \
+    with patch("app.services.strategies.prompt_narrative.get_ai_provider", return_value=mock_provider), \
          patch("app.workers.narrative_worker.get_sync_session", side_effect=get_session), \
          patch("app.workers.narrative_worker.get_tts_engine", return_value=mock_tts_engine), \
          patch("app.workers.narrative_worker.upload_bytes"):
@@ -168,7 +168,7 @@ async def test_narrative_worker_passes_context_to_provider():
     mock_db.get.side_effect = lambda model, pid: mock_project if model.__name__ == "VideoProject" else mock_nv
     mock_db.execute.return_value.scalar.return_value = None
 
-    with patch("app.workers.narrative_worker.get_ai_provider", return_value=mock_provider), \
+    with patch("app.services.strategies.prompt_narrative.get_ai_provider", return_value=mock_provider), \
          patch("app.workers.narrative_worker.get_sync_session", return_value=mock_db), \
          patch("app.workers.narrative_worker._synthesize_scenes_tts", new_callable=AsyncMock) as mock_tts, \
          patch("app.workers.narrative_worker.upload_bytes"):

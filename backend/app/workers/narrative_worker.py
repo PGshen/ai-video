@@ -5,7 +5,6 @@ from dataclasses import asdict
 from sqlalchemy import func, select
 from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_sync_session
-from app.engines.ai.factory import get_ai_provider
 from app.engines.tts.factory import get_tts_engine
 from app.engines.tts.base import TTSRequest
 from app.models.project import VideoProject
@@ -13,6 +12,7 @@ from app.models.narrative_version import NarrativeVersion
 from app.storage import upload_bytes
 from app.workers.base import BaseWorker
 from app.services.beat_aligner import align_scene_beats
+from app.services.strategies import get_narrative_strategy
 
 logger = logging.getLogger(__name__)
 
@@ -91,22 +91,17 @@ class NarrativeWorker(BaseWorker):
             bool(rejection_context),
         )
 
-        provider = get_ai_provider("narrative_generation")
-        logger.info("[NarrativeWorker] calling AI provider model=%s", provider.model_name)
-        result = await provider.generate_narrative(
+        strategy = get_narrative_strategy(payload.get("execution_mode", "prompt"))
+        outcome = await strategy.run(
             topic_title=topic_title,
             topic_description=topic_description,
             render_engine=render_engine,
+            aspect_ratio=aspect_ratio,
             rejection_context=rejection_context,
             previous_scenes=previous_scenes,
             narrative_context=narrative_context,
             style_components=style_components,
-            aspect_ratio=aspect_ratio,
-        )
-        logger.info(
-            "[NarrativeWorker] AI done: scenes=%d fact_checks=%d",
-            len(result.scenes),
-            len(result.fact_checks),
+            task_id=task.id,
         )
 
         db = get_sync_session()
@@ -126,9 +121,9 @@ class NarrativeWorker(BaseWorker):
                 id=uuid.uuid4(),
                 project_id=task.project_id,
                 version_number=next_version,
-                scenes=result.scenes,
-                fact_checks=result.fact_checks,
-                ai_model=provider.model_name,
+                scenes=outcome.scenes,
+                fact_checks=outcome.fact_checks,
+                ai_model=outcome.ai_model,
                 rejection_context=rejection_context,
                 prompt_snapshot=prompt_snapshot,
             )
@@ -143,9 +138,9 @@ class NarrativeWorker(BaseWorker):
         finally:
             db.close()
 
-        logger.info("[NarrativeWorker] Starting TTS for %d scenes", len(result.scenes))
+        logger.info("[NarrativeWorker] Starting TTS for %d scenes", len(outcome.scenes))
         scenes_with_tts = await _synthesize_scenes_tts(
-            scenes=result.scenes,
+            scenes=outcome.scenes,
             project_id=project_id,
             narrative_version_id=narrative_version_id,
             tts_voice=tts_voice,
@@ -172,5 +167,6 @@ class NarrativeWorker(BaseWorker):
         return {
             "narrative_version_id": narrative_version_id,
             "scene_count": len(scenes_with_tts),
-            "fact_check_count": len(result.fact_checks),
+            "fact_check_count": len(outcome.fact_checks),
+            "trace": outcome.trace,
         }

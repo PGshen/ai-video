@@ -18,6 +18,15 @@ class ProjectCreate(BaseModel):
     style_config: dict = {}
     execution_mode: Optional[str] = None
 
+    @field_validator("execution_mode")
+    @classmethod
+    def validate_execution_mode(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        if value not in ("prompt", "agent"):
+            raise ValueError('execution_mode must be one of ["prompt", "agent"]')
+        return value
+
 
 class SceneSchema(BaseModel):
     model_config = ConfigDict(

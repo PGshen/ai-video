@@ -79,6 +79,7 @@ export function useCreateProject() {
       ttsEngine: string;
       ttsSpeed: 0.9 | 1.0 | 1.1 | 1.2;
       aspectRatio: string;
+      executionMode?: "prompt" | "agent";
       narrativeContext: { text: string }[];
       styleConfig?: Record<string, string>;
     }) =>
@@ -89,6 +90,7 @@ export function useCreateProject() {
         tts_engine: data.ttsEngine,
         tts_speed: data.ttsSpeed,
         aspect_ratio: data.aspectRatio,
+        ...(data.executionMode ? { execution_mode: data.executionMode } : {}),
         narrative_context: data.narrativeContext,
         style_config: data.styleConfig ?? {},
       }),

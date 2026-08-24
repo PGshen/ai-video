@@ -16,6 +16,19 @@ interface VerdictState {
   note: string;
 }
 
+interface AgentTrace {
+  tool_calls?: unknown[];
+  total_cost_usd?: number;
+  resumed?: boolean;
+}
+
+function getAgentTrace(promptSnapshot: Record<string, unknown> | null): AgentTrace | null {
+  if (!promptSnapshot || promptSnapshot.execution_mode !== "agent") return null;
+  const agent = promptSnapshot.agent;
+  if (agent && typeof agent === "object") return agent as AgentTrace;
+  return promptSnapshot as AgentTrace;
+}
+
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   draft: "草稿",
   narrative_generating: "AI 生成叙事脚本中…",
@@ -41,6 +54,11 @@ export default function ProjectDetailPage() {
   const [verdicts, setVerdicts] = useState<Record<number, VerdictState>>({});
   const [rejectionDetail, setRejectionDetail] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
+
+  const agentTrace = useMemo(
+    () => getAgentTrace(codeVersion?.promptSnapshot ?? null),
+    [codeVersion]
+  );
 
   const allMarked = useMemo(() => {
     if (!codeVersion || codeVersion.factChecks.length === 0) return true;
@@ -156,8 +174,17 @@ export default function ProjectDetailPage() {
           <div className="flex flex-1 overflow-hidden">
             {/* 左：镜头列表 */}
             <div className="w-1/2 border-r flex flex-col">
-              <div className="px-4 py-3 border-b text-sm font-medium">
-                镜头列表（{codeVersion?.scenes.length ?? 0} 个）
+              <div className="px-4 py-3 border-b space-y-1">
+                <p className="text-sm font-medium">
+                  镜头列表（{codeVersion?.scenes.length ?? 0} 个）
+                </p>
+                {agentTrace && (
+                  <span className="text-xs text-muted-foreground">
+                    Agent 模式 · {agentTrace.tool_calls?.length ?? 0} 次工具调用 · $
+                    {(agentTrace.total_cost_usd ?? 0).toFixed(2)}
+                    {agentTrace.resumed ? " · 续跑过一次" : ""}
+                  </span>
+                )}
               </div>
               <ScrollArea className="flex-1">
                 <div className="p-4 space-y-4">

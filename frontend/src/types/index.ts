@@ -308,6 +308,7 @@ export interface VideoProject {
   ttsEngine: string;
   ttsSpeed: 0.9 | 1.0 | 1.1 | 1.2;
   aspectRatio: "landscape" | "portrait";
+  executionMode?: "prompt" | "agent" | null;
   currentCodeVersion: CodeVersion | null;
   currentVideoAsset: VideoAsset | null;
   retryCount: number;

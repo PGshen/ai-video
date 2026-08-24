@@ -31,6 +31,12 @@ const ASPECT_RATIO_LABELS: Record<string, string> = {
   portrait: "竖屏 9:16",
 };
 
+const EXECUTION_MODE_LABELS: Record<string, string> = {
+  default: "跟随全局默认",
+  prompt: "提示词模式",
+  agent: "Agent 迭代模式",
+};
+
 interface Props {
   topic: Topic;
   open: boolean;
@@ -88,6 +94,7 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
   const [ttsEngine, setTtsEngine] = useState("doubao_2.0");
   const [ttsSpeed, setTtsSpeed] = useState<(typeof TTS_SPEEDS)[number]>(1.0);
   const [aspectRatio, setAspectRatio] = useState("landscape");
+  const [executionMode, setExecutionMode] = useState<"" | "prompt" | "agent">("");
   const [styleConfig, setStyleConfig] = useState<Record<string, string>>({});
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedSnippets, setSelectedSnippets] = useState<Set<number>>(
@@ -161,7 +168,17 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
       .filter((_, i) => selectedSnippets.has(i))
       .map((text) => ({ text }));
     createProject.mutate(
-      { topicId: topic.id, renderEngine, ttsVoice, ttsEngine, ttsSpeed, aspectRatio, narrativeContext, styleConfig },
+      {
+        topicId: topic.id,
+        renderEngine,
+        ttsVoice,
+        ttsEngine,
+        ttsSpeed,
+        aspectRatio,
+        executionMode: executionMode || undefined,
+        narrativeContext,
+        styleConfig,
+      },
       {
         onSuccess: (_project) => {
           onCreated?.();
@@ -252,6 +269,22 @@ export function CreateProjectDialog({ topic, open, onClose, onCreated, contextSn
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(ASPECT_RATIO_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">执行模式</Label>
+                <Select
+                  value={executionMode || "default"}
+                  onValueChange={(v) => setExecutionMode(v === "default" ? "" : (v as "prompt" | "agent"))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{EXECUTION_MODE_LABELS[executionMode || "default"]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(EXECUTION_MODE_LABELS).map(([value, label]) => (
                       <SelectItem key={value} value={value}>{label}</SelectItem>
                     ))}
                   </SelectContent>

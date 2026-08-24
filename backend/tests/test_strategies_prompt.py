@@ -46,3 +46,14 @@ async def test_prompt_codegen_merges_codes_into_scenes():
     assert outcome.ai_model == "stub-model"
     assert outcome.trace["execution_mode"] == "prompt"
     assert outcome.trace["repair_rounds"] == 0
+
+
+def test_selector_returns_agent_strategy_for_agent_mode():
+    from app.services.strategies.agent_codegen import AgentCodegenStrategy
+
+    assert isinstance(get_codegen_strategy("agent"), AgentCodegenStrategy)
+
+
+def test_selector_falls_back_to_prompt_for_unknown_mode():
+    assert isinstance(get_codegen_strategy("bogus"), PromptCodegenStrategy)
+    assert isinstance(get_narrative_strategy("bogus"), PromptNarrativeStrategy)

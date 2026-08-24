@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     MANIM_TIMEOUT_SECONDS: float = 600.0
     REMOTION_TIMEOUT_SECONDS: float = 600.0
     REMOTION_TEMPLATE_DIR: str = "remotion-template"
+    AGENT_MODEL: str = "claude-opus-5"
+    AGENT_MAX_TURNS: int = 40
+    AGENT_MAX_BUDGET_USD: float = 2.0
+    AGENT_TIMEOUT_SECONDS: float = 1800.0
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

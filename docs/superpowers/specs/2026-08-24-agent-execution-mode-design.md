@@ -188,10 +188,12 @@ SDK 没有「必须校验通过才准停」的强制机制。因此：**平台�
 
 ### 成本刹车
 
-`max_turns` 是确定可用的硬上限。`ClaudeAgentOptions` 疑似还有 `max_budget_usd`，
-但官方文档中仅见一处顺带提及，未见明确字段定义。**实现时先按 `max_turns` 做上限**，
-在落地顺序第 3 步实地验证 SDK 是否支持该字段：支持则加上，不支持则在每轮累计成本
-超阈值时主动 break。不在设计中假定其存在。
+`max_turns` 是确定可用的硬上限。`ClaudeAgentOptions` 是否支持 `max_budget_usd` 已于
+Task 3 实地验证：宿主机安装 `claude-agent-sdk==0.2.144` 后，`dataclasses.fields(ClaudeAgentOptions)`
+实测确认 `max_budget_usd` **字段存在**（`setting_sources`、`tools` 同样存在）。因此
+`ClaudeAgentOptions` 直接设 `max_budget_usd=settings.AGENT_MAX_BUDGET_USD`，与 `max_turns`
+共同构成上限；`tools` 字段存在，工具白名单直接用 `tools=["Read", "Write", "Edit", "Glob"]`
+设置，无需退化为 `disallowed_tools`。
 
 ## 取消
 

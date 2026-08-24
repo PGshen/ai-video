@@ -12,6 +12,27 @@ from app.services.strategies import get_codegen_strategy
 logger = logging.getLogger(__name__)
 
 
+def _with_execution_trace(
+    prompt_snapshot: dict, execution_mode: str, trace: dict | None
+) -> dict:
+    """产物溯源：把执行模式与 Agent 执行信息并进 prompt_snapshot（只增键）。"""
+    snapshot = {**prompt_snapshot, "execution_mode": execution_mode}
+    if execution_mode != "agent":
+        return snapshot
+    trace = trace or {}
+    snapshot["agent"] = {
+        "sdk_version": trace.get("sdk_version"),
+        "model": trace.get("model"),
+        "max_turns": trace.get("max_turns"),
+        "num_turns": trace.get("num_turns"),
+        "tool_calls": trace.get("tool_calls") or [],
+        "total_cost_usd": trace.get("total_cost_usd"),
+        "resumed": bool(trace.get("resumed")),
+        "validated_first_pass": bool(trace.get("validated_first_pass")),
+    }
+    return snapshot
+
+
 class CodeWorker(BaseWorker):
     supported_task_types = ["generate_code"]
 
@@ -53,7 +74,8 @@ class CodeWorker(BaseWorker):
                 len(scenes),
             )
 
-            strategy = get_codegen_strategy(payload.get("execution_mode", "prompt"))
+            execution_mode = payload.get("execution_mode", "prompt")
+            strategy = get_codegen_strategy(execution_mode)
             outcome = await strategy.run(
                 scenes=scenes,
                 render_engine=render_engine,
@@ -64,6 +86,9 @@ class CodeWorker(BaseWorker):
                 task_id=task.id,
             )
             merged_scenes = outcome.scenes
+            prompt_snapshot = _with_execution_trace(
+                prompt_snapshot, execution_mode, outcome.trace
+            )
 
             max_version = db.execute(
                 select(func.max(CodeVersion.version_number)).where(

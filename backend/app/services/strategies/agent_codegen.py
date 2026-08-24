@@ -120,6 +120,10 @@ class AgentCodegenStrategy:
             "tool_calls": [],
             "resumed": False,
             "total_cost_usd": 0.0,
+            "num_turns": 0,
+            "max_turns": settings.AGENT_MAX_TURNS,
+            "sdk_version": _sdk_version(),
+            "model": settings.AGENT_MODEL,
         }
         try:
             write_sandbox(
@@ -200,6 +204,7 @@ class AgentCodegenStrategy:
                 total_cost_usd=trace["total_cost_usd"],
                 status="success",
             )
+            trace["validated_first_pass"] = not trace["resumed"]
             return CodegenOutcome(
                 scenes=merged_scenes,
                 ai_model=settings.AGENT_MODEL,
@@ -266,7 +271,20 @@ class AgentCodegenStrategy:
                     # totals reported on subsequent ResultMessage objects），
                     # resume 续跑仍是同一 session，因此取最新值而不是累加。
                     trace["total_cost_usd"] = float(cost)
+                turns = getattr(message, "num_turns", None)
+                if turns:
+                    # 与 total_cost_usd 同为会话累计值，取最新上报值。
+                    trace["num_turns"] = int(turns)
         return session_id
+
+
+def _sdk_version() -> str | None:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("claude-agent-sdk")
+    except PackageNotFoundError:  # pragma: no cover - 仅在未安装 SDK 时
+        return None
 
 
 def _subtype_error(trace: dict[str, Any]) -> str | None:

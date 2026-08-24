@@ -12,7 +12,7 @@ from app.models.narrative_version import NarrativeVersion
 from app.storage import upload_bytes
 from app.workers.base import BaseWorker
 from app.services.beat_aligner import align_scene_beats
-from app.services.strategies import get_narrative_strategy
+from app.services.strategies import get_narrative_strategy, with_execution_trace
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,11 @@ class NarrativeWorker(BaseWorker):
                 fact_checks=outcome.fact_checks,
                 ai_model=outcome.ai_model,
                 rejection_context=rejection_context,
-                prompt_snapshot=prompt_snapshot,
+                prompt_snapshot=with_execution_trace(
+                    prompt_snapshot,
+                    payload.get("execution_mode", "prompt"),
+                    outcome.trace,
+                ),
             )
             db.add(nv)
             db.flush()

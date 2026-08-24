@@ -45,8 +45,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && corepack prepare pnpm@10.27.0 --activate \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Agent SDK 需要 claude CLI（Node 22 已在上一层装好）
-RUN npm install -g @anthropic-ai/claude-code
+# 不需要单独装 claude CLI：claude-agent-sdk 的平台 wheel 自带 bundled CLI
+# （claude_agent_sdk/_bundled/claude），SubprocessCLITransport._find_cli() 优先用它，
+# shutil.which("claude") 只是回落路径。
 
 # Shared libs required by Remotion's headless Chrome (chrome-headless-shell) at runtime
 # https://remotion.dev/docs/troubleshooting/browser-launch

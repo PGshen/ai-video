@@ -78,6 +78,16 @@ scenes/       Agent 在此写 scene_00.py … scene_NN.py，一个镜头一个�
 `validate_code()` 报错中已有的「traceback 定位到 `_scene_N`」加工，在 Agent 模式下
 直接成为「该改哪个文件」的行动指引。
 
+**威胁模型：`validate` 不是只读工具。** `ManimEngine.validate_code()` 会把拼好的脚本
+写盘并 `create_subprocess_exec(["python", driver])` **实际执行**，子进程继承 worker
+的完整环境变量（数据库、MinIO 凭证）。因此该 MCP 工具标注为
+`ToolAnnotations(readOnlyHint=False)`——它事实上是一个任意代码执行原语。
+提示词模式下同样存在这次 dry-run 执行，但 Agent 模式的区别在于：模型可以
+**反复**「写文件 → 触发执行 → 读回报错 → 改文件」，即拿到了一个可迭代的代码执行回路。
+把 Bash 从工具面移除并不消除这一点，只是把执行入口收敛到渲染引擎的校验路径上。
+这是接受 Agent 模式时必须记明的残余风险；进一步收敛（沙箱化 validate 子进程、
+剥离子进程环境变量）留待后续。
+
 ### Agent 选项
 
 - `setting_sources=[]` —— 必须显式清空，否则 SDK 会读取容器内 `~/.claude` 及项目级

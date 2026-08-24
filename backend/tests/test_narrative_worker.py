@@ -117,6 +117,11 @@ async def test_narrative_worker_execute_writes_narrative_version():
     mock_db2.commit.assert_called_once()
     synthesized_request = mock_tts_engine.synthesize.await_args.args[0]
     assert synthesized_request.speed == 1.1
+    # 产物溯源：prompt 模式也要标记 execution_mode，且不写 agent 子对象
+    snapshot = added_nv["nv"].prompt_snapshot
+    assert snapshot["execution_mode"] == "prompt"
+    assert "agent" not in snapshot
+    assert snapshot["base_prompt_version"] == "test"
 
 
 @pytest.mark.asyncio

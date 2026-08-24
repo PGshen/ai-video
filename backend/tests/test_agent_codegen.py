@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config import settings
 from app.services.strategies.agent_codegen import AgentCancelledError, AgentCodegenStrategy
 
 SCENES = [{"scene_index": 0, "narration": "旁白", "description": "描述", "beats": []}]
@@ -115,6 +116,7 @@ async def test_resume_is_attempted_at_most_once():
 
 @pytest.mark.asyncio
 async def test_non_success_result_subtype_is_a_failure():
+    """校验能过、但 Agent 以 error_max_turns 收尾 —— 仍必须判失败。"""
     agent_query = make_agent_query(
         per_call_messages=[
             [FakeResultMessage(subtype="error_max_turns")],
@@ -123,11 +125,14 @@ async def test_non_success_result_subtype_is_a_failure():
     )
     strategy = AgentCodegenStrategy(agent_query=agent_query)
 
-    async def always_fail(workdir, scenes, render_engine):
-        return False, "未完成"
+    async def always_ok(workdir, scenes, render_engine):
+        return True, ""
 
     with patch(
-        "app.services.strategies.agent_codegen.validate_workdir", always_fail
+        "app.services.strategies.agent_codegen.validate_workdir", always_ok
+    ), patch(
+        "app.services.strategies.agent_codegen.read_scene_codes",
+        return_value=["# code"],
     ), patch(
         "app.services.strategies.agent_codegen.build_validate_server",
         return_value=(MagicMock(), "mcp__codegen__validate"),
@@ -138,7 +143,51 @@ async def test_non_success_result_subtype_is_a_failure():
     ), patch(
         "app.services.strategies.agent_codegen._agent_env", return_value={}
     ):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="error_max_turns"):
+            await strategy.run(
+                scenes=SCENES,
+                render_engine="manim",
+                style_components={},
+                aspect_ratio="landscape",
+                rejection_context=None,
+                previous_code_scenes=None,
+                task_id="t1",
+            )
+
+    assert agent_query.calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_missing_result_message_is_a_failure():
+    """完全没有 ResultMessage（只有 SystemMessage）也不能算成功。"""
+
+    class FakeSystemMessage:
+        subtype = "init"  # 带 subtype 但不是 ResultMessage
+
+    agent_query = make_agent_query(
+        per_call_messages=[[FakeSystemMessage()], [FakeSystemMessage()]]
+    )
+    strategy = AgentCodegenStrategy(agent_query=agent_query)
+
+    async def always_ok(workdir, scenes, render_engine):
+        return True, ""
+
+    with patch(
+        "app.services.strategies.agent_codegen.validate_workdir", always_ok
+    ), patch(
+        "app.services.strategies.agent_codegen.read_scene_codes",
+        return_value=["# code"],
+    ), patch(
+        "app.services.strategies.agent_codegen.build_validate_server",
+        return_value=(MagicMock(), "mcp__codegen__validate"),
+    ), patch(
+        "app.services.strategies.agent_codegen.is_task_cancelled", return_value=False
+    ), patch(
+        "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
+    ), patch(
+        "app.services.strategies.agent_codegen._agent_env", return_value={}
+    ):
+        with pytest.raises(ValueError, match="result subtype"):
             await strategy.run(
                 scenes=SCENES,
                 render_engine="manim",
@@ -273,3 +322,132 @@ async def test_options_use_tool_whitelist_and_budget_and_no_setting_sources():
     assert not first.resume
     # resume 续跑必须带上上一轮的 session_id
     assert second.resume == "sess-1"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_records_a_cancelled_ai_call():
+    async def fake_query(*, prompt, options):
+        yield FakeResultMessage()
+
+    strategy = AgentCodegenStrategy(agent_query=fake_query)
+    recorder = AsyncMock()
+
+    with patch(
+        "app.services.strategies.agent_codegen.build_validate_server",
+        return_value=(MagicMock(), "mcp__codegen__validate"),
+    ), patch(
+        "app.services.strategies.agent_codegen.is_task_cancelled", return_value=True
+    ), patch(
+        "app.services.strategies.agent_codegen.record_agent_call", recorder
+    ), patch(
+        "app.services.strategies.agent_codegen._agent_env", return_value={}
+    ):
+        with pytest.raises(AgentCancelledError):
+            await strategy.run(
+                scenes=SCENES,
+                render_engine="manim",
+                style_components={},
+                aspect_ratio="landscape",
+                rejection_context=None,
+                previous_code_scenes=None,
+                task_id="t1",
+            )
+
+    assert recorder.await_args.kwargs["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_wall_clock_timeout_aborts_the_run():
+    """CLI 子进程卡死时，AGENT_TIMEOUT_SECONDS 必须兜底。"""
+    import asyncio
+
+    async def hanging_query(*, prompt, options):
+        await asyncio.sleep(10)
+        yield FakeResultMessage()
+
+    strategy = AgentCodegenStrategy(agent_query=hanging_query)
+
+    with patch(
+        "app.services.strategies.agent_codegen.build_validate_server",
+        return_value=(MagicMock(), "mcp__codegen__validate"),
+    ), patch(
+        "app.services.strategies.agent_codegen.is_task_cancelled", return_value=False
+    ), patch(
+        "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
+    ), patch(
+        "app.services.strategies.agent_codegen._agent_env", return_value={}
+    ), patch.object(
+        settings, "AGENT_TIMEOUT_SECONDS", 0.05
+    ):
+        with pytest.raises(ValueError, match="超时"):
+            await strategy.run(
+                scenes=SCENES,
+                render_engine="manim",
+                style_components={},
+                aspect_ratio="landscape",
+                rejection_context=None,
+                previous_code_scenes=None,
+                task_id="t1",
+            )
+
+
+@pytest.mark.asyncio
+async def test_resume_cost_is_not_double_counted():
+    """SDK 的 total_cost_usd 是会话累计值，resume 轮不得再加一遍。"""
+    first = FakeResultMessage(total_cost_usd=0.4)
+    first.session_id = "sess-1"
+    agent_query = make_agent_query(
+        per_call_messages=[[first], [FakeResultMessage(total_cost_usd=0.9)]]
+    )
+    strategy = AgentCodegenStrategy(agent_query=agent_query)
+
+    validate_results = [(False, "scene 0: NameError"), (True, "")]
+
+    async def fake_validate(workdir, scenes, render_engine):
+        return validate_results.pop(0)
+
+    with patch(
+        "app.services.strategies.agent_codegen.validate_workdir", fake_validate
+    ), patch(
+        "app.services.strategies.agent_codegen.read_scene_codes",
+        return_value=["# code"],
+    ), patch(
+        "app.services.strategies.agent_codegen.build_validate_server",
+        return_value=(MagicMock(), "mcp__codegen__validate"),
+    ), patch(
+        "app.services.strategies.agent_codegen.is_task_cancelled", return_value=False
+    ), patch(
+        "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
+    ), patch(
+        "app.services.strategies.agent_codegen._agent_env", return_value={}
+    ):
+        outcome = await strategy.run(
+            scenes=SCENES,
+            render_engine="manim",
+            style_components={},
+            aspect_ratio="landscape",
+            rejection_context=None,
+            previous_code_scenes=None,
+            task_id="t1",
+        )
+
+    assert outcome.trace["total_cost_usd"] == 0.9
+
+
+def test_agent_env_inherits_nothing_extra_but_sdk_merges_os_environ():
+    """SDK 自身会做 {**os.environ, **options.env} 合并（subprocess_cli.py:809-813），
+    因此 _agent_env 只需给出 Anthropic 凭证。"""
+    from app.services.strategies.agent_codegen import _agent_env
+
+    config = MagicMock()
+    config.provider_type = "anthropic"
+    config.api_key = "sk-test"
+    config.base_url = "https://example.invalid"
+    with patch(
+        "app.engines.ai.factory._provider_settings_from_db", return_value=config
+    ):
+        env = _agent_env()
+    assert env == {
+        "ANTHROPIC_API_KEY": "sk-test",
+        "ANTHROPIC_BASE_URL": "https://example.invalid",
+    }

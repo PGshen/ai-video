@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 
 from app.engines.render.base import SceneInput
 from app.engines.render.factory import get_render_engine
-
-logger = logging.getLogger(__name__)
 
 VALIDATE_TOOL_NAME = "mcp__codegen__validate"
 

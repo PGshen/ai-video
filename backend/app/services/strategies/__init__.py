@@ -45,5 +45,6 @@ def get_codegen_strategy(execution_mode: str) -> CodegenStrategy:
 
 
 def get_narrative_strategy(execution_mode: str) -> NarrativeStrategy:
+    # 叙事侧目前只有 Prompt 一种实现；仍走一遍归一化以便记录非法取值。
     _normalize_mode(execution_mode)
     return PromptNarrativeStrategy()

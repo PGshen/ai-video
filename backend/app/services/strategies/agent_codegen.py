@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import shutil
 import tempfile
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from app.config import settings
@@ -77,7 +79,11 @@ async def record_agent_call(
                     status=status,
                     input=input_summary,
                     output=output,
-                    total_cost=total_cost_usd,
+                    total_cost=(
+                        Decimal(str(total_cost_usd))
+                        if total_cost_usd is not None
+                        else None
+                    ),
                     error_message=error_message,
                 )
             )
@@ -143,6 +149,9 @@ class AgentCodegenStrategy:
             )
 
             is_valid, errors = await validate_workdir(workdir, scenes, render_engine)
+            subtype_error = _subtype_error(trace)
+            if subtype_error:
+                is_valid, errors = False, subtype_error
             if not is_valid:
                 # Agent 认为完成了，平台判定未过 —— 只给一次续跑机会
                 logger.info("[AgentCodegen] 平台回读校验未过，resume 续跑一次")
@@ -162,6 +171,9 @@ class AgentCodegenStrategy:
                 is_valid, errors = await validate_workdir(
                     workdir, scenes, render_engine
                 )
+                subtype_error = _subtype_error(trace)
+                if subtype_error:
+                    is_valid, errors = False, subtype_error
 
             if not is_valid:
                 await record_agent_call(
@@ -199,11 +211,41 @@ class AgentCodegenStrategy:
     async def _run_once(
         self, *, prompt, server, tool_name, workdir, trace, task_id, resume
     ) -> str | None:
+        try:
+            return await asyncio.wait_for(
+                self._stream(
+                    prompt=prompt,
+                    server=server,
+                    tool_name=tool_name,
+                    workdir=workdir,
+                    trace=trace,
+                    task_id=task_id,
+                    resume=resume,
+                ),
+                timeout=settings.AGENT_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            raise ValueError(
+                f"Agent 执行超时（>{settings.AGENT_TIMEOUT_SECONDS}s）"
+            ) from exc
+
+    async def _stream(
+        self, *, prompt, server, tool_name, workdir, trace, task_id, resume
+    ) -> str | None:
         options = _build_options(server, tool_name, workdir, resume)
         session_id = None
         async for message in self._query()(prompt=prompt, options=options):
             if is_task_cancelled(task_id):
                 logger.info("[AgentCodegen] 任务已取消，中断 Agent 循环")
+                await record_agent_call(
+                    model=settings.AGENT_MODEL,
+                    business="code_generation",
+                    input_summary={"model": settings.AGENT_MODEL},
+                    output="",
+                    total_cost_usd=trace.get("total_cost_usd"),
+                    status="cancelled",
+                    error_message="task cancelled during agent execution",
+                )
                 raise AgentCancelledError("task cancelled during agent execution")
 
             for block in getattr(message, "content", []) or []:
@@ -214,13 +256,32 @@ class AgentCodegenStrategy:
             if getattr(message, "session_id", None):
                 session_id = message.session_id
 
-            if hasattr(message, "subtype"):
+            if _is_result_message(message):
                 trace["result_subtype"] = message.subtype
                 trace["result_text"] = getattr(message, "result", "") or ""
                 cost = getattr(message, "total_cost_usd", None)
-                if cost:
-                    trace["total_cost_usd"] += float(cost)
+                if cost is not None:
+                    # SDK 的 total_cost_usd 是「会话累计值」而非本轮增量
+                    # （见 types.py ConversationResetMessage 文档串：running
+                    # totals reported on subsequent ResultMessage objects），
+                    # resume 续跑仍是同一 session，因此取最新值而不是累加。
+                    trace["total_cost_usd"] = float(cost)
         return session_id
+
+
+def _subtype_error(trace: dict[str, Any]) -> str | None:
+    """Agent 未以 success 收尾时，无论沙箱里残留什么代码都判失败。"""
+    subtype = trace.get("result_subtype")
+    if subtype is None:
+        return "Agent 未返回结果消息（result subtype 缺失）"
+    if subtype != "success":
+        return f"Agent 未正常结束，result subtype = {subtype}"
+    return None
+
+
+def _is_result_message(message: Any) -> bool:
+    """区分 ResultMessage 与同样带 subtype 的 SystemMessage。"""
+    return hasattr(message, "subtype") and hasattr(message, "total_cost_usd")
 
 
 def _build_options(server, tool_name, workdir, resume):

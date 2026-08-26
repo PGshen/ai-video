@@ -1,7 +1,7 @@
 """add execution_mode columns
 
 Revision ID: a71c39d5e284
-Revises: 82f4c6a9d731
+Revises: e3a9f61c8b2d
 Create Date: 2026-08-24
 """
 from typing import Sequence, Union
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a71c39d5e284"
-down_revision: Union[str, Sequence[str], None] = "82f4c6a9d731"
+down_revision: Union[str, Sequence[str], None] = "e3a9f61c8b2d"
 branch_labels = None
 depends_on = None
 

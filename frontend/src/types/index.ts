@@ -117,7 +117,12 @@ export interface StyleLibraryAssistantResponse extends StyleLibraryDraft {
 }
 
 // ═══ AI 模型配置 ═══
-export type AIProviderType = "deepseek" | "openrouter" | "gemini" | "doubao";
+export type AIProviderType =
+  | "deepseek"
+  | "openrouter"
+  | "gemini"
+  | "doubao"
+  | "anthropic";
 
 export interface AIModelProvider {
   id: string;

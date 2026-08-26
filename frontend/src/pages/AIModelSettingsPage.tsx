@@ -64,6 +64,7 @@ const providerLabels: Record<AIProviderType, string> = {
   openrouter: "OpenRouter",
   gemini: "Gemini",
   doubao: "Doubao",
+  anthropic: "Anthropic",
 };
 
 const defaultBaseUrls: Record<AIProviderType, string> = {
@@ -71,6 +72,8 @@ const defaultBaseUrls: Record<AIProviderType, string> = {
   openrouter: "https://openrouter.ai/api/v1",
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
   doubao: "https://ark.cn-beijing.volces.com/api/v3",
+  // 留空表示走 Anthropic 官方端点；填值则走中转
+  anthropic: "",
 };
 
 const emptyProviderForm: AIModelProviderInput = {
@@ -182,7 +185,9 @@ function ProviderDialog({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!form.name.trim() || !form.baseUrl.trim()) {
+    // Anthropic 的 Base URL 可留空，表示走官方端点
+    const baseUrlRequired = form.providerType !== "anthropic";
+    if (!form.name.trim() || (baseUrlRequired && !form.baseUrl.trim())) {
       toast.error("请填写供应商名称和 Base URL");
       return;
     }
@@ -252,6 +257,11 @@ function ProviderDialog({
               <Input
                 value={form.baseUrl}
                 onChange={(event) => setField("baseUrl", event.target.value)}
+                placeholder={
+                  form.providerType === "anthropic"
+                    ? "留空走 Anthropic 官方端点，填值走中转"
+                    : undefined
+                }
               />
             </div>
             <div className="space-y-2">

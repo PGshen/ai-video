@@ -13,6 +13,18 @@ def scene_filename(index: int) -> str:
     return f"scene_{index:02d}.py"
 
 
+def _engine_constraints(render_engine: str, aspect_ratio: str) -> str:
+    """取提示词模式同款的引擎约束（代码规范 + 画幅规则）。"""
+    from app.engines.ai.chat_provider import ChatAIProvider, _load_engine_specs
+
+    _, code_prompts = _load_engine_specs()
+    parts = [code_prompts.get(render_engine, "").strip()]
+    parts.append(
+        ChatAIProvider._build_aspect_ratio_prompt(aspect_ratio, render_engine).strip()
+    )
+    return "\n\n".join(p for p in parts if p)
+
+
 def write_sandbox(
     workdir: str,
     *,
@@ -50,6 +62,16 @@ def write_sandbox(
         lines.append(f"## {category}")
         lines.append("")
         lines.append(text)
+        lines.append("")
+
+    # 引擎约束：与提示词模式喂给模型的是同一份（engine_specs/<engine>.yaml 的
+    # code_prompt + 画幅推导出的画布/安全区规则）。缺了这段，Agent 拿不到代码
+    # 契约与 API 版本约束，会写出能通过校验却渲染不出画面的代码。
+    engine_rules = _engine_constraints(render_engine, aspect_ratio)
+    if engine_rules:
+        lines.append("## 引擎约束")
+        lines.append("")
+        lines.append(engine_rules)
         lines.append("")
     with open(os.path.join(workdir, "STYLE.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines))

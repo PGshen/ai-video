@@ -33,6 +33,27 @@ def test_write_sandbox_creates_input_style_and_scenes_dir(tmp_path):
     assert (tmp_path / "scenes").is_dir()
 
 
+def test_style_md_carries_engine_constraints(tmp_path):
+    """STYLE.md 必须带上引擎约束——缺了它 Agent 会写出通过校验却渲染黑屏的代码。
+
+    回归背景：首次真实跑通时 13 个镜头全黑，原因是 Agent 未拿到「禁止写类定义、
+    只写 construct() 方法体」这条契约，写出了从不被执行的 `class SceneNN(Scene)`。
+    """
+    write_sandbox(
+        str(tmp_path),
+        scenes=SCENES,
+        style_components={"color_scheme": "蓝色"},
+        aspect_ratio="landscape",
+        render_engine="manim",
+    )
+    style = (tmp_path / "STYLE.md").read_text()
+    assert "引擎约束" in style
+    # 代码契约：来自 engine_specs/manim.yaml 的 code_prompt
+    assert "禁止在 code 里写 def construct" in style
+    # 画幅规则：来自 _build_aspect_ratio_prompt
+    assert "安全区" in style
+
+
 def test_read_scene_codes_returns_files_in_index_order(tmp_path):
     scenes_dir = tmp_path / "scenes"
     scenes_dir.mkdir()

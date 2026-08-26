@@ -23,6 +23,18 @@ from app.services.strategies.base import CodegenOutcome
 
 logger = logging.getLogger(__name__)
 
+
+def _tool_target(block) -> str:
+    """从工具调用块里摘出最能说明「在动哪个文件」的一小段，供日志使用。"""
+    payload = getattr(block, "input", None)
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("file_path", "path", "pattern", "command"):
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return ""
+
 AGENT_TOOL_WHITELIST = ["Read", "Write", "Edit", "Glob"]
 
 _SYSTEM_PROMPT = """你是渲染代码工程师。工作目录里有：
@@ -281,6 +293,19 @@ class AgentCodegenStrategy:
                     name = getattr(block, "name", None)
                     if name:
                         trace["tool_calls"].append(name)
+                        logger.info(
+                            "[AgentCodegen] 第 %d 次工具调用：%s %s",
+                            len(trace["tool_calls"]),
+                            name,
+                            _tool_target(block),
+                        )
+                    else:
+                        text = (getattr(block, "text", "") or "").strip()
+                        if text:
+                            logger.info(
+                                "[AgentCodegen] %s",
+                                text if len(text) <= 500 else text[:500] + "…",
+                            )
 
                 if getattr(message, "session_id", None):
                     session_id = message.session_id
@@ -299,6 +324,13 @@ class AgentCodegenStrategy:
                     if turns:
                         # 与 total_cost_usd 同为会话累计值，取最新上报值。
                         trace["num_turns"] = int(turns)
+                    logger.info(
+                        "[AgentCodegen] Agent 回合结束：subtype=%s 累计 %s 轮 / $%s / %d 次工具调用",
+                        trace["result_subtype"],
+                        trace.get("num_turns"),
+                        trace.get("total_cost_usd"),
+                        len(trace["tool_calls"]),
+                    )
         return session_id
 
 

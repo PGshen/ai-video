@@ -447,7 +447,8 @@ async def test_resume_cost_is_not_double_counted():
 
 def test_agent_env_and_model_uses_provider_config():
     """SDK 自身做 {**os.environ, **options.env} 合并（subprocess_cli.py:809-813），
-    因此这里只给 Anthropic 凭证；模型优先取 provider 配置里的模型行。"""
+    因此这里除了 Anthropic 凭证，还必须把宿主机上会改变路由的变量显式置空；
+    模型优先取 provider 配置里的模型行。"""
     from app.services.strategies.agent_codegen import _agent_env_and_model
 
     config = MagicMock()
@@ -459,10 +460,13 @@ def test_agent_env_and_model_uses_provider_config():
         "app.engines.ai.factory._provider_settings_from_db", return_value=config
     ):
         env, model = _agent_env_and_model()
-    assert env == {
-        "ANTHROPIC_API_KEY": "sk-test",
-        "ANTHROPIC_BASE_URL": "https://example.invalid",
-    }
+    assert env["ANTHROPIC_API_KEY"] == "sk-test"
+    assert env["ANTHROPIC_BASE_URL"] == "https://example.invalid"
+    # 宿主机若设了 Bedrock/Vertex 路由，其优先级压过 ANTHROPIC_BASE_URL，
+    # 会让平台配置的网关被静默忽略——必须逐个中和
+    for name in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
+                 "ANTHROPIC_AUTH_TOKEN", "AWS_BEARER_TOKEN_BEDROCK"):
+        assert env[name] == "", f"{name} 未被中和，宿主环境会渗进 Agent 会话"
     assert model == "claude-sonnet-9"
 
 
@@ -478,7 +482,10 @@ def test_agent_env_and_model_falls_back_to_settings_model():
         "app.engines.ai.factory._provider_settings_from_db", return_value=config
     ):
         env, model = _agent_env_and_model()
-    assert env == {"ANTHROPIC_API_KEY": "sk-test"}
+    assert env["ANTHROPIC_API_KEY"] == "sk-test"
+    # base_url 留空表示走官方端点，仍须显式置空以盖掉宿主机的同名变量
+    assert env["ANTHROPIC_BASE_URL"] == ""
+    assert env["CLAUDE_CODE_USE_BEDROCK"] == ""
     assert model == settings.AGENT_MODEL
 
 

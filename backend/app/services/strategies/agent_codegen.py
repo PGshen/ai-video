@@ -392,6 +392,20 @@ def _build_options(server, tool_name, workdir, resume, *, agent_env, model):
     return ClaudeAgentOptions(**kwargs)
 
 
+# 会改变请求路由或鉴权来源的变量：一律显式置空，不让宿主机环境渗进 Agent 会话
+_ROUTING_OVERRIDES = (
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BEDROCK_BASE_URL",
+    "ANTHROPIC_VERTEX_BASE_URL",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "AWS_BEARER_TOKEN_BEDROCK",
+)
+
+
 def _agent_env_and_model() -> tuple[dict[str, str], str]:
     """从 provider 配置取 Anthropic 凭证与模型。
 
@@ -405,9 +419,15 @@ def _agent_env_and_model() -> tuple[dict[str, str], str]:
     if config is None or config.provider_type != "anthropic":
         raise ValueError("Agent 模式需要为 code_generation 配置 anthropic provider")
 
-    env = {"ANTHROPIC_API_KEY": config.api_key}
-    if config.base_url:
-        env["ANTHROPIC_BASE_URL"] = config.base_url
+    # SDK 是 {**os.environ, **options.env} 合并，宿主机上任何供应商路由变量都会
+    # 被继承进来，且 CLAUDE_CODE_USE_BEDROCK / _VERTEX 的优先级压过
+    # ANTHROPIC_BASE_URL——平台里配的网关会被静默忽略、请求打到别处去。
+    # 显式置空来中和它们，让路由只由这里的配置决定。
+    env = {name: "" for name in _ROUTING_OVERRIDES}
+    env["ANTHROPIC_API_KEY"] = config.api_key
+    # base_url 为空表示走官方端点：仍要显式置空，否则宿主机的
+    # ANTHROPIC_BASE_URL 会漏进来
+    env["ANTHROPIC_BASE_URL"] = config.base_url or ""
     # spec：默认模型 settings.AGENT_MODEL，可被 provider 配置里的模型行覆盖
     return env, config.model or settings.AGENT_MODEL
 

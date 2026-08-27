@@ -25,6 +25,22 @@ def _engine_constraints(render_engine: str, aspect_ratio: str) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+# beats 里属于 TTS 对齐内部记账的字段：代码生成用不到，但每一轮都会被
+# 重新携带。保留 speech_*/animation_* 时间轴——画面与旁白同步要靠它们。
+_BEAT_BOOKKEEPING_FIELDS = frozenset(
+    {"cue_start_char", "cue_end_char", "fallback_weight", "alignment_status"}
+)
+
+
+def _trim_beat(beat: dict) -> dict:
+    if not isinstance(beat, dict):
+        return beat
+    return {k: v for k, v in beat.items() if k not in _BEAT_BOOKKEEPING_FIELDS}
+
+
+CODEGEN_STYLE_CATEGORIES = ("color_scheme", "animation_style")
+
+
 def write_sandbox(
     workdir: str,
     *,
@@ -43,7 +59,7 @@ def write_sandbox(
                 "narration": s.get("narration", ""),
                 "description": s.get("description", ""),
                 "duration_seconds": s.get("duration_seconds"),
-                "beats": s.get("beats", []),
+                "beats": [_trim_beat(b) for b in (s.get("beats") or [])],
             }
             for s in scenes
         ],
@@ -58,7 +74,14 @@ def write_sandbox(
         f"- 画幅：{aspect_ratio}",
         "",
     ]
-    for category, text in style_components.items():
+    # 只写代码生成真正用得上的组件。提示词模式的代码提示词同样只取这两个
+    # （chat_provider.py 的 _build_code_prompt），narrative_style / exemplar
+    # 讲的是旁白怎么写、是叙事金样本，对写 manim 代码没有帮助——而 Agent
+    # 会话里每一轮都要重新携带它们，白白推高每轮成本。
+    for category in CODEGEN_STYLE_CATEGORIES:
+        text = style_components.get(category)
+        if not text:
+            continue
         lines.append(f"## {category}")
         lines.append("")
         lines.append(text)

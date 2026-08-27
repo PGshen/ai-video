@@ -141,3 +141,66 @@ async def test_validate_tool_handler_returns_error_with_details(tmp_path):
         result = await handler({})
     assert result["is_error"] is True
     assert "scene 1: NameError" in result["content"][0]["text"]
+
+
+def test_style_md_only_carries_codegen_relevant_components(tmp_path):
+    """narrative_style / exemplar 是叙事侧组件，不该进代码沙箱。
+
+    它们在 Agent 会话里每轮都会被重新携带，是纯粹的成本浪费；提示词模式的
+    代码提示词也只取 color_scheme + animation_style。
+    """
+    from app.services.strategies.agent_sandbox import write_sandbox
+
+    write_sandbox(
+        str(tmp_path),
+        scenes=[{"scene_index": 0, "narration": "旁白", "description": "描述"}],
+        style_components={
+            "color_scheme": "COLOR_MARKER",
+            "animation_style": "ANIM_MARKER",
+            "narrative_style": "NARRATIVE_MARKER",
+            "exemplar": "EXEMPLAR_MARKER",
+        },
+        aspect_ratio="landscape",
+        render_engine="manim",
+    )
+    style = (tmp_path / "STYLE.md").read_text(encoding="utf-8")
+    assert "COLOR_MARKER" in style
+    assert "ANIM_MARKER" in style
+    assert "NARRATIVE_MARKER" not in style, "叙事组件不该进代码沙箱"
+    assert "EXEMPLAR_MARKER" not in style, "叙事金样本不该进代码沙箱"
+
+
+def test_input_json_drops_tts_alignment_bookkeeping(tmp_path):
+    """beats 里的对齐记账字段不进沙箱，但同步用的时间轴必须保留。"""
+    import json
+
+    from app.services.strategies.agent_sandbox import write_sandbox
+
+    beat = {
+        "beat_index": 0,
+        "visual_action": "画一条时间轴",
+        "cue_text": "假如人活到80岁",
+        "emphasis": "80岁",
+        "transition": "reveal",
+        "animation_start_seconds": 0.095,
+        "animation_end_seconds": 2.085,
+        "speech_start_seconds": 0.275,
+        "speech_end_seconds": 1.965,
+        "cue_start_char": 0,
+        "cue_end_char": 9,
+        "fallback_weight": 1.0,
+        "alignment_status": "aligned",
+    }
+    write_sandbox(
+        str(tmp_path),
+        scenes=[{"scene_index": 0, "narration": "旁白", "description": "描述", "beats": [beat]}],
+        style_components={"color_scheme": "c", "animation_style": "a"},
+        aspect_ratio="landscape",
+        render_engine="manim",
+    )
+    written = json.loads((tmp_path / "input.json").read_text(encoding="utf-8"))
+    kept = written["scenes"][0]["beats"][0]
+    for field in ("visual_action", "animation_start_seconds", "speech_end_seconds", "transition"):
+        assert field in kept, f"{field} 是代码生成需要的，不该被裁掉"
+    for field in ("cue_start_char", "cue_end_char", "fallback_weight", "alignment_status"):
+        assert field not in kept, f"{field} 是 TTS 对齐记账，不该进沙箱"

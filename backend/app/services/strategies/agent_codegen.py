@@ -75,7 +75,8 @@ def _tool_target(block) -> str:
 
 AGENT_TOOL_WHITELIST = ["Read", "Write", "Edit", "Glob"]
 
-_SYSTEM_PROMPT = """你是渲染代码工程师。工作目录里有：
+_SYSTEM_PROMPT = """你是渲染代码工程师。你的工作目录是 `{workdir}`，
+下面提到的所有路径都相对于它——**不要去别的目录找文件**。工作目录里有：
 
 - `input.json`：待实现的镜头叙事，每个镜头有 scene_index / narration / description / beats。
 - `STYLE.md`：必须遵守的风格与画幅约束。
@@ -209,7 +210,7 @@ class AgentCodegenStrategy:
             )
             server, tool_name = build_validate_server(workdir, scenes, render_engine)
 
-            prompt = _SYSTEM_PROMPT
+            prompt = _SYSTEM_PROMPT.format(workdir=workdir)
             if rejection_context:
                 prompt += (
                     "\n\n这是一次重新生成，上一版被驳回。驳回意见：\n"

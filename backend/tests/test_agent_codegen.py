@@ -587,3 +587,51 @@ def test_thinking_config_respects_settings():
 
     with patch.object(settings, "AGENT_THINKING_MODE", "adaptive"):
         assert _thinking_config() == {"type": "adaptive", "display": "summarized"}
+
+
+@pytest.mark.asyncio
+async def test_prompt_states_absolute_workdir():
+    """提示词必须给出工作目录绝对路径。
+
+    只写相对文件名时，模型会凭空猜一个路径（实测猜成了
+    /home/jun/repos/...），白白浪费开头两轮工具调用去读不存在的文件。
+    """
+    captured = {}
+
+    async def fake_query(*, prompt, options):
+        captured["prompt"] = prompt
+        captured["cwd"] = str(options.cwd)
+        yield FakeResultMessage()
+
+    strategy = AgentCodegenStrategy(agent_query=fake_query)
+
+    async def always_ok(workdir, scenes, render_engine):
+        return True, ""
+
+    with patch(
+        "app.services.strategies.agent_codegen.validate_workdir", always_ok
+    ), patch(
+        "app.services.strategies.agent_codegen.read_scene_codes", return_value=["# code"]
+    ), patch(
+        "app.services.strategies.agent_codegen.build_validate_server",
+        return_value=(MagicMock(), "mcp__codegen__validate"),
+    ), patch(
+        "app.services.strategies.agent_codegen.is_task_cancelled", return_value=False
+    ), patch(
+        "app.services.strategies.agent_codegen.record_agent_call", AsyncMock()
+    ), patch(
+        "app.services.strategies.agent_codegen._agent_env_and_model",
+        return_value=({}, "claude-opus-5"),
+    ):
+        await strategy.run(
+            scenes=SCENES,
+            render_engine="manim",
+            style_components={},
+            aspect_ratio="landscape",
+            rejection_context=None,
+            previous_code_scenes=None,
+            task_id="t1",
+        )
+
+    assert captured["cwd"] in captured["prompt"], "提示词里必须写明工作目录绝对路径"
+    assert "{workdir}" not in captured["prompt"], "模板占位符未被替换"

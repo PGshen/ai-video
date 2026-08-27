@@ -236,3 +236,21 @@ def test_anthropic_provider_accepts_gateway_base_url():
         api_key="sk-test",
     )
     assert provider.base_url == "https://gateway.example.com"
+
+
+def test_openai_provider_accepts_empty_or_responses_compatible_base_url():
+    official = AIModelProviderCreate(
+        name="OpenAI 官方",
+        provider_type="openai",
+        base_url="",
+        api_key="sk-test",
+    )
+    gateway = AIModelProviderCreate(
+        name="OpenAI Gateway",
+        provider_type="openai",
+        base_url="https://gateway.example.com/v1",
+        api_key="sk-test",
+    )
+    assert official.provider_type == "openai"
+    assert official.base_url == ""
+    assert gateway.base_url == "https://gateway.example.com/v1"

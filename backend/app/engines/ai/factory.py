@@ -12,6 +12,7 @@ from app.engines.ai.chat_provider import ChatAIProvider
 from app.engines.ai.deepseek import DeepSeekClient
 from app.engines.ai.doubao import DoubaoClient
 from app.engines.ai.gemini import GeminiClient
+from app.engines.ai.openai import OpenAIClient
 from app.engines.ai.openrouter import OpenRouterClient
 from app.engines.ai.stub import StubProvider
 from app.models.ai_model_config import (
@@ -182,6 +183,20 @@ def _chat_provider(config: ProviderSettings) -> AIProvider:
                     timeout_seconds=config.timeout_seconds,
                     site_url=config.site_url,
                     site_name=config.site_name,
+                ),
+                pricing_per_million=pricing,
+            ),
+            content_max_tokens=config.content_max_tokens,
+            json_max_tokens=config.json_max_tokens,
+        )
+    if provider == "openai":
+        return ChatAIProvider(
+            client=RecordingChatClient(
+                OpenAIClient(
+                    api_key=config.api_key,
+                    base_url=config.base_url,
+                    model=config.model,
+                    timeout_seconds=config.timeout_seconds,
                 ),
                 pricing_per_million=pricing,
             ),

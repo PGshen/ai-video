@@ -6,6 +6,7 @@ import inspect
 import logging
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 
@@ -609,14 +610,14 @@ class ManimRenderEngine:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             script_path = os.path.join(tmpdir, "scene.py")
-            with open(script_path, "w") as f:
+            with open(script_path, "w", encoding="utf-8") as f:
                 f.write(script)
 
             driver_path = os.path.join(tmpdir, "_dry_run_driver.py")
-            with open(driver_path, "w") as f:
+            with open(driver_path, "w", encoding="utf-8") as f:
                 f.write(_DRY_RUN_DRIVER.format(tmpdir=tmpdir))
 
-            cmd = ["python", driver_path]
+            cmd = [sys.executable, driver_path]
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -667,11 +668,11 @@ class ManimRenderEngine:
                 resolution=request.resolution,
             )
 
-            with open(script_path, "w") as f:
+            with open(script_path, "w", encoding="utf-8") as f:
                 f.write(script_content)
 
             cmd = [
-                "python", "-m", "manim", "render",
+                sys.executable, "-m", "manim", "render",
                 script_path, "MainScene",
                 "--output_file", output_path,
                 "--format", "mp4",
@@ -741,7 +742,7 @@ class ManimRenderEngine:
 
     async def health_check(self) -> bool:
         proc = await asyncio.create_subprocess_exec(
-            "python", "-m", "manim", "--version",
+            sys.executable, "-m", "manim", "--version",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -814,7 +815,7 @@ def _build_manim_script(
             audio_path = scene.audio.audio_path if scene.audio else f"scene_{i}_audio.mp3"
             duration = scene.audio.duration_seconds if scene.audio else 0.0
             lines.append(f"        _t0_{i} = self.renderer.time")
-            lines.append(f'        self.add_sound("{audio_path}")')
+            lines.append(f"        self.add_sound({audio_path!r})")
         for code_line in prepared_code.splitlines():
             lines.append(f"        {code_line}")
         if include_audio:

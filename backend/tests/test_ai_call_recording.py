@@ -115,6 +115,21 @@ def test_normalize_usage_calculates_configured_cost_and_token_details():
     assert normalized["total_cost"] == Decimal("0.0057")
 
 
+def test_normalize_usage_accepts_openai_agents_detail_names():
+    normalized = normalize_usage(
+        {
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "total_tokens": 150,
+            "input_tokens_details": {"cached_tokens": 20},
+            "output_tokens_details": {"reasoning_tokens": 8},
+        }
+    )
+
+    assert normalized["cached_tokens"] == 20
+    assert normalized["reasoning_tokens"] == 8
+
+
 @pytest.mark.asyncio
 async def test_provider_marks_brainstorm_business():
     upstream = FakeClient()

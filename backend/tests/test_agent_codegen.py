@@ -567,3 +567,23 @@ async def test_result_subtype_is_reset_between_runs():
                 previous_code_scenes=None,
                 task_id="t1",
             )
+
+
+def test_thinking_config_respects_settings():
+    """思考预算可配；display 必须是 summarized，否则日志里看不到思考内容。"""
+    from app.services.strategies.agent_codegen import _thinking_config
+
+    with patch.object(settings, "AGENT_THINKING_MODE", "enabled"), patch.object(
+        settings, "AGENT_THINKING_BUDGET_TOKENS", 4000
+    ):
+        assert _thinking_config() == {
+            "type": "enabled",
+            "budget_tokens": 4000,
+            "display": "summarized",
+        }
+
+    with patch.object(settings, "AGENT_THINKING_MODE", "disabled"):
+        assert _thinking_config() == {"type": "disabled"}
+
+    with patch.object(settings, "AGENT_THINKING_MODE", "adaptive"):
+        assert _thinking_config() == {"type": "adaptive", "display": "summarized"}

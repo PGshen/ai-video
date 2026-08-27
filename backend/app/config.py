@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     AGENT_MAX_TURNS: int = 40
     AGENT_MAX_BUDGET_USD: float = 2.0
     AGENT_TIMEOUT_SECONDS: float = 1800.0
+    # 思考预算："enabled" 按 AGENT_THINKING_BUDGET_TOKENS 给额度，
+    # "adaptive" 交给模型自行决定（可能很贵），"disabled" 完全关闭
+    AGENT_THINKING_MODE: str = "enabled"
+    AGENT_THINKING_BUDGET_TOKENS: int = 4000
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

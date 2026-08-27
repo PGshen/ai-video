@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 import shutil
 import tempfile
 import uuid
@@ -22,6 +23,43 @@ from app.services.strategies.agent_sandbox import (
 from app.services.strategies.base import CodegenOutcome
 
 logger = logging.getLogger(__name__)
+
+
+async def _log_heartbeat(trace: dict, interval: float = 30.0) -> None:
+    """Agent 沉默时每 interval 秒报一次活，避免长时间 thinking 被误判为卡死。"""
+    started = time.monotonic()
+    try:
+        while True:
+            await asyncio.sleep(interval)
+            logger.info(
+                "[AgentCodegen] 运行中… 已 %.0fs / %d 次工具调用（模型可能正在思考）",
+                time.monotonic() - started,
+                len(trace.get("tool_calls", [])),
+            )
+    except asyncio.CancelledError:
+        pass
+
+
+def _thinking_config() -> dict | None:
+    """把配置翻成 SDK 的 ThinkingConfig。
+
+    display 显式设为 summarized：Opus 4.7+ 默认 omitted（只回签名不回文本），
+    那样日志里看不到任何思考内容，长时间思考就成了无法解释的静默。
+    """
+    mode = (settings.AGENT_THINKING_MODE or "").lower()
+    if mode == "disabled":
+        return {"type": "disabled"}
+    if mode == "adaptive":
+        return {"type": "adaptive", "display": "summarized"}
+    return {
+        "type": "enabled",
+        "budget_tokens": settings.AGENT_THINKING_BUDGET_TOKENS,
+        "display": "summarized",
+    }
+
+
+def _clip(text: str, limit: int = 500) -> str:
+    return text if len(text) <= limit else text[:limit] + "…"
 
 
 def _tool_target(block) -> str:
@@ -288,63 +326,71 @@ class AgentCodegenStrategy:
         # M-3：每轮重新判定，不沿用上一轮的 subtype
         trace["result_subtype"] = None
         stream = self._query()(prompt=prompt, options=options)
-        async with contextlib.aclosing(stream) as messages:
-            async for message in messages:
-                if is_task_cancelled(task_id):
-                    logger.info("[AgentCodegen] 任务已取消，中断 Agent 循环")
-                    await record_agent_call(
-                        model=model,
-                        business="code_generation",
-                        input_summary={"model": model},
-                        output="",
-                        total_cost_usd=trace.get("total_cost_usd"),
-                        status="cancelled",
-                        error_message="task cancelled during agent execution",
-                    )
-                    raise AgentCancelledError("task cancelled during agent execution")
-
-                for block in getattr(message, "content", []) or []:
-                    name = getattr(block, "name", None)
-                    if name:
-                        trace["tool_calls"].append(name)
-                        logger.info(
-                            "[AgentCodegen] 第 %d 次工具调用：%s %s",
-                            len(trace["tool_calls"]),
-                            name,
-                            _tool_target(block),
+        # 模型长时间 thinking 期间不会有任何消息到达，心跳让"还活着"这件事可见
+        heartbeat = asyncio.create_task(_log_heartbeat(trace))
+        try:
+            async with contextlib.aclosing(stream) as messages:
+                async for message in messages:
+                    if is_task_cancelled(task_id):
+                        logger.info("[AgentCodegen] 任务已取消，中断 Agent 循环")
+                        await record_agent_call(
+                            model=model,
+                            business="code_generation",
+                            input_summary={"model": model},
+                            output="",
+                            total_cost_usd=trace.get("total_cost_usd"),
+                            status="cancelled",
+                            error_message="task cancelled during agent execution",
                         )
-                    else:
+                        raise AgentCancelledError("task cancelled during agent execution")
+
+                    for block in getattr(message, "content", []) or []:
+                        name = getattr(block, "name", None)
+                        if name:
+                            trace["tool_calls"].append(name)
+                            logger.info(
+                                "[AgentCodegen] 第 %d 次工具调用：%s %s",
+                                len(trace["tool_calls"]),
+                                name,
+                                _tool_target(block),
+                            )
+                            continue
+                        # thinking 块既没有 name 也没有 text；不打出来的话，模型长时间
+                        # 思考期间日志会完全静默，看着像卡死
+                        thinking = (getattr(block, "thinking", "") or "").strip()
+                        if thinking:
+                            logger.info("[AgentCodegen] 思考：%s", _clip(thinking))
+                            continue
                         text = (getattr(block, "text", "") or "").strip()
                         if text:
-                            logger.info(
-                                "[AgentCodegen] %s",
-                                text if len(text) <= 500 else text[:500] + "…",
-                            )
+                            logger.info("[AgentCodegen] %s", _clip(text))
 
-                if getattr(message, "session_id", None):
-                    session_id = message.session_id
+                    if getattr(message, "session_id", None):
+                        session_id = message.session_id
 
-                if _is_result_message(message):
-                    trace["result_subtype"] = message.subtype
-                    trace["result_text"] = getattr(message, "result", "") or ""
-                    cost = getattr(message, "total_cost_usd", None)
-                    if cost is not None:
-                        # SDK 的 total_cost_usd 是「会话累计值」而非本轮增量
-                        # （见 types.py ConversationResetMessage 文档串：running
-                        # totals reported on subsequent ResultMessage objects），
-                        # resume 续跑仍是同一 session，因此取最新值而不是累加。
-                        trace["total_cost_usd"] = float(cost)
-                    turns = getattr(message, "num_turns", None)
-                    if turns:
-                        # 与 total_cost_usd 同为会话累计值，取最新上报值。
-                        trace["num_turns"] = int(turns)
-                    logger.info(
-                        "[AgentCodegen] Agent 回合结束：subtype=%s 累计 %s 轮 / $%s / %d 次工具调用",
-                        trace["result_subtype"],
-                        trace.get("num_turns"),
-                        trace.get("total_cost_usd"),
-                        len(trace["tool_calls"]),
-                    )
+                    if _is_result_message(message):
+                        trace["result_subtype"] = message.subtype
+                        trace["result_text"] = getattr(message, "result", "") or ""
+                        cost = getattr(message, "total_cost_usd", None)
+                        if cost is not None:
+                            # SDK 的 total_cost_usd 是「会话累计值」而非本轮增量
+                            # （见 types.py ConversationResetMessage 文档串：running
+                            # totals reported on subsequent ResultMessage objects），
+                            # resume 续跑仍是同一 session，因此取最新值而不是累加。
+                            trace["total_cost_usd"] = float(cost)
+                        turns = getattr(message, "num_turns", None)
+                        if turns:
+                            # 与 total_cost_usd 同为会话累计值，取最新上报值。
+                            trace["num_turns"] = int(turns)
+                        logger.info(
+                            "[AgentCodegen] Agent 回合结束：subtype=%s 累计 %s 轮 / $%s / %d 次工具调用",
+                            trace["result_subtype"],
+                            trace.get("num_turns"),
+                            trace.get("total_cost_usd"),
+                            len(trace["tool_calls"]),
+                        )
+        finally:
+            heartbeat.cancel()
         return session_id
 
 
@@ -382,6 +428,7 @@ def _build_options(server, tool_name, workdir, resume, *, agent_env, model):
         permission_mode="acceptEdits",
         max_turns=settings.AGENT_MAX_TURNS,
         max_budget_usd=settings.AGENT_MAX_BUDGET_USD,
+        thinking=_thinking_config(),
         mcp_servers={"codegen": server},
         allowed_tools=[*AGENT_TOOL_WHITELIST, tool_name],
         tools=list(AGENT_TOOL_WHITELIST),

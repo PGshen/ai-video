@@ -28,6 +28,7 @@ from app.services.narrative_validator import (
     NarrativeValidationError,
     validate_and_normalize_scenes,
 )
+from app.codegen_rules import ELEMENT_EXIT_RULES
 from app.video_format import normalize_aspect_ratio, resolution_for_aspect_ratio
 
 _SPECS_DIR = Path(__file__).parent / "engine_specs"
@@ -411,9 +412,7 @@ estimated_duration_seconds 根据旁白字数和画面复杂度估算，不得�
             "动画总时长（所有 run_time 与 self.wait 之和）必须 ≤ duration_seconds，且不得低于 duration_seconds 的 85%，目标 90-100%。",
             "不足 85% 时回去拉长过程动画（计数增长、逐段绘制、错落入场、状态扫过），禁止靠镜头末尾静置补齐；渲染引擎只负责补齐最后不足 1 秒的零头，禁止在镜头末尾添加用于补齐音频时长的 self.wait()。",
             "",
-            "【遗留元素处理（每个镜头开场第一件事）】",
-            "先处理上一镜头遗留元素的退场或让位（FadeOut / 移位 / Transform 复用），再入场本镜头新主体。",
-            "降低透明度不是退场：除非该对象在语义上'仍在场但被忽略/被否决'（此时降透明是状态表达），否则一律 FadeOut；同屏处于低透明状态的对象组不得超过 1 组。",
+            ELEMENT_EXIT_RULES,
             "",
             "要求：",
             "- 严格按照每个镜头的 description 实现动画逻辑",

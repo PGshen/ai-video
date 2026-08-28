@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 
+from app.codegen_rules import ELEMENT_EXIT_RULES
 from app.engines.render.base import SceneInput
 from app.engines.render.factory import get_render_engine
 
@@ -72,6 +73,12 @@ def write_sandbox(
         "",
         f"- 渲染引擎：{render_engine}",
         f"- 画幅：{aspect_ratio}",
+        "",
+        # 与风格库无关的基础要求，放在最前面：风格组件可以描述画面长什么样，
+        # 但都不允许覆盖"画面不许重叠"这条底线。
+        "## 基础要求（所有风格通用，优先级最高）",
+        "",
+        ELEMENT_EXIT_RULES,
         "",
     ]
     # 只写代码生成真正用得上的组件。提示词模式的代码提示词同样只取这两个

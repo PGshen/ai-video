@@ -261,16 +261,19 @@ async def test_agent_mode_snapshot_carries_full_agent_trace():
 
     outcome = CodegenOutcome(
         scenes=[{"scene_index": 0, "code": "# code"}],
-        ai_model=settings.AGENT_MODEL,
+        ai_model="gpt-test",
         trace={
             "execution_mode": "agent",
-            "tool_calls": ["Write", "mcp__codegen__validate"],
+            "provider": "openai",
+            "sdk_name": "openai-agents",
+            "tool_calls": ["write_scene", "validate"],
+            "usage": {"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
             "resumed": True,
             "total_cost_usd": 0.42,
             "num_turns": 7,
             "max_turns": settings.AGENT_MAX_TURNS,
-            "sdk_version": "0.2.144",
-            "model": settings.AGENT_MODEL,
+            "sdk_version": "0.22.0",
+            "model": "gpt-test",
             "validated_first_pass": False,
         },
     )
@@ -284,16 +287,19 @@ async def test_agent_mode_snapshot_carries_full_agent_trace():
         await worker._execute(task)
 
     version = _added_code_version(mock_db)
-    assert version.ai_model == "claude-opus-5"
+    assert version.ai_model == "gpt-test"
     snapshot = version.prompt_snapshot
     assert snapshot["execution_mode"] == "agent"
     assert snapshot["base_prompt_version"] == "test"
     agent = snapshot["agent"]
-    assert agent["tool_calls"] == ["Write", "mcp__codegen__validate"]
+    assert agent["provider"] == "openai"
+    assert agent["sdk_name"] == "openai-agents"
+    assert agent["tool_calls"] == ["write_scene", "validate"]
+    assert agent["usage"]["total_tokens"] == 120
     assert agent["total_cost_usd"] == 0.42
     assert agent["resumed"] is True
     assert agent["validated_first_pass"] is False
     assert agent["num_turns"] == 7
     assert agent["max_turns"] == settings.AGENT_MAX_TURNS
-    assert agent["sdk_version"] == "0.2.144"
-    assert agent["model"] == "claude-opus-5"
+    assert agent["sdk_version"] == "0.22.0"
+    assert agent["model"] == "gpt-test"

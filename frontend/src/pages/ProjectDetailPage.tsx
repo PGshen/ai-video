@@ -17,7 +17,15 @@ interface VerdictState {
 }
 
 interface AgentTrace {
+  provider?: string;
+  sdk_name?: string;
+  sdk_version?: string;
+  model?: string;
+  num_turns?: number;
   tool_calls?: unknown[];
+  usage?: {
+    total_tokens?: number;
+  };
   total_cost_usd?: number;
   resumed?: boolean;
 }
@@ -179,11 +187,24 @@ export default function ProjectDetailPage() {
                   镜头列表（{codeVersion?.scenes.length ?? 0} 个）
                 </p>
                 {agentTrace && (
-                  <span className="text-xs text-muted-foreground">
-                    Agent 模式 · {agentTrace.tool_calls?.length ?? 0} 次工具调用 · $
-                    {(agentTrace.total_cost_usd ?? 0).toFixed(2)}
-                    {agentTrace.resumed ? " · 续跑过一次" : ""}
-                  </span>
+                  <div className="space-y-0.5 text-xs text-muted-foreground">
+                    <p>
+                      Agent 模式
+                      {agentTrace.provider ? ` · ${agentTrace.provider}` : ""}
+                      {agentTrace.model ? ` · ${agentTrace.model}` : ""}
+                    </p>
+                    <p>
+                      {agentTrace.sdk_name ?? "Agent SDK"}
+                      {agentTrace.sdk_version ? ` ${agentTrace.sdk_version}` : ""}
+                      {` · ${agentTrace.num_turns ?? 0} 轮`}
+                      {` · ${agentTrace.tool_calls?.length ?? 0} 次工具调用`}
+                      {agentTrace.usage?.total_tokens
+                        ? ` · ${agentTrace.usage.total_tokens} tokens`
+                        : ""}
+                      {` · $${(agentTrace.total_cost_usd ?? 0).toFixed(4)}`}
+                      {agentTrace.resumed ? " · 续跑过一次" : ""}
+                    </p>
+                  </div>
                 )}
               </div>
               <ScrollArea className="flex-1">

@@ -170,12 +170,16 @@ Worker（`backend/app/workers/{narrative_worker,code_worker,render_worker,base}.
 
 ### 3.7 Structured Output
 
-`engines/ai/structured_output.py` 定义各任务 JSON Schema（`NARRATIVE_SCHEMA`/`CODE_GENERATION_SCHEMA`/`CODE_REPAIR_SCHEMA`/`BRAINSTORM_SCHEMA`/`STYLE_ASSISTANT_SCHEMA`），`response_format_for()` 按不同 Provider（OpenRouter/Gemini/DeepSeek/Doubao）适配是否支持原生 JSON Schema 强约束。
+`engines/ai/structured_output.py` 定义各任务 JSON Schema（`NARRATIVE_SCHEMA`/`CODE_GENERATION_SCHEMA`/`CODE_REPAIR_SCHEMA`/`BRAINSTORM_SCHEMA`/`STYLE_ASSISTANT_SCHEMA`），`response_format_for()` 按不同 Provider（OpenAI/OpenRouter/Gemini/DeepSeek/Doubao）适配是否支持原生 JSON Schema 强约束。
 
 ## 4. 引擎层职责与调用关系
 
 ### 4.1 `engines/ai/`
-`AIProvider` Protocol（`generate_narrative`/`generate_code`/`repair_code`/`brainstorm_topics`/`research_topic`/`assist_style_prompt`）→ `ChatAIProvider`（Prompt 拼装核心）→ 包裹具体厂商 `ChatClient`（`openrouter.py`/`gemini.py`/`deepseek.py`/`doubao.py`）→ 经 `RecordingChatClient` 审计包装（记录到 `AICallRecord`：输入/输出/token/费用/耗时/状态）→ 发出 HTTP 请求。`factory.py: get_ai_provider(business_name)` 按业务场景（narrative_generation/code_generation/code_repair/topic_brainstorm/topic_research/style_assistant）查 `AIModelConfig` 决定厂商/模型。
+Prompt 模式调用链：`AIProvider` Protocol（`generate_narrative`/`generate_code`/`repair_code`/`brainstorm_topics`/`research_topic`/`assist_style_prompt`）→ `ChatAIProvider`（Prompt 拼装核心）→ 包裹具体厂商 `ChatClient`（`openai.py`/`openrouter.py`/`gemini.py`/`deepseek.py`/`doubao.py`）→ 经 `RecordingChatClient` 审计包装（记录到 `AICallRecord`：输入/输出/token/费用/耗时/状态）→ 发出 HTTP 请求。`factory.py: get_ai_provider(business_name)` 按业务场景（narrative_generation/code_generation/code_repair/topic_brainstorm/topic_research/style_assistant）查模型配置决定厂商/模型。
+
+代码生成选择 Agent 模式时走独立调用链：`AgentCodegenStrategy` → `AgentRuntime` → `ClaudeAgentRuntime` 或 `OpenAIAgentRuntime`。Claude 使用 Claude Agent SDK 的文件工具和进程内 `validate` MCP；OpenAI 使用 OpenAI Agents SDK Responses 模型及平台定义的受限 function tools，只能按镜头编号读取、写入、编辑代码并调用校验，不开放 Shell 或任意文件路径。平台在 SDK 结束后再次独立校验，失败时最多携带会话历史续跑一次。
+
+OpenAI Agents SDK 只提供 token usage，美元成本由后台模型的输入/缓存输入/输出单价计算。为保证 `AGENT_MAX_BUDGET_USD` 确实生效，OpenAI Agent 要求输入和输出单价均大于 0；缓存价未配置时按普通输入价保守计算。Agent 执行的 provider、SDK 版本、模型、轮次、工具调用、token 和成本会写入 `ai_call_records` 及 `CodeVersion.prompt_snapshot.agent`。
 
 ### 4.2 `engines/tts/`
 `TTSEngine` Protocol，`volcengine.py`（火山引擎/豆包实现，返回带词级时间戳的合成结果）。`NarrativeWorker._synthesize_scenes_tts()` 在叙事生成后对每镜头并发（信号量=3）调 TTS，结果合并回 scenes，再交给 `services/beat_aligner.align_scene_beats()`：用 `difflib` 把 `beats[].cue_text` 与词级时间戳对齐，计算 `speech_start/end_seconds`（真实朗读时间）与 `animation_start/end_seconds`（加 pre/post-roll 缓冲，Manim 为 0.18s/0.12s），未能对齐的 beat 标记 `interpolated/pending/failed` 并按权重插值兜底。这套"beat 时间线"正是代码生成 prompt 中"语义节拍时间执行契约"消费的数据。

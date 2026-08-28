@@ -65,6 +65,7 @@ const providerLabels: Record<AIProviderType, string> = {
   gemini: "Gemini",
   doubao: "Doubao",
   anthropic: "Anthropic",
+  openai: "OpenAI",
 };
 
 const defaultBaseUrls: Record<AIProviderType, string> = {
@@ -74,6 +75,8 @@ const defaultBaseUrls: Record<AIProviderType, string> = {
   doubao: "https://ark.cn-beijing.volces.com/api/v3",
   // 留空表示走 Anthropic 官方端点；填值则走中转
   anthropic: "",
+  // 留空表示走 OpenAI 官方端点；自定义地址必须兼容 Responses API
+  openai: "",
 };
 
 const emptyProviderForm: AIModelProviderInput = {
@@ -185,8 +188,10 @@ function ProviderDialog({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    // Anthropic 的 Base URL 可留空，表示走官方端点
-    const baseUrlRequired = form.providerType !== "anthropic";
+    // Anthropic / OpenAI 的 Base URL 可留空，表示走官方端点
+    const baseUrlRequired = !["anthropic", "openai"].includes(
+      form.providerType,
+    );
     if (!form.name.trim() || (baseUrlRequired && !form.baseUrl.trim())) {
       toast.error("请填写供应商名称和 Base URL");
       return;
@@ -260,7 +265,9 @@ function ProviderDialog({
                 placeholder={
                   form.providerType === "anthropic"
                     ? "留空走 Anthropic 官方端点，填值走中转"
-                    : undefined
+                    : form.providerType === "openai"
+                      ? "留空走 OpenAI 官方端点；自定义地址需兼容 Responses API"
+                      : undefined
                 }
               />
             </div>
@@ -348,6 +355,9 @@ function ModelDialog({
   const [form, setForm] = useState<AIProviderModelInput>(emptyModelForm);
   const isEditing = Boolean(model);
   const pending = createModel.isPending || updateModel.isPending;
+  const selectedProvider = providers.find(
+    (provider) => provider.id === form.providerId
+  );
 
   useEffect(() => {
     setForm(
@@ -512,6 +522,12 @@ function ModelDialog({
                 可被业务配置选择
               </label>
             </div>
+            {selectedProvider?.providerType === "openai" && (
+              <p className="text-xs text-muted-foreground md:col-span-2">
+                若用于 Agent 模式，输入和输出成本必须填写大于 0 的真实单价，
+                系统将据此执行美元预算保护；缓存输入成本留 0 时按普通输入成本计算。
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button

@@ -6,7 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
-AI_PROVIDER_TYPES = {"deepseek", "openrouter", "gemini", "doubao", "anthropic"}
+AI_PROVIDER_TYPES = {
+    "deepseek",
+    "openrouter",
+    "gemini",
+    "doubao",
+    "anthropic",
+    "openai",
+}
 
 
 class AIBusinessOption(BaseModel):

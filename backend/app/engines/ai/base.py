@@ -72,8 +72,16 @@ def normalize_usage(
     pricing_per_million: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
     usage = usage or {}
-    prompt_details = usage.get("prompt_tokens_details") or {}
-    completion_details = usage.get("completion_tokens_details") or {}
+    prompt_details = (
+        usage.get("prompt_tokens_details")
+        or usage.get("input_tokens_details")
+        or {}
+    )
+    completion_details = (
+        usage.get("completion_tokens_details")
+        or usage.get("output_tokens_details")
+        or {}
+    )
     cost_details = usage.get("cost_details") or {}
     prompt_tokens = _number(usage.get("prompt_tokens", usage.get("input_tokens")))
     completion_tokens = _number(

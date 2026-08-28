@@ -12,6 +12,7 @@ from app.engines.ai.deepseek import DeepSeekClient
 from app.engines.ai.doubao import DoubaoClient
 from app.engines.ai.factory import BUSINESS_OPTIONS
 from app.engines.ai.gemini import GeminiClient
+from app.engines.ai.openai import OpenAIClient
 from app.engines.ai.openrouter import OpenRouterClient
 from app.models.ai_model_config import (
     AIBusinessModelConfig,
@@ -209,6 +210,8 @@ def _build_test_client(provider: AIModelProvider, model: str):
             site_url=provider.site_url or "",
             site_name=provider.site_name or "",
         )
+    if provider_type == "openai":
+        return OpenAIClient(**kwargs)
     if provider_type == "gemini":
         return GeminiClient(**kwargs)
     if provider_type == "doubao":

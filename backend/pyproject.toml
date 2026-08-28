@@ -21,6 +21,7 @@ dependencies = [
     "pyflakes>=3.4.0",
     "pyyaml>=6.0.3",
     "claude-agent-sdk",
+    "openai-agents>=0.22.0",
 ]
 
 [dependency-groups]

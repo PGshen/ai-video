@@ -122,7 +122,8 @@ export type AIProviderType =
   | "openrouter"
   | "gemini"
   | "doubao"
-  | "anthropic";
+  | "anthropic"
+  | "openai";
 
 export interface AIModelProvider {
   id: string;

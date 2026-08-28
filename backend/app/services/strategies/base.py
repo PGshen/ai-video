@@ -58,11 +58,14 @@ def with_execution_trace(
         return snapshot
     trace = trace or {}
     snapshot["agent"] = {
+        "provider": trace.get("provider"),
+        "sdk_name": trace.get("sdk_name"),
         "sdk_version": trace.get("sdk_version"),
         "model": trace.get("model"),
         "max_turns": trace.get("max_turns"),
         "num_turns": trace.get("num_turns"),
         "tool_calls": trace.get("tool_calls") or [],
+        "usage": trace.get("usage") or {},
         "total_cost_usd": trace.get("total_cost_usd"),
         "resumed": bool(trace.get("resumed")),
         "validated_first_pass": bool(trace.get("validated_first_pass")),

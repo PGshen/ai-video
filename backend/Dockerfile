@@ -2,18 +2,18 @@ FROM python:3.12-slim
 
 # Use Tsinghua (TUNA) mirror for apt (faster/more stable in mainland China); works for both
 # the legacy sources.list and the newer deb822 sources.list.d/debian.sources format.
-# RUN sed -i \
-#     -e 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' \
-#     -e 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
-#     /etc/apt/sources.list.d/*.sources 2>/dev/null || true \
-#     && sed -i \
-#     -e 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' \
-#     -e 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
-#     /etc/apt/sources.list 2>/dev/null || true
+RUN sed -i \
+    -e 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' \
+    -e 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
+    /etc/apt/sources.list.d/*.sources 2>/dev/null || true \
+    && sed -i \
+    -e 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' \
+    -e 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
+    /etc/apt/sources.list 2>/dev/null || true
 
 # Retry flaky downloads instead of failing the whole apt-get on a single dropped connection
-# RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-#     > /etc/apt/apt.conf.d/80-retries
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+    > /etc/apt/apt.conf.d/80-retries
 
 # System deps for manim (cairo/pango rendering + ffmpeg + LaTeX for Tex/MathTex)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && corepack enable \
-    && corepack prepare pnpm@10.27.0 --activate \
+    && COREPACK_NPM_REGISTRY=https://registry.npmmirror.com corepack prepare pnpm@10.27.0 --activate \
     && rm -rf /var/lib/apt/lists/*
 
 # 不需要单独装 claude CLI：claude-agent-sdk 的平台 wheel 自带 bundled CLI
@@ -77,12 +77,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
-#     PATH="/app/.venv/bin:$PATH" \
-#     UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple/" \
-#     UV_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple/" \
-#     PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple/" \
-#     UV_HTTP_TIMEOUT="120" \
-#     npm_config_registry="https://registry.npmmirror.com" \
-#     npm_config_fetch_retries="5" \
-#     npm_config_fetch_retry_maxtimeout="60000"
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+    PATH="/app/.venv/bin:$PATH" \
+    UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple/" \
+    UV_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple/" \
+    PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple/" \
+    UV_HTTP_TIMEOUT="120" \
+    npm_config_registry="https://registry.npmmirror.com" \
+    npm_config_fetch_retries="5" \
+    npm_config_fetch_retry_maxtimeout="60000" \
+    COREPACK_NPM_REGISTRY="https://registry.npmmirror.com"

@@ -21,18 +21,27 @@ class FakeOpenAIClient:
 
 @pytest.mark.asyncio
 async def test_openai_client_uses_chat_completion_shape_and_preserves_usage():
-    response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))],
-        model_dump=lambda **kwargs: {
-            "choices": [{"message": {"content": '{"ok": true}'}}],
-            "usage": {
-                "prompt_tokens": 12,
-                "completion_tokens": 3,
-                "total_tokens": 15,
-            },
-        },
-    )
-    create = AsyncMock(return_value=response)
+    async def chunks():
+        yield SimpleNamespace(
+            choices=[SimpleNamespace(delta=SimpleNamespace(content='{"ok":'))],
+            usage=None,
+        )
+        yield SimpleNamespace(
+            choices=[SimpleNamespace(delta=SimpleNamespace(content=" true}"))],
+            usage=None,
+        )
+        yield SimpleNamespace(
+            choices=[],
+            usage=SimpleNamespace(
+                model_dump=lambda **kwargs: {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 3,
+                    "total_tokens": 15,
+                }
+            ),
+        )
+
+    create = AsyncMock(return_value=chunks())
     client = OpenAIClient(
         api_key="test-key",
         model="gpt-5.4",
@@ -54,6 +63,8 @@ async def test_openai_client_uses_chat_completion_shape_and_preserves_usage():
     assert create.await_args.kwargs == {
         "model": "gpt-5.4",
         "messages": [{"role": "user", "content": "hello"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
         "response_format": {"type": "json_object"},
         "max_completion_tokens": 123,
     }

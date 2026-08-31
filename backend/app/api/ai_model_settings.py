@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_active_user
 from app.db import get_async_session
+from app.engines.ai.anthropic import AnthropicClient
 from app.engines.ai.deepseek import DeepSeekClient
 from app.engines.ai.doubao import DoubaoClient
 from app.engines.ai.factory import BUSINESS_OPTIONS
@@ -202,6 +203,8 @@ def _build_test_client(provider: AIModelProvider, model: str):
         timeout_seconds=min(provider.timeout_seconds, _TEST_TIMEOUT_SECONDS),
     )
     provider_type = provider.provider_type.lower()
+    if provider_type == "anthropic":
+        return AnthropicClient(**kwargs, default_max_tokens=_TEST_MAX_TOKENS)
     if provider_type == "deepseek":
         return DeepSeekClient(**kwargs)
     if provider_type == "openrouter":

@@ -1,13 +1,10 @@
-import json
-import logging
-import time
 from collections.abc import AsyncIterator
 
 import httpx
 
-from app.engines.ai.base import CompletionText, completion_text
-
-logger = logging.getLogger(__name__)
+from app.engines.ai.base import CompletionText
+from app.engines.ai.live_preview import LiveLLMPreview
+from app.engines.ai.streaming import iter_openai_sse
 
 
 class OpenRouterClient:
@@ -47,7 +44,8 @@ class OpenRouterClient:
         payload: dict = {
             "model": self.model_name,
             "messages": messages,
-            "stream": False,
+            "stream": True,
+            "stream_options": {"include_usage": True},
         }
         if response_format is not None:
             payload["response_format"] = response_format
@@ -57,26 +55,33 @@ class OpenRouterClient:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
-        logger.info(
-            "OpenRouter chat completion request: model=%s messages=%d max_tokens=%s",
-            self.model_name, len(messages), max_tokens,
+        preview = LiveLLMPreview(
+            provider=self.engine_name, model=self.model_name, messages=messages
         )
-        started = time.monotonic()
-        async with self._new_client() as client:
-            response = await client.post("/chat/completions", json=payload, headers=self._headers())
-        self._raise_for_status(response)
-        data = response.json()
+        chunks: list[str] = []
+        usage = None
         try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ValueError("Unexpected OpenRouter chat completion response") from exc
+            async with self._new_client() as client:
+                async with client.stream(
+                    "POST", "/chat/completions", json=payload, headers=self._headers()
+                ) as response:
+                    self._raise_for_status(response)
+                    async for content, chunk_usage in iter_openai_sse(response):
+                        if chunk_usage is not None:
+                            usage = chunk_usage
+                        if content:
+                            chunks.append(content)
+                            preview.append(content)
+        except BaseException as exc:
+            preview.fail(exc)
+            raise
+        content = "".join(chunks)
         if not content:
-            raise ValueError("OpenRouter returned empty content")
-        logger.info(
-            "OpenRouter chat completion response: model=%s elapsed=%.2fs content_len=%d",
-            self.model_name, time.monotonic() - started, len(content),
-        )
-        return completion_text(content, data)
+            exc = ValueError("OpenRouter returned empty content")
+            preview.fail(exc)
+            raise exc
+        preview.finish(chunks=len(chunks), content_len=len(content))
+        return CompletionText(content, usage)
 
     async def stream_chat_completion(self, messages: list[dict]) -> AsyncIterator[str]:
         payload: dict = {
@@ -85,45 +90,29 @@ class OpenRouterClient:
             "stream": True,
             "stream_options": {"include_usage": True},
         }
-        logger.info(
-            "OpenRouter stream chat completion request: model=%s messages=%d",
-            self.model_name, len(messages),
+        preview = LiveLLMPreview(
+            provider=self.engine_name, model=self.model_name, messages=messages
         )
-        started = time.monotonic()
         chunk_count = 0
         total_len = 0
-        async with self._new_client() as client:
-            async with client.stream(
-                "POST",
-                "/chat/completions",
-                json=payload,
-                headers=self._headers(),
-            ) as response:
-                self._raise_for_status(response)
-                async for line in response.aiter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    raw = line.removeprefix("data:").strip()
-                    if raw == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(raw)
-                        choices = data.get("choices") or []
-                        delta = choices[0].get("delta") or {} if choices else {}
-                    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-                        continue
-                    usage = data.get("usage")
-                    if isinstance(usage, dict) and not delta.get("content"):
-                        yield CompletionText("", usage)
-                    content = delta.get("content")
-                    if content:
-                        chunk_count += 1
-                        total_len += len(content)
-                        yield content
-        logger.info(
-            "OpenRouter stream chat completion done: model=%s elapsed=%.2fs chunks=%d content_len=%d",
-            self.model_name, time.monotonic() - started, chunk_count, total_len,
-        )
+        try:
+            async with self._new_client() as client:
+                async with client.stream(
+                    "POST", "/chat/completions", json=payload, headers=self._headers()
+                ) as response:
+                    self._raise_for_status(response)
+                    async for content, usage in iter_openai_sse(response):
+                        if isinstance(usage, dict) and not content:
+                            yield CompletionText("", usage)
+                        if content:
+                            chunk_count += 1
+                            total_len += len(content)
+                            preview.append(content)
+                            yield content
+        except BaseException as exc:
+            preview.fail(exc)
+            raise
+        preview.finish(chunks=chunk_count, content_len=total_len)
 
     def _new_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(

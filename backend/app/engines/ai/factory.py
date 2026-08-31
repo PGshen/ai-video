@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
 from app.db import get_sync_session
+from app.engines.ai.anthropic import AnthropicClient
 from app.engines.ai.base import AIProvider, RecordingChatClient
 from app.engines.ai.chat_provider import ChatAIProvider
 from app.engines.ai.deepseek import DeepSeekClient
@@ -95,6 +96,25 @@ def _provider_settings_from_db(business: str | None) -> ProviderSettings | None:
 
 def _provider_settings_from_env() -> ProviderSettings | None:
     provider = settings.AI_PROVIDER.lower()
+    if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+        return ProviderSettings(
+            provider_type=provider,
+            api_key=settings.ANTHROPIC_API_KEY,
+            base_url=settings.ANTHROPIC_BASE_URL,
+            model=settings.ANTHROPIC_MODEL,
+            timeout_seconds=settings.ANTHROPIC_TIMEOUT_SECONDS,
+            content_max_tokens=settings.ANTHROPIC_CONTENT_MAX_TOKENS,
+            json_max_tokens=settings.ANTHROPIC_JSON_MAX_TOKENS,
+            input_cost_per_million=Decimal(
+                str(settings.ANTHROPIC_INPUT_COST_PER_MILLION)
+            ),
+            cached_input_cost_per_million=Decimal(
+                str(settings.ANTHROPIC_CACHED_INPUT_COST_PER_MILLION)
+            ),
+            output_cost_per_million=Decimal(
+                str(settings.ANTHROPIC_OUTPUT_COST_PER_MILLION)
+            ),
+        )
     if provider == "deepseek" and settings.DEEPSEEK_API_KEY:
         return ProviderSettings(
             provider_type=provider,
@@ -108,7 +128,11 @@ def _provider_settings_from_env() -> ProviderSettings | None:
             cached_input_cost_per_million=Decimal(str(settings.DEEPSEEK_CACHED_INPUT_COST_PER_MILLION)),
             output_cost_per_million=Decimal(str(settings.DEEPSEEK_OUTPUT_COST_PER_MILLION)),
         )
-    if provider == "openrouter" and settings.OPENROUTER_API_KEY:
+    if (
+        provider == "openrouter"
+        and settings.OPENROUTER_API_KEY
+        and settings.OPENROUTER_MODEL
+    ):
         return ProviderSettings(
             provider_type=provider,
             api_key=settings.OPENROUTER_API_KEY,
@@ -159,6 +183,21 @@ def _chat_provider(config: ProviderSettings) -> AIProvider:
         "cached_input": float(config.cached_input_cost_per_million),
         "output": float(config.output_cost_per_million),
     }
+    if provider == "anthropic":
+        return ChatAIProvider(
+            client=RecordingChatClient(
+                AnthropicClient(
+                    api_key=config.api_key,
+                    base_url=config.base_url,
+                    model=config.model,
+                    timeout_seconds=config.timeout_seconds,
+                    default_max_tokens=config.content_max_tokens,
+                ),
+                pricing_per_million=pricing,
+            ),
+            content_max_tokens=config.content_max_tokens,
+            json_max_tokens=config.json_max_tokens,
+        )
     if provider == "deepseek":
         return ChatAIProvider(
             client=RecordingChatClient(

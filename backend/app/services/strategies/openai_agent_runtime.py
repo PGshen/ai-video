@@ -9,6 +9,7 @@ from typing import Any, Callable, Literal
 
 from app.config import settings
 from app.engines.ai.base import normalize_usage
+from app.engines.ai.live_preview import LiveLLMPreview
 from app.engines.ai.factory import ProviderSettings
 from app.services.strategies.agent_runtime import AgentCancelledError, AgentRunResult
 from app.services.strategies.agent_sandbox import scene_filename, validate_workdir
@@ -316,9 +317,14 @@ class OpenAIAgentRuntime:
                 *history,
                 {"role": "user", "content": input_text},
             ]
-        runner_run = self._runner_run or Runner.run
+        preview = LiveLLMPreview(
+            provider=self.provider,
+            model=self.model,
+            messages=[{"role": "user", "content": input_text}],
+        )
+        runner_run = self._runner_run or Runner.run_streamed
         try:
-            result = await runner_run(
+            result = runner_run(
                 agent,
                 run_input,
                 max_turns=settings.AGENT_MAX_TURNS,
@@ -328,7 +334,16 @@ class OpenAIAgentRuntime:
                     workflow_name="AI video code generation",
                 ),
             )
+            if hasattr(result, "__await__"):
+                result = await result
+            if hasattr(result, "stream_events"):
+                async for event in result.stream_events():
+                    data = getattr(event, "data", None)
+                    delta = getattr(data, "delta", None)
+                    if isinstance(delta, str):
+                        preview.append(delta)
         except OpenAIBudgetExceededError as exc:
+            preview.fail(exc)
             return AgentRunResult(
                 status="error_max_budget",
                 continuation={"history": [], "spent_usd": exc.total_cost_usd},
@@ -341,6 +356,7 @@ class OpenAIAgentRuntime:
             from agents.exceptions import MaxTurnsExceeded
 
             if isinstance(exc, MaxTurnsExceeded):
+                preview.fail(exc)
                 return AgentRunResult(
                     status="error_max_turns",
                     tool_calls=list(workspace.tool_calls),
@@ -351,6 +367,10 @@ class OpenAIAgentRuntime:
 
         usage = _usage_dict(result.context_wrapper.usage)
         total_cost = _cost_from_usage(usage, self.config)
+        preview.finish(
+            chunks=1 if result.final_output else 0,
+            content_len=len(str(result.final_output or "")),
+        )
         return AgentRunResult(
             status="success",
             final_output=str(result.final_output or ""),

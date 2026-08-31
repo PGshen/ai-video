@@ -33,6 +33,14 @@ def test_manim_prompt_keeps_visuals_until_narration_finishes():
     assert "保持最终画面" in prompt
 
 
+def test_manim_prompt_requires_clear_except_to_preserve_visual_continuity():
+    prompt = ChatAIProvider._ENGINE_CODE_PROMPTS["manim"]
+    assert "跨镜头画面连续性是默认要求" in prompt
+    assert "clear_except 必须至少传入一个" in prompt
+    assert "不得仅因进入新镜头" in prompt
+    assert "禁止把 self.clear_except() 当作每个镜头开头的固定模板" in prompt
+
+
 def test_narrative_hints_visual_style_and_content_rules():
     for prompt in ChatAIProvider._NARRATIVE_ENGINE_HINTS.values():
         # 引擎叙事规范只描述能力与语义约束；配色由平台 color_scheme 注入

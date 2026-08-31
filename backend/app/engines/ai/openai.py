@@ -1,13 +1,10 @@
-import logging
-import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 from openai import AsyncOpenAI
 
-from app.engines.ai.base import CompletionText, completion_text
-
-logger = logging.getLogger(__name__)
+from app.engines.ai.base import CompletionText
+from app.engines.ai.live_preview import LiveLLMPreview
 
 
 class OpenAIClient:
@@ -54,31 +51,42 @@ class OpenAIClient:
         kwargs: dict[str, Any] = {
             "model": self.model_name,
             "messages": messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
         }
         if response_format is not None:
             kwargs["response_format"] = response_format
         if max_tokens is not None:
             kwargs["max_completion_tokens"] = max_tokens
-        logger.info(
-            "OpenAI chat completion request: model=%s messages=%d max_tokens=%s",
-            self.model_name,
-            len(messages),
-            max_tokens,
+        preview = LiveLLMPreview(
+            provider=self.engine_name, model=self.model_name, messages=messages
         )
-        started = time.monotonic()
-        async with self._new_client() as client:
-            response = await client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content if response.choices else None
+        chunks: list[str] = []
+        usage = None
+        try:
+            async with self._new_client() as client:
+                stream = await client.chat.completions.create(**kwargs)
+                async for chunk in stream:
+                    chunk_usage = (
+                        chunk.usage.model_dump(mode="json") if chunk.usage else None
+                    )
+                    if chunk_usage is not None:
+                        usage = chunk_usage
+                    choices = chunk.choices or []
+                    content = choices[0].delta.content if choices else None
+                    if content:
+                        chunks.append(content)
+                        preview.append(content)
+        except BaseException as exc:
+            preview.fail(exc)
+            raise
+        content = "".join(chunks)
         if not content:
-            raise ValueError("OpenAI returned empty content")
-        payload = response.model_dump(mode="json")
-        logger.info(
-            "OpenAI chat completion response: model=%s elapsed=%.2fs content_len=%d",
-            self.model_name,
-            time.monotonic() - started,
-            len(content),
-        )
-        return completion_text(content, payload)
+            exc = ValueError("OpenAI returned empty content")
+            preview.fail(exc)
+            raise exc
+        preview.finish(chunks=len(chunks), content_len=len(content))
+        return CompletionText(content, usage)
 
     async def stream_chat_completion(
         self, messages: list[dict]
@@ -89,13 +97,28 @@ class OpenAIClient:
             "stream": True,
             "stream_options": {"include_usage": True},
         }
-        async with self._new_client() as client:
-            stream = await client.chat.completions.create(**kwargs)
-            async for chunk in stream:
-                usage = chunk.usage.model_dump(mode="json") if chunk.usage else None
-                choices = chunk.choices or []
-                content = choices[0].delta.content if choices else None
-                if usage and not content:
-                    yield CompletionText("", usage)
-                if content:
-                    yield content
+        preview = LiveLLMPreview(
+            provider=self.engine_name, model=self.model_name, messages=messages
+        )
+        chunk_count = 0
+        total_len = 0
+        try:
+            async with self._new_client() as client:
+                stream = await client.chat.completions.create(**kwargs)
+                async for chunk in stream:
+                    usage = (
+                        chunk.usage.model_dump(mode="json") if chunk.usage else None
+                    )
+                    choices = chunk.choices or []
+                    content = choices[0].delta.content if choices else None
+                    if usage and not content:
+                        yield CompletionText("", usage)
+                    if content:
+                        chunk_count += 1
+                        total_len += len(content)
+                        preview.append(content)
+                        yield content
+        except BaseException as exc:
+            preview.fail(exc)
+            raise
+        preview.finish(chunks=chunk_count, content_len=total_len)

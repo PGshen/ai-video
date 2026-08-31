@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_BASE_URL: str = "https://api.anthropic.com"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
+    ANTHROPIC_TIMEOUT_SECONDS: float = 600.0
+    ANTHROPIC_CONTENT_MAX_TOKENS: int = 8192
+    ANTHROPIC_JSON_MAX_TOKENS: int = 4096
+    ANTHROPIC_INPUT_COST_PER_MILLION: float = 0
+    ANTHROPIC_CACHED_INPUT_COST_PER_MILLION: float = 0
+    ANTHROPIC_OUTPUT_COST_PER_MILLION: float = 0
     AI_PROVIDER: str = "deepseek"
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
@@ -30,7 +38,7 @@ class Settings(BaseSettings):
     DEEPSEEK_OUTPUT_COST_PER_MILLION: float = 0
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODEL: str = "anthropic/claude-sonnet-4-5"
+    OPENROUTER_MODEL: str = ""
     OPENROUTER_TIMEOUT_SECONDS: float = 600.0
     OPENROUTER_CONTENT_MAX_TOKENS: int = 100000
     OPENROUTER_JSON_MAX_TOKENS: int = 100000

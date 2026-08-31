@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from app.engines.ai.chat_provider import ChatAIProvider, normalize_exemplar_prompt
+from app.engines.ai.anthropic import AnthropicClient
 from app.engines.ai.gemini import GeminiClient
 from app.engines.ai.openrouter import OpenRouterClient
 from app.engines.ai.structured_output import (
@@ -14,6 +15,17 @@ from app.engines.ai.structured_output import (
     response_format_for,
 )
 from app.engines.ai.stub import StubChatClient
+
+
+def stream_response(content: str) -> httpx.Response:
+    body = "\n\n".join(
+        [
+            "data: "
+            + json.dumps({"choices": [{"delta": {"content": content}}]}),
+            "data: [DONE]",
+        ]
+    )
+    return httpx.Response(200, content=body)
 
 
 def test_response_format_uses_strict_json_schema_for_capable_clients():
@@ -31,6 +43,16 @@ def test_response_format_uses_strict_json_schema_for_capable_clients():
             "schema": NARRATIVE_SCHEMA,
         },
     }
+
+
+def test_anthropic_is_a_native_schema_capable_provider():
+    client = AnthropicClient(api_key="test", model="claude-sonnet-4-6")
+
+    assert response_format_for(
+        client,
+        name="result",
+        schema={"type": "object"},
+    )["type"] == "json_schema"
 
 
 def test_response_format_falls_back_to_json_object_for_unsupported_clients():
@@ -66,12 +88,11 @@ async def test_chat_provider_sends_operation_specific_schema():
 async def test_gemini_forwards_openai_compatible_json_schema():
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
+        assert payload["stream"] is True
+        assert payload["stream_options"] == {"include_usage": True}
         assert payload["response_format"]["type"] == "json_schema"
         assert payload["response_format"]["json_schema"]["strict"] is True
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": '{"codes":["ok"]}'}}]},
-        )
+        return stream_response('{"codes":["ok"]}')
 
     client = GeminiClient(
         api_key="test-key",
@@ -92,16 +113,15 @@ async def test_gemini_forwards_openai_compatible_json_schema():
 async def test_openrouter_requires_schema_capable_upstream_provider():
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
+        assert payload["stream"] is True
+        assert payload["stream_options"] == {"include_usage": True}
         assert payload["response_format"]["type"] == "json_schema"
         assert payload["provider"] == {"require_parameters": True}
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": '{"codes":["ok"]}'}}]},
-        )
+        return stream_response('{"codes":["ok"]}')
 
     client = OpenRouterClient(
         api_key="test-key",
-        model="anthropic/claude-sonnet-4-5",
+        model="openrouter/auto",
         transport=httpx.MockTransport(handler),
     )
     await client.create_chat_completion(

@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Callable
 
 from app.config import settings
+from app.engines.ai.live_preview import LiveLLMPreview
 from app.engines.ai.factory import ProviderSettings
 from app.services.strategies.agent_runtime import AgentCancelledError, AgentRunResult
 from app.services.strategies.agent_sandbox import build_validate_server
@@ -74,6 +75,11 @@ class ClaudeAgentRuntime:
         cumulative_cost = 0.0
         cumulative_turns = 0
         tool_calls: list[str] = []
+        preview = LiveLLMPreview(
+            provider=self.provider,
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
         stream = self._query()(prompt=prompt, options=options)
         async with contextlib.aclosing(stream) as messages:
@@ -95,6 +101,7 @@ class ClaudeAgentRuntime:
                     else:
                         text = (getattr(block, "text", "") or "").strip()
                         if text:
+                            preview.append(text)
                             logger.info(
                                 "[ClaudeAgentRuntime] %s",
                                 text if len(text) <= 500 else text[:500] + "…",
@@ -122,6 +129,7 @@ class ClaudeAgentRuntime:
             "total_cost_usd": cumulative_cost,
             "num_turns": cumulative_turns,
         }
+        preview.finish(chunks=1 if result_text else 0, content_len=len(result_text))
         return AgentRunResult(
             status=subtype or "missing_result",
             final_output=result_text,

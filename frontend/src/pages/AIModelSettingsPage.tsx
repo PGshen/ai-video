@@ -229,7 +229,8 @@ function ProviderDialog({
           <DialogHeader>
             <DialogTitle>{isEditing ? "编辑供应商" : "新增供应商"}</DialogTitle>
             <DialogDescription>
-              供应商保存 Base URL、API Key 和通用请求参数；具体模型在下一层维护。
+              供应商决定实际 API 通道：Anthropic 直连 Claude，OpenRouter
+              仅表示通过 OpenRouter 聚合接口调用。具体模型在下一层维护。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
@@ -450,8 +451,26 @@ function ModelDialog({
               <Input
                 value={form.model}
                 onChange={(event) => setField("model", event.target.value)}
-                placeholder="deepseek-v4-flash"
+                placeholder={
+                  selectedProvider?.providerType === "anthropic"
+                    ? "claude-sonnet-4-6"
+                    : selectedProvider?.providerType === "openrouter"
+                      ? "openrouter/auto"
+                      : "deepseek-v4-flash"
+                }
               />
+              {selectedProvider?.providerType === "anthropic" && (
+                <p className="text-xs text-muted-foreground">
+                  直接调用 Anthropic Messages API，请填写 claude-* 模型 ID，
+                  不要填写 OpenRouter 的 anthropic/* 路由名。
+                </p>
+              )}
+              {selectedProvider?.providerType === "openrouter" && (
+                <p className="text-xs text-muted-foreground">
+                  通过 OpenRouter 聚合接口调用，模型路由必须显式配置，例如
+                  openrouter/auto。
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>内容 max tokens</Label>

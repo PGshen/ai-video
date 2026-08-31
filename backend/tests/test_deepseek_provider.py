@@ -7,6 +7,21 @@ from app.engines.ai.chat_provider import ChatAIProvider
 from app.engines.ai.deepseek import DeepSeekClient
 
 
+def stream_response(*chunks: str, usage: dict | None = None) -> httpx.Response:
+    events = [
+        "data: "
+        + json.dumps(
+            {"choices": [{"delta": {"content": chunk}, "index": 0}]},
+            ensure_ascii=False,
+        )
+        for chunk in chunks
+    ]
+    if usage is not None:
+        events.append("data: " + json.dumps({"choices": [], "usage": usage}))
+    events.append("data: [DONE]")
+    return httpx.Response(200, content="\n\n".join(events))
+
+
 def make_client(handler) -> DeepSeekClient:
     return DeepSeekClient(
         api_key="test-key",
@@ -24,8 +39,13 @@ async def test_deepseek_client_uses_official_chat_completion_shape_and_auth_head
         assert payload["model"] == "deepseek-v4-flash"
         assert payload["response_format"] == {"type": "json_object"}
         assert payload["max_tokens"] == 123
-        assert payload["stream"] is False
-        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": true}'}}]})
+        assert payload["stream"] is True
+        assert payload["stream_options"] == {"include_usage": True}
+        return stream_response(
+            '{"ok":',
+            " true}",
+            usage={"prompt_tokens": 2, "completion_tokens": 3},
+        )
 
     content = await make_client(handler).create_chat_completion(
         messages=[{"role": "user", "content": "hello"}],
@@ -34,6 +54,7 @@ async def test_deepseek_client_uses_official_chat_completion_shape_and_auth_head
     )
 
     assert content == '{"ok": true}'
+    assert content.usage == {"prompt_tokens": 2, "completion_tokens": 3}
 
 
 @pytest.mark.asyncio
@@ -43,28 +64,19 @@ async def test_chat_ai_provider_brainstorm_uses_json_mode_and_parses_candidates(
         assert payload["response_format"] == {"type": "json_object"}
         assert "选题策划助手" in payload["messages"][0]["content"]
         assert "候选选题" in payload["messages"][1]["content"]
-        return httpx.Response(
-            200,
-            json={
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "candidates": [
-                                        {
-                                            "title": "为什么冰会浮在水上",
-                                            "description": "密度反常的可视化解释",
-                                            "tags": ["物理", "化学"],
-                                        }
-                                    ]
-                                },
-                                ensure_ascii=False,
-                            )
+        return stream_response(
+            json.dumps(
+                {
+                    "candidates": [
+                        {
+                            "title": "为什么冰会浮在水上",
+                            "description": "密度反常的可视化解释",
+                            "tags": ["物理", "化学"],
                         }
-                    }
-                ]
-            },
+                    ]
+                },
+                ensure_ascii=False,
+            )
         )
 
     result = await ChatAIProvider(make_client(handler)).brainstorm_topics("科学", 1)
